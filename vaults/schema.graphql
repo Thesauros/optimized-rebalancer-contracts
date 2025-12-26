@@ -1,0 +1,145 @@
+type Vault @entity(immutable: false) {
+  id: ID! # vault address
+  asset: Bytes! # asset token address
+  name: String!
+  symbol: String!
+  createdAt: BigInt!
+  updatedAt: BigInt!
+  totalSupply: BigInt!
+  totalAssets: BigInt!
+  timelock: Bytes!
+  treasury: Bytes!
+  withdrawFeePercent: BigInt!
+  minAmount: BigInt!
+  activeProvider: Bytes!
+  setupCompleted: Boolean!
+  providers: [Provider!]! @derivedFrom(field: "vault")
+  rebalances: [Rebalance!]! @derivedFrom(field: "vault")
+  fees: [Fee!]! @derivedFrom(field: "vault")
+}
+
+type Provider @entity(immutable: false) {
+  id: ID! # provider address
+  identifier: String!
+  vault: Vault!
+  addedAt: BigInt!
+  removedAt: BigInt
+  isActive: Boolean!
+}
+
+type Rebalance @entity(immutable: true) {
+  id: ID!
+  vault: Vault!
+  assetsFrom: BigInt!
+  assetsTo: BigInt!
+  from: Bytes!
+  to: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type Fee @entity(immutable: true) {
+  id: ID!
+  vault: Vault!
+  treasury: Bytes!
+  assets: BigInt!
+  fee: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type SetupCompleted @entity(immutable: true) {
+  id: ID!
+  setupAddress: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type TimelockUpdated @entity(immutable: true) {
+  id: ID!
+  timelock: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ProvidersUpdated @entity(immutable: true) {
+  id: ID!
+  providers: [Bytes!]!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ActiveProviderUpdated @entity(immutable: true) {
+  id: ID!
+  activeProvider: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type TreasuryUpdated @entity(immutable: true) {
+  id: ID!
+  treasury: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type WithdrawFeePercentUpdated @entity(immutable: true) {
+  id: ID!
+  withdrawFeePercent: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MinAmountUpdated @entity(immutable: true) {
+  id: ID!
+  minAmount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type FeeCharged @entity(immutable: true) {
+  id: ID!
+  treasury: Bytes!
+  assets: BigInt!
+  fee: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RebalanceExecuted @entity(immutable: true) {
+  id: ID!
+  assetsFrom: BigInt!
+  assetsTo: BigInt!
+  from: Bytes!
+  to: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RewardsTransferred @entity(immutable: true) {
+  id: ID!
+  to: Bytes!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type DistributorUpdated @entity(immutable: true) {
+  id: ID!
+  rewardsDistributor: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
