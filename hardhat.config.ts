@@ -20,25 +20,7 @@ const config: HardhatUserConfig = {
   contractSizer: { runOnCompile: false },
   networks: networkConfig,
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY || '',
-    customChains: [
-      {
-        network: "arbitrumOne",
-        chainId: 42161,
-        urls: {
-          apiURL: "https://api.etherscan.io/v2/api?chainid=42161",
-          browserURL: "https://arbiscan.io"
-        }
-      },
-      {
-        network: "arbitrumSepolia",
-        chainId: 421614,
-        urls: {
-          apiURL: "https://api.etherscan.io/v2/api?chainid=421614",
-          browserURL: "https://sepolia.arbiscan.io"
-        }
-      }
-    ]
+    apiKey: process.env.ETHERSCAN_API_KEY!,
   },
   namedAccounts: {
     deployer: 0,

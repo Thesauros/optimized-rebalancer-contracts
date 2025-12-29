@@ -10,18 +10,21 @@ export const networkConfig = {
   hardhat: {
     forking: {
       url: networkUrls.arbitrumOne,
-      blockNumber: 233407190,
     },
   },
   arbitrumOne: {
     url: networkUrls.arbitrumOne,
-    accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    accounts: process.env.DEPLOYER_PRIVATE_KEY
+      ? [process.env.DEPLOYER_PRIVATE_KEY]
+      : [],
     chainId: 42161,
-    gasPrice: 120000000, // Increased to 0.12 gwei
+    gasPrice: 120000000, // 0.12 Gwei
   },
   arbitrumSepolia: {
     url: networkUrls.arbitrumSepolia,
-    accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    accounts: process.env.DEPLOYER_PRIVATE_KEY
+      ? [process.env.DEPLOYER_PRIVATE_KEY]
+      : [],
     chainId: 421614,
   },
 };
