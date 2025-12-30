@@ -2,15 +2,11 @@
   "name": "thesauros-optimized-rebalancer",
   "scripts": {},
   "devDependencies": {
-    "@nomicfoundation/hardhat-foundry": "^1.1.2",
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "@nomicfoundation/hardhat-verify": "^2.1.1",
-    "@openzeppelin/merkle-tree": "^1.0.7",
+    "@nomicfoundation/hardhat-foundry": "^1.2.1",
+    "@nomicfoundation/hardhat-toolbox": "^6.1.2",
     "dotenv": "^16.4.4",
-    "hardhat": "^2.26.3",
-    "hardhat-contract-sizer": "^2.10.0",
-    "hardhat-deploy": "^1.0.4",
-    "hardhat-deploy-ethers": "^0.4.1"
+    "hardhat": "2.28.1",
+    "hardhat-deploy": "^1.0.4"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0"
