@@ -47,7 +47,6 @@ contract MockingUtilities is Test {
     bytes32 public constant ADMIN_ROLE = 0x00;
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
-    bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
 
     constructor() {
         asset = new MockERC20("Test USDT", "tUSDT", ASSET_DECIMALS);
