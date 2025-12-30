@@ -81,36 +81,6 @@ interface IVault is IERC4626 {
     );
 
     /**
-     * @notice Emitted when rewards are transferred.
-     *
-     * @param to The address to which rewards are transferred.
-     * @param amount The amount of rewards transferred.
-     */
-    event RewardsTransferred(address indexed to, uint256 amount);
-
-    /**
-     * @notice Emitted when the rewards distributor contract is changed.
-     *
-     * @param rewardsDistributor The new rewards distributor contract address.
-     */
-    event DistributorUpdated(address indexed rewardsDistributor);
-
-    /**
-     * @notice Emitted when whitelist is enabled or disabled.
-     *
-     * @param enabled Whether whitelist is enabled.
-     */
-    event WhitelistToggled(bool enabled);
-
-    /**
-     * @notice Emitted when an address is added to or removed from whitelist.
-     *
-     * @param account The address being added or removed.
-     * @param isWhitelisted Whether the address is whitelisted.
-     */
-    event WhitelistUpdated(address indexed account, bool isWhitelisted);
-
-    /**
      * @notice Sets up the vault with a specified amount of assets to prevent inflation attacks.
      * @dev Refer to: https://rokinot.github.io/hatsfinance
      *
@@ -131,35 +101,4 @@ interface IVault is IERC4626 {
         IProvider to,
         uint256 fee
     ) external returns (bool);
-
-    /**
-     * @notice Toggles the whitelist functionality on or off.
-     * @param enabled Whether to enable or disable the whitelist.
-     */
-    function toggleWhitelist(bool enabled) external;
-
-    /**
-     * @notice Grants DEPOSITOR_ROLE to an address (adds to whitelist).
-     * @param account The address to add to the whitelist.
-     */
-    function addToWhitelist(address account) external;
-
-    /**
-     * @notice Revokes DEPOSITOR_ROLE from an address (removes from whitelist).
-     * @param account The address to remove from the whitelist.
-     */
-    function removeFromWhitelist(address account) external;
-
-    /**
-     * @notice Checks if an address is whitelisted.
-     * @param account The address to check.
-     * @return Whether the address is whitelisted.
-     */
-    function isWhitelisted(address account) external view returns (bool);
-
-    /**
-     * @notice Checks if whitelist is enabled.
-     * @return Whether whitelist is enabled.
-     */
-    function isWhitelistEnabled() external view returns (bool);
 }

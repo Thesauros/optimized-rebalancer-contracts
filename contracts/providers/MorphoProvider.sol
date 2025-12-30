@@ -48,29 +48,14 @@ contract MorphoProvider is IProvider {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
-    /// @notice The MetaMorpho vault contract that manages the lending strategy
-    /// @dev This vault automatically allocates funds across multiple Morpho Blue markets
     IMetaMorpho private immutable _metaMorpho;
 
-    /**
-     * @notice Initializes the MorphoProvider with a MetaMorpho vault
-     * @param metaMorpho_ The address of the MetaMorpho vault contract
-     * @dev The MetaMorpho vault must be a valid ERC4626-compatible vault
-     * @dev The vault should be configured with appropriate market strategies
-     */
     constructor(address metaMorpho_) {
         _metaMorpho = IMetaMorpho(metaMorpho_);
     }
 
     /**
-     * @notice Deposits assets into the MetaMorpho vault
-     * @param amount The amount of assets to deposit
-     * @param vault The vault contract calling this function
-     * @return success Always returns true if the deposit succeeds
-     * 
-     * @dev The MetaMorpho vault will automatically allocate the deposited assets
-     *      across its configured markets based on the current strategy
-     * @dev This function should be called via delegatecall from the vault context
+     * @inheritdoc IProvider
      */
     function deposit(
         uint256 amount,
@@ -92,28 +77,14 @@ contract MorphoProvider is IProvider {
     }
 
     /**
-     * @notice Returns the underlying Morpho Blue contract
-     * @return The IMorpho interface for the Morpho Blue protocol
-     * @dev This is used to interact with individual markets and get market data
+     * @dev Returns the Morpho contract of Morpho Blue.
      */
     function _getMorpho() internal view returns (IMorpho) {
         return _metaMorpho.MORPHO();
     }
 
     /**
-     * @notice Calculates the current APY for a specific Morpho Blue market
-     * @param marketParams The market parameters (collateral, loan, oracle, IRM)
-     * @param market The current market state (fee, total supply, total borrow)
-     * @return marketRate The calculated market rate in ray (1e27) format
-     * 
-     * @dev The calculation considers:
-     * - Borrow rate from the Interest Rate Model (IRM)
-     * - Market utilization (borrow/supply ratio)
-     * - Protocol fee
-     * - Compounding over 365 days
-     * 
-     * @dev Formula: borrowRate * (1 - fee) * utilization
-     * @dev Returns 0 if IRM is not set (invalid market)
+     * @dev Returns the current APY of a Morpho Blue market.
      */
     function _getMarketRate(
         MarketParams memory marketParams,
@@ -154,17 +125,7 @@ contract MorphoProvider is IProvider {
     }
 
     /**
-     * @notice Calculates the weighted average APY across all markets in the MetaMorpho vault
-     * @return rate The weighted average APY in ray (1e27) format
-     * 
-     * @dev The calculation:
-     * 1. Iterates through all markets in the vault's withdraw queue
-     * 2. Calculates individual market rates using _getMarketRate()
-     * 3. Weights each rate by the assets allocated to that market
-     * 4. Applies the vault's fee to get the net rate
-     * 5. Scales from 1e18 to 1e27 to match IProvider specification
-     * 
-     * @dev Formula: Σ(marketRate * assetsInMarket) * (1 - vaultFee) / totalAssets * 1e9
+     * @inheritdoc IProvider
      */
     function getDepositRate(
         IVault
