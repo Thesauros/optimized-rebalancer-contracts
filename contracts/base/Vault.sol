@@ -6,7 +6,6 @@ import {IERC20Metadata, IERC20} from "@openzeppelin/contracts/token/ERC20/extens
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IVault} from "../interfaces/IVault.sol";
 import {IProvider} from "../interfaces/IProvider.sol";
@@ -16,7 +15,7 @@ import {PausableActions} from "./PausableActions.sol";
 /**
  * @title Vault
  */
-abstract contract Vault is ERC20Permit, AccessManager, PausableActions, ReentrancyGuard, IVault {
+abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
     using Math for uint256;
     using Address for address;
     using SafeERC20 for IERC20Metadata;
@@ -29,7 +28,6 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, Reentran
     error Vault__InvalidInput();
     error Vault__DepositLessThanMin();
     error Vault__SetupAlreadyCompleted();
-    error Vault__NotWhitelisted();
 
     uint256 internal constant PRECISION_FACTOR = 1e18;
     uint256 internal constant MAX_WITHDRAW_FEE_PERCENT = 0.05 * 1e18; // 5%
@@ -48,9 +46,6 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, Reentran
     address public treasury;
 
     bool public setupCompleted;
-    
-    // Whitelist functionality using AccessManager roles
-    bool public whitelistEnabled;
 
     /**
      * @dev Reverts if called by any account other than the timelock contract.
@@ -359,9 +354,6 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, Reentran
         if (assets < minAmount) {
             revert Vault__DepositLessThanMin();
         }
-        if (whitelistEnabled && !hasRole(DEPOSITOR_ROLE, receiver)) {
-            revert Vault__NotWhitelisted();
-        }
     }
 
     /**
@@ -376,7 +368,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, Reentran
         address receiver,
         uint256 assets,
         uint256 shares
-    ) internal nonReentrant {
+    ) internal {
         _asset.safeTransferFrom(caller, address(this), assets);
         _delegateActionToProvider(assets, "deposit", activeProvider);
         _mint(receiver, shares);
@@ -413,16 +405,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, Reentran
         uint256 _maxWithdraw = maxWithdraw(owner);
         if (assets > _maxWithdraw) {
             validatedAssets = _maxWithdraw;
-            // Use CEIL rounding to prevent validatedShares from rounding down to zero
-            validatedShares = _convertToShares(validatedAssets, Math.Rounding.Ceil);
-            
-            // Safety checks to prevent zero values
-            if (validatedShares == 0) {
-                revert Vault__InvalidInput();
-            }
-            if (validatedAssets == 0) {
-                revert Vault__InvalidInput();
-            }
+            validatedShares = validatedAssets.mulDiv(shares, assets);
         } else {
             validatedAssets = assets;
             validatedShares = shares;
@@ -447,7 +430,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, Reentran
         address owner,
         uint256 assets,
         uint256 shares
-    ) internal nonReentrant {
+    ) internal {
         uint256 withdrawFee = assets.mulDiv(
             withdrawFeePercent,
             PRECISION_FACTOR
@@ -723,53 +706,5 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, Reentran
      */
     function getProviders() public view returns (IProvider[] memory) {
         return _providers;
-    }
-
-    /**
-     * @notice Toggles the whitelist functionality on or off.
-     * @param enabled Whether to enable or disable the whitelist.
-     */
-    function toggleWhitelist(bool enabled) external onlyTimelock {
-        whitelistEnabled = enabled;
-        emit WhitelistToggled(enabled);
-    }
-
-    /**
-     * @notice Grants DEPOSITOR_ROLE to an address (adds to whitelist).
-     * @param account The address to add to the whitelist.
-     */
-    function addToWhitelist(address account) external onlyTimelock {
-        if (account == address(0)) {
-            revert Vault__AddressZero();
-        }
-        grantRole(DEPOSITOR_ROLE, account);
-    }
-
-    /**
-     * @notice Revokes DEPOSITOR_ROLE from an address (removes from whitelist).
-     * @param account The address to remove from the whitelist.
-     */
-    function removeFromWhitelist(address account) external onlyTimelock {
-        if (account == address(0)) {
-            revert Vault__AddressZero();
-        }
-        revokeRole(DEPOSITOR_ROLE, account);
-    }
-
-    /**
-     * @notice Checks if an address is whitelisted (has DEPOSITOR_ROLE).
-     * @param account The address to check.
-     * @return Whether the address is whitelisted.
-     */
-    function isWhitelisted(address account) external view returns (bool) {
-        return hasRole(DEPOSITOR_ROLE, account);
-    }
-
-    /**
-     * @notice Checks if whitelist is enabled.
-     * @return Whether whitelist is enabled.
-     */
-    function isWhitelistEnabled() external view returns (bool) {
-        return whitelistEnabled;
     }
 }

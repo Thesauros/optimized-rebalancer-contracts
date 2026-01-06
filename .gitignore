@@ -1,13 +1,35 @@
 node_modules
 .env
 .env.local
-.DS_Store
-out 
-cache_forge
-artifacts
-cache
-typechain-types
-
-
 .env.backup
-/vaults/build
+.DS_Store
+bin
+.vscode
+
+# Hardhat files
+/cache
+/artifacts
+
+# TypeChain files
+/typechain
+/typechain-types
+
+# solidity-coverage files
+/coverage
+/coverage.json
+
+# deployment files
+# /deployments
+# /scripts
+
+# Foundry compiler files
+cache/
+cache_forge/
+out/
+
+# Forge coverage
+lcov.info
+
+# Foundry scripts
+script
+broadcast

@@ -6,11 +6,11 @@ import {IProvider} from "../../contracts/interfaces/IProvider.sol";
 import {MorphoProvider} from "../../contracts/providers/MorphoProvider.sol";
 import {ForkingUtilities} from "../utils/ForkingUtilities.sol";
 
-contract MEVCapitalMorphoProviderTests is ForkingUtilities {
+contract YearnDegenMorphoProviderTests is ForkingUtilities {
     MorphoProvider public morphoProvider;
 
     function setUp() public {
-        morphoProvider = new MorphoProvider(MORPHO_MEV_CAPITAL_VAULT_ADDRESS);
+        morphoProvider = new MorphoProvider(MORPHO_YEARN_DEGEN_VAULT_ADDRESS);
 
         IProvider[] memory providers = new IProvider[](1);
         providers[0] = morphoProvider;
@@ -29,11 +29,13 @@ contract MEVCapitalMorphoProviderTests is ForkingUtilities {
 
         executeDeposit(vault, DEPOSIT_AMOUNT, alice);
 
-        uint256 mintedSharesAfter = vault.balanceOf(alice);
-        uint256 assetBalanceAfter = vault.convertToAssets(mintedSharesAfter);
+        vm.warp(block.timestamp + 10 seconds);
+        vm.roll(block.number + 1);
 
-        assertGt(mintedSharesAfter, mintedSharesBefore);
-        assertGt(assetBalanceAfter, assetBalanceBefore);
+        uint256 mintedShares = vault.balanceOf(alice);
+        uint256 assetBalance = vault.convertToAssets(mintedShares);
+
+        assertGe(assetBalance - assetBalanceBefore, DEPOSIT_AMOUNT);
     }
 
     // =========================================
@@ -43,16 +45,21 @@ contract MEVCapitalMorphoProviderTests is ForkingUtilities {
     function testWithdraw() public {
         executeDeposit(vault, DEPOSIT_AMOUNT, alice);
 
-        uint256 mintedSharesBefore = vault.balanceOf(alice);
-        uint256 assetBalanceBefore = vault.convertToAssets(mintedSharesBefore);
+        vm.warp(block.timestamp + 10 seconds);
+        vm.roll(block.number + 1);
 
-        executeWithdraw(vault, assetBalanceBefore, alice);
+        address asset = vault.asset();
 
-        uint256 mintedSharesAfter = vault.balanceOf(alice);
-        uint256 assetBalanceAfter = vault.convertToAssets(mintedSharesAfter);
+        uint256 balanceBefore = IERC20(asset).balanceOf(alice);
+        uint256 maxWithdrawable = vault.maxWithdraw(alice);
+        uint256 fee = (maxWithdrawable * WITHDRAW_FEE_PERCENT) /
+            PRECISION_FACTOR;
 
-        assertLt(mintedSharesAfter, mintedSharesBefore);
-        assertLt(assetBalanceAfter, assetBalanceBefore);
+        executeWithdraw(vault, maxWithdrawable, alice);
+
+        uint256 balanceAfter = balanceBefore + maxWithdrawable - fee;
+
+        assertEq(IERC20(asset).balanceOf(alice), balanceAfter);
     }
 
     // =========================================
@@ -62,9 +69,10 @@ contract MEVCapitalMorphoProviderTests is ForkingUtilities {
     function testDepositBalance() public {
         executeDeposit(vault, DEPOSIT_AMOUNT, alice);
 
-        uint256 depositBalance = morphoProvider.getDepositBalance(alice, vault);
+        vm.warp(block.timestamp + 10 seconds);
+        vm.roll(block.number + 1);
 
-        assertGe(depositBalance, 0);
+        assertGe(vault.totalAssets(), DEPOSIT_AMOUNT + MIN_AMOUNT);
     }
 
     // =========================================
@@ -72,9 +80,7 @@ contract MEVCapitalMorphoProviderTests is ForkingUtilities {
     // =========================================
 
     function testDepositRate() public view {
-        uint256 rate = morphoProvider.getDepositRate(vault);
-
-        assertGt(rate, 0);
+        assertGt(morphoProvider.getDepositRate(vault), 0);
     }
 
     // =========================================
@@ -82,8 +88,6 @@ contract MEVCapitalMorphoProviderTests is ForkingUtilities {
     // =========================================
 
     function testIdentifier() public view {
-        string memory identifier = morphoProvider.getIdentifier();
-
-        assertEq(identifier, "Morpho_Provider");
+        assertEq(morphoProvider.getIdentifier(), "Morpho_Provider");
     }
 }
