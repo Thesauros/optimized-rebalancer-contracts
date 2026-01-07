@@ -44,11 +44,11 @@ interface IVault is IERC4626 {
     event TreasuryUpdated(address indexed treasury);
 
     /**
-     * @notice Emitted when the withdrawal fee percentage is changed.
+     * @notice Emitted when the management fee percentage is changed.
      *
-     * @param withdrawFeePercent The new withdrawal fee percentage.
+     * @param managementFeePercent The new management fee percentage.
      */
-    event WithdrawFeePercentUpdated(uint256 withdrawFeePercent);
+    event ManagementFeePercentUpdated(uint256 managementFeePercent);
 
     /**
      * @notice Emitted when the minimum amount is changed.
@@ -64,6 +64,14 @@ interface IVault is IERC4626 {
      * @param fee The amount charged.
      */
     event FeeCharged(address indexed treasury, uint256 fee);
+
+    /**
+     * @notice Emitted when management fee is applied.
+     *
+     * @param treasury The treasury address of the vault.
+     * @param fee The amount of shares charged.
+     */
+    event ManagementFeeApplied(address indexed treasury, uint256 fee);
 
     /**
      * @notice Emitted when the vault is rebalanced.
