@@ -69,9 +69,14 @@ interface IVault is IERC4626 {
      * @notice Emitted when management fee is applied.
      *
      * @param treasury The treasury address of the vault.
-     * @param fee The amount of shares charged.
+     * @param accrued The amount accrued, denominated in assets.
+     * @param fee The shares minted when the fee is applied.
      */
-    event ManagementFeeApplied(address indexed treasury, uint256 fee);
+    event ManagementFeeApplied(
+        address indexed treasury,
+        uint256 accrued,
+        uint256 fee
+    );
 
     /**
      * @notice Emitted when the vault is rebalanced.

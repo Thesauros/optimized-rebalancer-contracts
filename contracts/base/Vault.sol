@@ -685,15 +685,15 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         // update before convertToShares to avoid incorrect calculation
         lastManagementFeeTimestamp = block.timestamp.toUint32();
 
-        uint256 feeShares = convertToShares(accruedManagementFee);
+        uint256 fee = convertToShares(accruedManagementFee);
 
-        if (feeShares == 0) {
+        if (fee == 0) {
             return;
         }
 
-        _mint(treasury, feeShares);
+        _mint(treasury, fee);
 
-        emit ManagementFeeApplied(treasury, feeShares);
+        emit ManagementFeeApplied(treasury, accruedManagementFee, fee);
     }
 
     /**
@@ -719,7 +719,6 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 totalBalance
     ) internal view returns (uint256) {
         uint256 timestamp = block.timestamp;
-
         if (
             managementFeePercent == 0 ||
             lastManagementFeeTimestamp == 0 || // maybe better to revert on this invariant
@@ -749,6 +748,11 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
                 break;
             }
         }
+    }
+
+    function getAccruedManagementFee() public view returns (uint256) {
+        uint256 totalBalance = _getBalanceAtProviders();
+        return _getAccruedManagementFee(totalBalance);
     }
 
     /**
