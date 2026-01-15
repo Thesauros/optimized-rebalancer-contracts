@@ -12,10 +12,12 @@ import {IVault} from "../interfaces/IVault.sol";
 import {IProvider} from "../interfaces/IProvider.sol";
 import {AccessManager} from "../access/AccessManager.sol";
 import {PausableActions} from "./PausableActions.sol";
+import "../libraries/Constants.sol";
 
 /**
  * @title Vault
  */
+/// @custom:note consider dead vault case where totalAssets < 0 but totalSupply > 0, what will happen
 abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
     using Math for uint256;
     using Address for address;
@@ -31,25 +33,21 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
     error Vault__DepositLessThanMin();
     error Vault__SetupAlreadyCompleted();
 
-    uint256 internal constant PRECISION_FACTOR = 1e18;
-    uint256 internal constant MAX_MANAGEMENT_FEE_PERCENT = 0.05 * 1e18; // 5%
-    uint256 internal constant MAX_REBALANCE_FEE_PERCENT = 0.2 * 1e18; // 20%
-
     IERC20Metadata internal immutable _asset;
     uint8 private immutable _underlyingDecimals;
 
     IProvider[] internal _providers;
-    IProvider public activeProvider;
+    IProvider public activeProvider; /// @custom:note better to change naming, all the providers are active when optimized
 
-    uint256 public minAmount;
+    uint256 public lastTotalBalance;
+    uint64 public lastTimestamp;
 
-    uint256 public managementFeePercent;
-    uint32 public lastManagementFeeTimestamp;
+    uint96 public managementFee;
+    address public treasury;
+    uint96 public performanceFee;
 
     address public timelock;
-    address public treasury;
-
-    bool public setupCompleted;
+    uint256 public minAmount; /// @custom:note will do a naming change
 
     /**
      * @dev Reverts if called by any account other than the timelock contract.
@@ -67,35 +65,47 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @param name_ The name of the tokenized vault.
      * @param symbol_ The symbol of the tokenized vault.
      * @param providers_ An array of providers serving as a liquidity source for lending and/or yield.
-     * @param managementFeePercent_ The fee percentage applied for vault management.
-     * @param timelock_ The address of the timelock contract.
+     * @param managementFee_ The fee percentage applied for vault management.
+     * @param performanceFee_ The fee percentage applied for vault performance.
      * @param treasury_ The address of the treasury.
+     * @param timelock_ The address of the timelock contract.
      */
     constructor(
         address asset_,
         string memory name_,
         string memory symbol_,
         IProvider[] memory providers_,
-        uint256 managementFeePercent_,
-        address timelock_,
-        address treasury_
+        uint256 initialDeposit_,
+        uint96 managementFee_,
+        uint96 performanceFee_,
+        address treasury_,
+        address timelock_
     ) ERC20(name_, symbol_) ERC20Permit(name_) {
         if (asset_ == address(0)) {
             revert Vault__AddressZero();
         }
 
         _asset = IERC20Metadata(asset_);
+        /// @custom:note think about also adding virtual shares and decimals offset
         _underlyingDecimals = IERC20Metadata(asset_).decimals();
 
         _setTimelock(timelock_);
         _setProviders(providers_);
         _setActiveProvider(providers_[0]);
-        _setTreasury(treasury_);
-        _setManagementFeePercent(managementFeePercent_);
+        /// @custom:note 1 token for most stablecoins, will need to change for higher decimals (huge for tokens like WETH)
         _setMinAmount(1e6);
 
-        /// @dev pause deposit and mint actions until vault setup is completed.
-        _pause(Actions.Deposit);
+        lastTimestamp = block.timestamp.toUint64();
+
+        if (initialDeposit_ < minAmount) {
+            revert Vault__DepositLessThanMin();
+        }
+        /// @dev needs an approve to the precomputed vault address before deployment
+        _deposit(msg.sender, address(this), initialDeposit_, initialDeposit_);
+
+        _setTreasury(treasury_);
+        _setManagementFee(managementFee_);
+        _setPerformanceFee(performanceFee_);
     }
 
     /*////////////////////
@@ -124,16 +134,14 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
     /**
      * @inheritdoc IERC4626
      */
-    function totalAssets() public view override returns (uint256 assets) {
+    function totalAssets()
+        public
+        view
+        override
+        returns (uint256 totalManagedAssets)
+    {
         /// @custom:note think about idle funds possibility
-        /// @custom:note test 0 total assets edge case in extreme scenarios
-        uint256 totalBalance = _getBalanceAtProviders();
-        uint256 accruedManagementFee = _getAccruedManagementFee(totalBalance);
-
-        return
-            totalBalance > accruedManagementFee
-                ? totalBalance - accruedManagementFee
-                : 0;
+        totalManagedAssets = _getBalanceAtProviders();
     }
 
     /**
@@ -154,44 +162,24 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         return _convertToAssets(shares, Math.Rounding.Floor);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
-    function maxDeposit(address) public view override returns (uint256) {
-        if (paused(Actions.Deposit)) {
-            return 0;
-        }
-        return type(uint256).max;
+    /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
+    function maxDeposit(address) external pure returns (uint256) {
+        return 0;
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
-    function maxMint(address) public view override returns (uint256) {
-        if (paused(Actions.Deposit)) {
-            return 0;
-        }
-        return type(uint256).max;
+    /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
+    function maxMint(address) external pure returns (uint256) {
+        return 0;
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
-    function maxWithdraw(address owner) public view override returns (uint256) {
-        if (paused(Actions.Withdraw)) {
-            return 0;
-        }
-        return convertToAssets(balanceOf(owner));
+    /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
+    function maxWithdraw(address) external pure returns (uint256) {
+        return 0;
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
-    function maxRedeem(address owner) public view override returns (uint256) {
-        if (paused(Actions.Withdraw)) {
-            return 0;
-        }
-        return balanceOf(owner);
+    /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
+    function maxRedeem(address) external pure returns (uint256) {
+        return 0;
     }
 
     /**
@@ -237,7 +225,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 assets,
         address receiver
     ) public override returns (uint256) {
-        _applyManagementFee();
+        _applyFees();
 
         uint256 shares = previewDeposit(assets);
         _validateDeposit(receiver, assets, shares);
@@ -254,7 +242,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 shares,
         address receiver
     ) public override returns (uint256) {
-        _applyManagementFee();
+        _applyFees();
 
         uint256 assets = previewMint(shares);
         _validateDeposit(receiver, assets, shares);
@@ -272,26 +260,14 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         address receiver,
         address owner
     ) public override returns (uint256) {
-        _applyManagementFee();
+        _applyFees();
 
         uint256 shares = previewWithdraw(assets);
-        (uint256 validatedAssets, uint256 validatedShares) = _validateWithdraw(
-            assets,
-            shares,
-            msg.sender,
-            receiver,
-            owner
-        );
+        _validateWithdraw(assets, shares, msg.sender, receiver, owner);
 
-        _withdraw(
-            msg.sender,
-            receiver,
-            owner,
-            validatedAssets,
-            validatedShares
-        );
+        _withdraw(msg.sender, receiver, owner, assets, shares);
 
-        return validatedShares;
+        return shares;
     }
 
     /**
@@ -302,26 +278,14 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         address receiver,
         address owner
     ) public override returns (uint256) {
-        _applyManagementFee();
+        _applyFees();
 
         uint256 assets = previewRedeem(shares);
-        (uint256 validatedAssets, uint256 validatedShares) = _validateWithdraw(
-            assets,
-            shares,
-            msg.sender,
-            receiver,
-            owner
-        );
+        _validateWithdraw(assets, shares, msg.sender, receiver, owner);
 
-        _withdraw(
-            msg.sender,
-            receiver,
-            owner,
-            validatedAssets,
-            validatedShares
-        );
+        _withdraw(msg.sender, receiver, owner, assets, shares);
 
-        return validatedAssets;
+        return assets;
     }
 
     /**
@@ -330,15 +294,26 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @param assets The amount of assets to convert to shares.
      * @param rounding The direction of division remainder for conversion.
      */
+    /// @custom:note Will revert if assets > 0, totalSupply > 0 and totalAssets = 0. That corresponds to a case where any asset would
+    /// represent an infinite amout of shares (dead vault)
     function _convertToShares(
         uint256 assets,
         Math.Rounding rounding
     ) internal view returns (uint256 shares) {
-        uint256 supply = totalSupply();
+        uint256 totalBalance = _getBalanceAtProviders();
+        (
+            uint256 performanceFeeShares,
+            uint256 managementFeeShares
+        ) = _getAccruedFees(totalBalance);
+
+        uint256 supply = totalSupply() +
+            performanceFeeShares +
+            managementFeeShares;
+
         return
             (assets == 0 || supply == 0)
                 ? assets
-                : assets.mulDiv(supply, totalAssets(), rounding);
+                : assets.mulDiv(supply, totalBalance, rounding);
     }
 
     /**
@@ -351,11 +326,20 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 shares,
         Math.Rounding rounding
     ) internal view returns (uint256 assets) {
-        uint256 supply = totalSupply();
+        uint256 totalBalance = _getBalanceAtProviders();
+        (
+            uint256 performanceFeeShares,
+            uint256 managementFeeShares
+        ) = _getAccruedFees(totalBalance);
+
+        uint256 supply = totalSupply() +
+            performanceFeeShares +
+            managementFeeShares;
+
         return
             (supply == 0)
                 ? shares
-                : shares.mulDiv(totalAssets(), supply, rounding);
+                : shares.mulDiv(totalBalance, supply, rounding);
     }
 
     /**
@@ -396,6 +380,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         _asset.safeTransferFrom(caller, address(this), assets);
         _delegateActionToProvider(assets, "deposit", activeProvider);
         _mint(receiver, shares);
+        lastTotalBalance += assets;
 
         emit Deposit(caller, receiver, assets, shares);
     }
@@ -414,29 +399,15 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         address caller,
         address receiver,
         address owner
-    )
-        internal
-        whenNotPaused(Actions.Withdraw)
-        returns (uint256 validatedAssets, uint256 validatedShares)
-    {
+    ) internal whenNotPaused(Actions.Withdraw) {
         if (receiver == address(0) || owner == address(0)) {
             revert Vault__AddressZero();
         }
         if (assets == 0 || shares == 0) {
             revert Vault__InvalidInput();
         }
-
-        uint256 _maxWithdraw = maxWithdraw(owner);
-        if (assets > _maxWithdraw) {
-            validatedAssets = _maxWithdraw;
-            validatedShares = validatedAssets.mulDiv(shares, assets);
-        } else {
-            validatedAssets = assets;
-            validatedShares = shares;
-        }
-
         if (caller != owner) {
-            _spendAllowance(owner, caller, validatedShares);
+            _spendAllowance(owner, caller, shares);
         }
     }
 
@@ -455,10 +426,9 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 assets,
         uint256 shares
     ) internal {
-        uint256 assetsToWithdraw = assets;
-
         _burn(owner, shares);
 
+        uint256 assetsToWithdraw = assets;
         uint256 count = _providers.length;
         for (uint256 i; i < count; i++) {
             IProvider provider = _providers[i];
@@ -480,10 +450,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
             if (assetsToWithdraw == 0) break;
         }
 
-        // if (assetsToWithdraw != 0) {
-        //     revert Vault__WithdrawFailed();
-        // }
-
+        lastTotalBalance -= assets;
         _asset.safeTransfer(receiver, assets);
 
         emit Withdraw(caller, receiver, owner, assets, shares);
@@ -493,25 +460,8 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
       REBALANCE functions
     /////////////////////*/
 
-    /**
-     * @inheritdoc IVault
-     */
-    function setupVault(uint256 assets) external {
-        if (setupCompleted) {
-            revert Vault__SetupAlreadyCompleted();
-        }
-        if (assets < minAmount) {
-            revert Vault__DepositLessThanMin();
-        }
-
-        lastManagementFeeTimestamp = block.timestamp.toUint32();
-
-        _unpause(Actions.Deposit);
-
-        _deposit(msg.sender, address(this), assets, assets);
-        setupCompleted = true;
-
-        emit SetupCompleted(msg.sender);
+    function applyFees() external {
+        _applyFees();
     }
 
     /**
@@ -562,17 +512,26 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @param _treasury The new treasury address.
      */
     function setTreasury(address _treasury) external onlyAdmin {
+        _applyFees();
         _setTreasury(_treasury);
     }
 
     /**
-     * @notice Sets the management fee percentage for this vault.
-     * @param _managementFeePercent The new management fee percentage.
+     * @notice Sets the performance fee percentage for this vault.
+     * @param _performanceFee The new performance fee percentage.
      */
-    function setManagementFeePercent(
-        uint256 _managementFeePercent
-    ) external onlyAdmin {
-        _setManagementFeePercent(_managementFeePercent);
+    function setPerformanceFee(uint96 _performanceFee) external onlyAdmin {
+        _applyFees();
+        _setPerformanceFee(_performanceFee);
+    }
+
+    /**
+     * @notice Sets the management fee percentage for this vault.
+     * @param _managementFee The new management fee percentage.
+     */
+    function setManagementFee(uint96 _managementFee) external onlyAdmin {
+        _applyFees();
+        _setManagementFee(_managementFee);
     }
 
     /**
@@ -639,15 +598,29 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
     }
 
     /**
-     * @dev Internal function to set the management fee percentage for this vault.
-     * @param _managementFeePercent The new management fee percentage.
+     * @dev Internal function to set the performance fee percentage for this vault.
+     * @param _performanceFee The new performance fee percentage.
      */
-    function _setManagementFeePercent(uint256 _managementFeePercent) internal {
-        if (_managementFeePercent > MAX_MANAGEMENT_FEE_PERCENT) {
+    function _setPerformanceFee(uint96 _performanceFee) internal {
+        if (_performanceFee > MAX_PERFORMANCE_FEE) {
             revert Vault__InvalidInput();
         }
-        managementFeePercent = _managementFeePercent;
-        emit ManagementFeePercentUpdated(_managementFeePercent);
+
+        performanceFee = _performanceFee;
+        emit PerformanceFeeUpdated(_performanceFee);
+    }
+
+    /**
+     * @dev Internal function to set the management fee percentage for this vault.
+     * @param _managementFee The new management fee percentage.
+     */
+    function _setManagementFee(uint96 _managementFee) internal {
+        if (_managementFee > MAX_MANAGEMENT_FEE) {
+            revert Vault__InvalidInput();
+        }
+
+        managementFee = _managementFee;
+        emit ManagementFeeUpdated(_managementFee);
     }
 
     /**
@@ -678,22 +651,31 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         address(provider).functionDelegateCall(data);
     }
 
-    function _applyManagementFee() internal {
+    function _applyFees() internal {
         uint256 totalBalance = _getBalanceAtProviders();
-        uint256 accruedManagementFee = _getAccruedManagementFee(totalBalance);
 
-        // update before convertToShares to avoid incorrect calculation
-        lastManagementFeeTimestamp = block.timestamp.toUint32();
+        (
+            uint256 performanceFeeShares,
+            uint256 managementFeeShares
+        ) = _getAccruedFees(totalBalance);
 
-        uint256 fee = convertToShares(accruedManagementFee);
+        emit FeesApplied(
+            lastTotalBalance,
+            totalBalance,
+            performanceFeeShares,
+            managementFeeShares
+        );
 
-        if (fee == 0) {
-            return;
+        lastTotalBalance = totalBalance;
+
+        if (performanceFeeShares != 0) {
+            _mint(treasury, performanceFeeShares);
+        }
+        if (managementFeeShares != 0) {
+            _mint(treasury, managementFeeShares);
         }
 
-        _mint(treasury, fee);
-
-        emit ManagementFeeApplied(treasury, accruedManagementFee, fee);
+        lastTimestamp = block.timestamp.toUint64();
     }
 
     /**
@@ -715,23 +697,47 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         }
     }
 
-    function _getAccruedManagementFee(
-        uint256 totalBalance
-    ) internal view returns (uint256) {
-        uint256 timestamp = block.timestamp;
-        if (
-            managementFeePercent == 0 ||
-            lastManagementFeeTimestamp == 0 || // maybe better to revert on this invariant
-            lastManagementFeeTimestamp >= timestamp
-        ) {
-            return 0;
-        }
+    function _getAccruedFees(
+        uint256 totalBalance // actual balance at providers at the moment
+    )
+        internal
+        view
+        returns (uint256 performanceFeeShares, uint256 managementFeeShares)
+    {
+        uint256 dt = block.timestamp - lastTimestamp;
 
-        return
-            (totalBalance * (timestamp - lastManagementFeeTimestamp)).mulDiv(
-                managementFeePercent,
-                365 days * PRECISION_FACTOR
-            );
+        uint256 yield = totalBalance > lastTotalBalance
+            ? totalBalance - lastTotalBalance
+            : 0;
+
+        uint256 performanceFeeAssets = yield > 0 && performanceFee > 0
+            ? yield.mulDiv(performanceFee, SCALE, Math.Rounding.Floor)
+            : 0;
+
+        uint256 managementFeeAssets = dt > 0 && managementFee > 0
+            ? (totalBalance * dt).mulDiv(
+                managementFee,
+                365 days * SCALE,
+                Math.Rounding.Floor
+            )
+            : 0;
+
+        /// @custom:note assumes the vault should be interacted with periodically and fees never exceed balance
+        uint256 totalBalanceWithoutFees = totalBalance -
+            managementFeeAssets -
+            performanceFeeAssets;
+
+        /// @custom:note convert to shares logic, assumes no zero values
+        performanceFeeShares = performanceFeeAssets.mulDiv(
+            totalSupply(),
+            totalBalanceWithoutFees,
+            Math.Rounding.Floor
+        );
+        managementFeeShares = managementFeeAssets.mulDiv(
+            totalSupply(),
+            totalBalanceWithoutFees,
+            Math.Rounding.Floor
+        );
     }
 
     /**
@@ -750,19 +756,9 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         }
     }
 
-    function getAccruedManagementFee() public view returns (uint256) {
+    function getAccruedFees() public view returns (uint256, uint256) {
         uint256 totalBalance = _getBalanceAtProviders();
-        return _getAccruedManagementFee(totalBalance);
-    }
-
-    /**
-     * @notice Returns the amount of assets owned by the specified address.
-     * @param owner The address of the account whose asset balance is checked.
-     */
-    function getBalanceOfAsset(
-        address owner
-    ) public view returns (uint256 assets) {
-        return convertToAssets(balanceOf(owner));
+        return _getAccruedFees(totalBalance);
     }
 
     /**

@@ -55,14 +55,12 @@ contract VaultManager is AccessManager {
      * @param amounts An array of asset amounts to be rebalanced.
      * @param sources An array of providers holding the assets.
      * @param destinations An array of providers receiving the assets.
-     * @param fees An array of fee amounts charged for each rebalancing.
      */
     function rebalanceVault(
         IVault vault,
         uint256[] memory amounts,
         IProvider[] memory sources,
-        IProvider[] memory destinations,
-        uint256[] memory fees
+        IProvider[] memory destinations
     ) external onlyExecutor returns (bool success) {
         uint256 count = amounts.length;
         if (count == 0) {
@@ -70,8 +68,7 @@ contract VaultManager is AccessManager {
         }
         if (
             count != sources.length ||
-            count != destinations.length ||
-            count != fees.length
+            count != destinations.length
         ) {
             revert VaultManager__ArrayMismatch();
         }
@@ -80,7 +77,6 @@ contract VaultManager is AccessManager {
             uint256 assets = amounts[i];
             IProvider from = sources[i];
             IProvider to = destinations[i];
-            uint256 fee = fees[i];
 
             uint256 assetsAtFrom = from.getDepositBalance(
                 address(vault),
@@ -94,7 +90,7 @@ contract VaultManager is AccessManager {
                 revert VaultManager__InvalidAssetAmount();
             }
 
-            vault.rebalance(assets, from, to, fee);
+            vault.rebalance(assets, from, to);
         }
 
         success = true;

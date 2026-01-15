@@ -3,7 +3,6 @@ pragma solidity 0.8.23;
 
 import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IProvider} from "./interfaces/IProvider.sol";
 import {Vault} from "./base/Vault.sol";
@@ -52,13 +51,11 @@ import {Vault} from "./base/Vault.sol";
  */
 contract Rebalancer is Vault {
     using SafeERC20 for IERC20Metadata;
-    using Math for uint256;
 
     /**
      * @dev Errors
      */
     error Rebalancer__InvalidProvider();
-    error Rebalancer__ExcessRebalanceFee();
 
     /**
      * @dev Initializes the Rebalancer contract with the specified parameters.
@@ -66,27 +63,32 @@ contract Rebalancer is Vault {
      * @param name_ The name of the tokenized vault.
      * @param symbol_ The symbol of the tokenized vault.
      * @param providers_ An array of providers serving as a liquidity source for lending and/or yield.
-     * @param withdrawFeePercent_ The fee percentage applied to withdrawals.
-     * @param timelock_ The address of the timelock contract.
+     * @param managementFee_ The fee percentage applied for vault management.
+     * @param performanceFee_ The fee percentage applied for vault performance.
      * @param treasury_ The address of the treasury.
+     * @param timelock_ The address of the timelock contract.
      */
     constructor(
         address asset_,
         string memory name_,
         string memory symbol_,
         IProvider[] memory providers_,
-        uint256 withdrawFeePercent_,
-        address timelock_,
-        address treasury_
+        uint256 initialDeposit_,
+        uint96 managementFee_,
+        uint96 performanceFee_,
+        address treasury_,
+        address timelock_
     )
         Vault(
             asset_,
             name_,
             symbol_,
             providers_,
-            withdrawFeePercent_,
-            timelock_,
-            treasury_
+            initialDeposit_,
+            managementFee_,
+            performanceFee_,
+            treasury_,
+            timelock_
         )
     {}
 
@@ -98,8 +100,7 @@ contract Rebalancer is Vault {
     function rebalance(
         uint256 assets,
         IProvider from,
-        IProvider to,
-        uint256 fee
+        IProvider to
     ) external onlyOperator returns (bool) {
         if (
             !_validateProvider(address(from)) || !_validateProvider(address(to))
@@ -107,44 +108,15 @@ contract Rebalancer is Vault {
             revert Rebalancer__InvalidProvider();
         }
 
-        _checkFee(fee, assets);
-
         _delegateActionToProvider(assets, "withdraw", from);
-        _delegateActionToProvider(assets - fee, "deposit", to);
-
-        if (fee > 0) {
-            address _treasury = treasury;
-
-            _asset.safeTransfer(_treasury, fee);
-            emit FeeCharged(_treasury, fee);
-        }
+        _delegateActionToProvider(assets, "deposit", to);
 
         emit RebalanceExecuted(
             assets,
-            assets - fee,
             address(from),
             address(to)
         );
-        
-        return true;
-    }
 
-    /**
-     * @notice Validates that the rebalancing fee is within acceptable limits
-     * @param fee The fee amount to validate
-     * @param amount The total amount being rebalanced
-     * 
-     * @dev The fee cannot exceed MAX_REBALANCE_FEE_PERCENT (20%) of the rebalanced amount
-     * @dev This prevents excessive fees that could harm users
-     * @dev Reverts with Rebalancer__ExcessRebalanceFee if fee is too high
-     */
-    function _checkFee(uint256 fee, uint256 amount) internal pure {
-        uint256 reasonableFee = amount.mulDiv(
-            MAX_REBALANCE_FEE_PERCENT,
-            PRECISION_FACTOR
-        );
-        if (fee > reasonableFee) {
-            revert Rebalancer__ExcessRebalanceFee();
-        }
+        return true;
     }
 }

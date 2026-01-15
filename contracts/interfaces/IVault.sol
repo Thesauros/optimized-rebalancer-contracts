@@ -9,13 +9,6 @@ import {IProvider} from "./IProvider.sol";
  */
 interface IVault is IERC4626 {
     /**
-     * @notice Emitted when the vault setup is completed.
-     *
-     * @param setupAddress The address that performed the vault setup.
-     */
-    event SetupCompleted(address indexed setupAddress);
-
-    /**
      * @notice Emitted when the timelock contract is changed.
      *
      * @param timelock The new timelock contract address.
@@ -44,11 +37,18 @@ interface IVault is IERC4626 {
     event TreasuryUpdated(address indexed treasury);
 
     /**
+     * @notice Emitted when the performance fee percentage is changed.
+     *
+     * @param performanceFee The new performance fee percentage.
+     */
+    event PerformanceFeeUpdated(uint256 performanceFee);
+
+    /**
      * @notice Emitted when the management fee percentage is changed.
      *
-     * @param managementFeePercent The new management fee percentage.
+     * @param managementFee The new management fee percentage.
      */
-    event ManagementFeePercentUpdated(uint256 managementFeePercent);
+    event ManagementFeeUpdated(uint256 managementFee);
 
     /**
      * @notice Emitted when the minimum amount is changed.
@@ -58,60 +58,42 @@ interface IVault is IERC4626 {
     event MinAmountUpdated(uint256 minAmount);
 
     /**
-     * @notice Emitted when a fee is charged.
+     * @notice Emitted when fees are applied.
      *
-     * @param treasury The treasury address of the vault.
-     * @param fee The amount charged.
+     * @param lastTotalBalance The previous recorded total balance.
+     * @param currentTotalBalance The current total balance.
+     * @param performanceFeeShares The amount of shares minted as performance fee.
+     * @param managementFeeShares The amount of shares minted as management fee.
      */
-    event FeeCharged(address indexed treasury, uint256 fee);
-
-    /**
-     * @notice Emitted when management fee is applied.
-     *
-     * @param treasury The treasury address of the vault.
-     * @param accrued The amount accrued, denominated in assets.
-     * @param fee The shares minted when the fee is applied.
-     */
-    event ManagementFeeApplied(
-        address indexed treasury,
-        uint256 accrued,
-        uint256 fee
+    event FeesApplied(
+        uint256 lastTotalBalance,
+        uint256 currentTotalBalance,
+        uint256 performanceFeeShares,
+        uint256 managementFeeShares
     );
 
     /**
      * @notice Emitted when the vault is rebalanced.
      *
-     * @param assetsFrom The amount of assets rebalanced from.
-     * @param assetsTo The amount of assets rebalanced to.
+     * @param assets The amount of assets rebalanced.
      * @param from The provider from which assets are rebalanced.
      * @param to The provider to which assets are rebalanced.
      */
     event RebalanceExecuted(
-        uint256 assetsFrom,
-        uint256 assetsTo,
+        uint256 assets,
         address indexed from,
         address indexed to
     );
-
-    /**
-     * @notice Sets up the vault with a specified amount of assets to prevent inflation attacks.
-     * @dev Refer to: https://rokinot.github.io/hatsfinance
-     *
-     * @param assets The amount used to set up the vault.
-     */
-    function setupVault(uint256 assets) external;
 
     /**
      * @notice Performs rebalancing of the vault by moving funds across providers.
      * @param assets The amount of assets to be rebalanced.
      * @param from The provider currently holding the assets.
      * @param to The provider receiving the assets.
-     * @param fee The fee amount charged for the rebalancing.
      */
     function rebalance(
         uint256 assets,
         IProvider from,
-        IProvider to,
-        uint256 fee
+        IProvider to
     ) external returns (bool);
 }
