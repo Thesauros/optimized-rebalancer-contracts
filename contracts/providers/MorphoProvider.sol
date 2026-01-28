@@ -8,7 +8,7 @@ import {IMetaMorpho} from "../interfaces/morpho/IMetaMorpho.sol";
 import {IMorpho, Id, MarketParams, Market} from "morpho-blue/interfaces/IMorpho.sol";
 import {IIrm} from "morpho-blue/interfaces/IIrm.sol";
 import {IProvider} from "../interfaces/IProvider.sol";
-import {IVault} from "../interfaces/IVault.sol";
+import {IRebalancer} from "../interfaces/IRebalancer.sol";
 
 /**
  * @title MorphoProvider
@@ -59,7 +59,7 @@ contract MorphoProvider is IProvider {
      */
     function deposit(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external override returns (bool success) {
         _metaMorpho.deposit(amount, address(vault));
         success = true;
@@ -70,7 +70,7 @@ contract MorphoProvider is IProvider {
      */
     function withdraw(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external override returns (bool success) {
         _metaMorpho.withdraw(amount, address(vault), address(vault));
         success = true;
@@ -118,7 +118,7 @@ contract MorphoProvider is IProvider {
      */
     function getDepositBalance(
         address user,
-        IVault
+        IRebalancer
     ) external view override returns (uint256 balance) {
         uint256 shares = _metaMorpho.balanceOf(user);
         balance = _metaMorpho.convertToAssets(shares);
@@ -128,7 +128,7 @@ contract MorphoProvider is IProvider {
      * @inheritdoc IProvider
      */
     function getDepositRate(
-        IVault
+        IRebalancer
     ) external view override returns (uint256 rate) {
         IMorpho morpho = _getMorpho();
 

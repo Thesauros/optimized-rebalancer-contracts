@@ -2,7 +2,7 @@
 pragma solidity 0.8.23;
 
 import {IProvider} from "../interfaces/IProvider.sol";
-import {IVault} from "../interfaces/IVault.sol";
+import {IRebalancer} from "../interfaces/IRebalancer.sol";
 import {IProviderManager} from "../interfaces/IProviderManager.sol";
 import {CometInterface} from "../interfaces/compoundV3/CometInterface.sol";
 
@@ -64,7 +64,7 @@ contract CompoundV3Provider is IProvider {
      */
     function deposit(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external returns (bool success) {
         CometInterface comet = _getComet(vault);
         comet.supply(vault.asset(), amount);
@@ -76,7 +76,7 @@ contract CompoundV3Provider is IProvider {
      */
     function withdraw(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external returns (bool success) {
         CometInterface comet = _getComet(vault);
         comet.withdraw(vault.asset(), amount);
@@ -87,7 +87,7 @@ contract CompoundV3Provider is IProvider {
      * @dev Returns the Comet contract of Compound V3 for the specified vault.
      * @param vault The vault for which to get the Comet contract.
      */
-    function _getComet(IVault vault) internal view returns (CometInterface) {
+    function _getComet(IRebalancer vault) internal view returns (CometInterface) {
         // From Compound docs: Earn interest by supplying the base asset.
         address comet = _providerManager.getYieldToken(
             getIdentifier(),
@@ -101,7 +101,7 @@ contract CompoundV3Provider is IProvider {
      */
     function getDepositBalance(
         address user,
-        IVault vault
+        IRebalancer vault
     ) external view returns (uint256 balance) {
         CometInterface comet = _getComet(vault);
         balance = comet.balanceOf(user);
@@ -110,7 +110,7 @@ contract CompoundV3Provider is IProvider {
     /**
      * @inheritdoc IProvider
      */
-    function getDepositRate(IVault vault) external view returns (uint256 rate) {
+    function getDepositRate(IRebalancer vault) external view returns (uint256 rate) {
         CometInterface comet = _getComet(vault);
         uint256 utilization = comet.getUtilization();
         // Scaled by 1e9 to return ray(1e27) per IProvider specs, Compound uses base 1e18 number.

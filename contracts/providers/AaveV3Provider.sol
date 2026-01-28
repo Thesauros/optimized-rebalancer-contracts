@@ -4,7 +4,7 @@ pragma solidity 0.8.23;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPool} from "../interfaces/aaveV3/IPool.sol";
 import {IPoolAddressesProvider} from "../interfaces/aaveV3/IPoolAddressesProvider.sol";
-import {IVault} from "../interfaces/IVault.sol";
+import {IRebalancer} from "../interfaces/IRebalancer.sol";
 import {IProvider} from "../interfaces/IProvider.sol";
 
 /**
@@ -48,7 +48,7 @@ contract AaveV3Provider is IProvider {
      */
     function deposit(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external override returns (bool success) {
         IPool aave = _getPool();
         aave.supply(vault.asset(), amount, address(vault), 0);
@@ -60,7 +60,7 @@ contract AaveV3Provider is IProvider {
      */
     function withdraw(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external override returns (bool success) {
         IPool aave = _getPool();
         aave.withdraw(vault.asset(), amount, address(vault));
@@ -92,7 +92,7 @@ contract AaveV3Provider is IProvider {
      */
     function getDepositBalance(
         address user,
-        IVault vault
+        IRebalancer vault
     ) external view override returns (uint256 balance) {
         IPool aave = _getPool();
         IPool.ReserveData memory rdata = aave.getReserveData(vault.asset());
@@ -103,7 +103,7 @@ contract AaveV3Provider is IProvider {
      * @inheritdoc IProvider
      */
     function getDepositRate(
-        IVault vault
+        IRebalancer vault
     ) external view override returns (uint256 rate) {
         IPool aave = _getPool();
         IPool.ReserveData memory rdata = aave.getReserveData(vault.asset());

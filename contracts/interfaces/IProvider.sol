@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import {IVault} from "./IVault.sol";
+import {IRebalancer} from "./IRebalancer.sol";
 
 /**
  * @title IProvider
@@ -37,7 +37,7 @@ interface IProvider {
      */
     function deposit(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external returns (bool success);
 
     /**
@@ -50,7 +50,7 @@ interface IProvider {
      */
     function withdraw(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external returns (bool success);
 
     /**
@@ -61,7 +61,7 @@ interface IProvider {
      */
     function getDepositBalance(
         address user,
-        IVault vault
+        IRebalancer vault
     ) external view returns (uint256 balance);
 
     /**
@@ -71,5 +71,5 @@ interface IProvider {
      *
      * @dev Must return the rate in ray units (1e27).
      */
-    function getDepositRate(IVault vault) external view returns (uint256 rate);
+    function getDepositRate(IRebalancer vault) external view returns (uint256 rate);
 }

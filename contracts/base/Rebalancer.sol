@@ -12,7 +12,7 @@ import {PausableActions} from "../utils/PausableActions.sol";
 import {IPausableActions} from "../interfaces/IPausableActions.sol";
 import {IProvider} from "../interfaces/IProvider.sol";
 import {IERC4626} from "../interfaces/IERC4626.sol";
-import {IVault} from "../interfaces/IVault.sol";
+import {IRebalancer} from "../interfaces/IRebalancer.sol";
 import "../libraries/Constants.sol";
 
 /**
@@ -23,7 +23,7 @@ contract Rebalancer is
     ERC20PermitUpgradeable,
     AccessManager,
     PausableActions,
-    IVault
+    IRebalancer
 {
     using Math for uint256;
     using Address for address;

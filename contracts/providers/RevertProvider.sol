@@ -5,7 +5,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IV3Vault} from "../interfaces/revert/IV3Vault.sol";
 import {IInterestRateModel} from "../interfaces/revert/IInterestRateModel.sol";
 import {IProvider} from "../interfaces/IProvider.sol";
-import {IVault} from "../interfaces/IVault.sol";
+import {IRebalancer} from "../interfaces/IRebalancer.sol";
 
 /**
  * @title RevertProvider
@@ -16,7 +16,7 @@ contract RevertProvider is IProvider {
      */
     function deposit(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external override returns (bool success) {
         IV3Vault v = _getV3Vault();
         v.deposit(amount, address(vault));
@@ -28,7 +28,7 @@ contract RevertProvider is IProvider {
      */
     function withdraw(
         uint256 amount,
-        IVault vault
+        IRebalancer vault
     ) external override returns (bool success) {
         IV3Vault v = _getV3Vault();
         v.withdraw(amount, address(vault), address(vault));
@@ -47,7 +47,7 @@ contract RevertProvider is IProvider {
      */
     function getDepositBalance(
         address user,
-        IVault
+        IRebalancer
     ) external view override returns (uint256 balance) {
         IV3Vault v = _getV3Vault();
         balance = v.lendInfo(user);
@@ -57,7 +57,7 @@ contract RevertProvider is IProvider {
      * @inheritdoc IProvider
      */
     function getDepositRate(
-        IVault
+        IRebalancer
     ) external view override returns (uint256 rate) {
         IV3Vault v = _getV3Vault();
         (uint256 debt, , uint256 balance, , , ) = v.vaultInfo();

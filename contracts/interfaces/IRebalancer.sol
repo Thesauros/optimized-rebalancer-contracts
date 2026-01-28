@@ -5,9 +5,9 @@ import {IERC4626} from "./IERC4626.sol";
 import {IProvider} from "./IProvider.sol";
 
 /**
- * @title IVault
+ * @title IRebalancer
  */
-interface IVault is IERC4626 {
+interface IRebalancer is IERC4626 {
     error AddressZero();
     error InvalidInput();
     error DepositLessThanMin();
