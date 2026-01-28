@@ -7,13 +7,13 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {AccessManager} from "../access/AccessManager.sol";
-import {PausableActions} from "../utils/PausableActions.sol";
-import {IPausableActions} from "../interfaces/IPausableActions.sol";
-import {IProvider} from "../interfaces/IProvider.sol";
-import {IERC4626} from "../interfaces/IERC4626.sol";
-import {IRebalancer} from "../interfaces/IRebalancer.sol";
-import "../libraries/Constants.sol";
+import {AccessManager} from "./access/AccessManager.sol";
+import {PausableActions} from "./utils/PausableActions.sol";
+import {IPausableActions} from "./interfaces/IPausableActions.sol";
+import {IProvider} from "./interfaces/IProvider.sol";
+import {IERC4626} from "./interfaces/IERC4626.sol";
+import {IRebalancer} from "./interfaces/IRebalancer.sol";
+import "./libraries/Constants.sol";
 
 /**
  * @title Rebalancer
