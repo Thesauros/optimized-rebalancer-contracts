@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IERC4626} from "./IERC4626.sol";
 import {IProvider} from "./IProvider.sol";
 
 /**
  * @title IVault
  */
 interface IVault is IERC4626 {
+    error AddressZero();
+    error InvalidInput();
+    error DepositLessThanMin();
+    error InvalidCount();
+    error ArrayMismatch();
+    error InvalidAssetAmount();
+    error InvalidProvider();
+
     /**
      * @notice Emitted when the timelock contract is changed.
      *
@@ -87,13 +95,13 @@ interface IVault is IERC4626 {
 
     /**
      * @notice Performs rebalancing of the vault by moving funds across providers.
-     * @param assets The amount of assets to be rebalanced.
-     * @param from The provider currently holding the assets.
-     * @param to The provider receiving the assets.
+     * @param amounts An array of asset amounts to be rebalanced.
+     * @param sources An array of providers holding the assets.
+     * @param destinations An array of providers receiving the assets.
      */
     function rebalance(
-        uint256 assets,
-        IProvider from,
-        IProvider to
+        uint256[] memory amounts,
+        IProvider[] memory sources,
+        IProvider[] memory destinations
     ) external returns (bool);
 }

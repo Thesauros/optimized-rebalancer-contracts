@@ -1,76 +1,85 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import {ERC20Permit, ERC20} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
-import {IERC20Metadata, IERC20} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {ERC20PermitUpgradeable, ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import {IVault} from "../interfaces/IVault.sol";
-import {IProvider} from "../interfaces/IProvider.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AccessManager} from "../access/AccessManager.sol";
-import {PausableActions} from "./PausableActions.sol";
+import {PausableActions} from "../utils/PausableActions.sol";
+import {IPausableActions} from "../interfaces/IPausableActions.sol";
+import {IProvider} from "../interfaces/IProvider.sol";
+import {IERC4626} from "../interfaces/IERC4626.sol";
+import {IVault} from "../interfaces/IVault.sol";
 import "../libraries/Constants.sol";
 
 /**
- * @title Vault
+ * @title Rebalancer
  */
 /// @custom:note consider dead vault case where totalAssets < 0 but totalSupply > 0, what will happen
-abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
+contract Rebalancer is
+    ERC20PermitUpgradeable,
+    AccessManager,
+    PausableActions,
+    IVault
+{
     using Math for uint256;
     using Address for address;
     using SafeCast for uint256;
     using SafeERC20 for IERC20Metadata;
 
-    /**
-     * @dev Errors
-     */
-    error Vault__Unauthorized();
-    error Vault__AddressZero();
-    error Vault__InvalidInput();
-    error Vault__DepositLessThanMin();
-    error Vault__SetupAlreadyCompleted();
+    /// @custom:storage-location erc7201:thesauros.storage.Rebalancer
+    struct RebalancerStorage {
+        IERC20Metadata _asset;
+        uint8 _underlyingDecimals;
+        IProvider[] _providers;
+        IProvider activeProvider; // to-do: better to change naming, all the providers are active when optimized
+        uint256 lastTotalBalance;
+        uint64 lastTimestamp;
+        uint96 managementFee;
+        address treasury;
+        uint96 performanceFee;
+        address timelock;
+        uint256 minAmount; /// to-do: better to change naming
+    }
 
-    IERC20Metadata internal immutable _asset;
-    uint8 private immutable _underlyingDecimals;
+    // keccak256(abi.encode(uint256(keccak256("thesauros.storage.Rebalancer")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant RebalancerStorageLocation =
+        0x7e58afa6d55148d409feb524397452494284df87c6d0256f1c37551f5f960b00;
 
-    IProvider[] internal _providers;
-    IProvider public activeProvider; /// @custom:note better to change naming, all the providers are active when optimized
-
-    uint256 public lastTotalBalance;
-    uint64 public lastTimestamp;
-
-    uint96 public managementFee;
-    address public treasury;
-    uint96 public performanceFee;
-
-    address public timelock;
-    uint256 public minAmount; /// @custom:note will do a naming change
+    function _getRebalancerStorage()
+        private
+        pure
+        returns (RebalancerStorage storage $)
+    {
+        assembly {
+            $.slot := RebalancerStorageLocation
+        }
+    }
 
     /**
      * @dev Reverts if called by any account other than the timelock contract.
      */
     modifier onlyTimelock() {
-        if (msg.sender != timelock) {
-            revert Vault__Unauthorized();
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        if (msg.sender != $.timelock) {
+            revert Unauthorized();
         }
         _;
     }
 
+    constructor() {
+        _disableInitializers();
+    }
+
+    receive() external payable {}
+
     /**
-     * @dev Initializes the Vault contract with the specified parameters.
-     * @param asset_ The address of the underlying asset managed by the vault.
-     * @param name_ The name of the tokenized vault.
-     * @param symbol_ The symbol of the tokenized vault.
-     * @param providers_ An array of providers serving as a liquidity source for lending and/or yield.
-     * @param managementFee_ The fee percentage applied for vault management.
-     * @param performanceFee_ The fee percentage applied for vault performance.
-     * @param treasury_ The address of the treasury.
-     * @param timelock_ The address of the timelock contract.
+     * @dev Initializes the Rebalancer contract with the specified parameters.
      */
-    constructor(
+    function initialize(
         address asset_,
         string memory name_,
         string memory symbol_,
@@ -80,27 +89,35 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint96 performanceFee_,
         address treasury_,
         address timelock_
-    ) ERC20(name_, symbol_) ERC20Permit(name_) {
+    ) public initializer {
+        __AccessManager_init();
+        __ERC20_init(name_, symbol_);
+        __ERC20Permit_init(name_);
+
         if (asset_ == address(0)) {
-            revert Vault__AddressZero();
+            revert AddressZero();
         }
 
-        _asset = IERC20Metadata(asset_);
-        /// @custom:note think about also adding virtual shares and decimals offset
-        _underlyingDecimals = IERC20Metadata(asset_).decimals();
+        RebalancerStorage storage $ = _getRebalancerStorage();
+
+        $._asset = IERC20Metadata(asset_);
+        // note: think about also adding virtual shares and decimals offset
+        $._underlyingDecimals = IERC20Metadata(asset_).decimals();
 
         _setTimelock(timelock_);
         _setProviders(providers_);
         _setActiveProvider(providers_[0]);
-        /// @custom:note 1 token for most stablecoins, will need to change for higher decimals (huge for tokens like WETH)
+        // note: 1 token for most stablecoins, depends on the decimals of underlying
         _setMinAmount(1e6);
 
-        lastTimestamp = block.timestamp.toUint64();
+        $.lastTimestamp = block.timestamp.toUint64();
 
-        if (initialDeposit_ < minAmount) {
-            revert Vault__DepositLessThanMin();
+        // note: care should be taken for the initial deposit to be a non-trivial amount, depends on the decimals of underlying
+        if (initialDeposit_ < $.minAmount) {
+            revert DepositLessThanMin();
         }
-        /// @dev needs an approve to the precomputed vault address before deployment
+
+        // may need an approve to the precomputed address before deployment
         _deposit(msg.sender, address(this), initialDeposit_, initialDeposit_);
 
         _setTreasury(treasury_);
@@ -115,20 +132,17 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
     /**
      * @notice Returns the number of decimals used to get number representation.
      */
-    function decimals()
-        public
-        view
-        override(IERC20Metadata, ERC20)
-        returns (uint8)
-    {
-        return _underlyingDecimals;
+    function decimals() public view override(ERC20Upgradeable) returns (uint8) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._underlyingDecimals;
     }
 
     /**
      * @inheritdoc IERC4626
      */
     function asset() public view override returns (address) {
-        return address(_asset);
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return address($._asset);
     }
 
     /**
@@ -353,14 +367,15 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 assets,
         uint256 shares
     ) internal view whenNotPaused(Actions.Deposit) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
         if (receiver == address(0)) {
-            revert Vault__AddressZero();
+            revert AddressZero();
         }
         if (assets == 0 || shares == 0) {
-            revert Vault__InvalidInput();
+            revert InvalidInput();
         }
-        if (assets < minAmount) {
-            revert Vault__DepositLessThanMin();
+        if (assets < $.minAmount) {
+            revert DepositLessThanMin();
         }
     }
 
@@ -377,10 +392,11 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 assets,
         uint256 shares
     ) internal {
-        _asset.safeTransferFrom(caller, address(this), assets);
-        _delegateActionToProvider(assets, "deposit", activeProvider);
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $._asset.safeTransferFrom(caller, address(this), assets);
+        _delegateActionToProvider(assets, "deposit", $.activeProvider);
         _mint(receiver, shares);
-        lastTotalBalance += assets;
+        $.lastTotalBalance += assets;
 
         emit Deposit(caller, receiver, assets, shares);
     }
@@ -401,10 +417,10 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         address owner
     ) internal whenNotPaused(Actions.Withdraw) {
         if (receiver == address(0) || owner == address(0)) {
-            revert Vault__AddressZero();
+            revert AddressZero();
         }
         if (assets == 0 || shares == 0) {
-            revert Vault__InvalidInput();
+            revert InvalidInput();
         }
         if (caller != owner) {
             _spendAllowance(owner, caller, shares);
@@ -426,12 +442,13 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         uint256 assets,
         uint256 shares
     ) internal {
+        RebalancerStorage storage $ = _getRebalancerStorage();
         _burn(owner, shares);
 
         uint256 assetsToWithdraw = assets;
-        uint256 count = _providers.length;
+        uint256 count = $._providers.length;
         for (uint256 i; i < count; i++) {
-            IProvider provider = _providers[i];
+            IProvider provider = $._providers[i];
             uint256 balanceAtProvider = provider.getDepositBalance(
                 address(this),
                 this
@@ -450,8 +467,8 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
             if (assetsToWithdraw == 0) break;
         }
 
-        lastTotalBalance -= assets;
-        _asset.safeTransfer(receiver, assets);
+        $.lastTotalBalance -= assets;
+        $._asset.safeTransfer(receiver, assets);
 
         emit Withdraw(caller, receiver, owner, assets, shares);
     }
@@ -460,25 +477,65 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
       REBALANCE functions
     /////////////////////*/
 
+    /**
+     *
+     */
+    function rebalance(
+        uint256[] memory amounts,
+        IProvider[] memory sources,
+        IProvider[] memory destinations
+    ) external onlyRole(EXECUTOR_ROLE) returns (bool) {
+        uint256 count = amounts.length;
+        if (count == 0) {
+            revert InvalidCount();
+        }
+        if (count != sources.length || count != destinations.length) {
+            revert ArrayMismatch();
+        }
+
+        for (uint256 i; i < count; i++) {
+            uint256 assets = amounts[i];
+            IProvider from = sources[i];
+            IProvider to = destinations[i];
+
+            if (
+                !_validateProvider(address(from)) ||
+                !_validateProvider(address(to))
+            ) {
+                revert InvalidProvider();
+            }
+
+            // to-do: think about from == to check
+
+            uint256 assetsAtFrom = from.getDepositBalance(address(this), this);
+
+            if (assets == type(uint256).max) {
+                assets = assetsAtFrom;
+            }
+            if (assets == 0 || assets > assetsAtFrom) {
+                revert InvalidAssetAmount();
+            }
+
+            _delegateActionToProvider(assets, "withdraw", from);
+            _delegateActionToProvider(assets, "deposit", to);
+
+            emit RebalanceExecuted(assets, address(from), address(to));
+        }
+
+        return true;
+    }
+
     function applyFees() external {
         _applyFees();
     }
 
-    /**
-     * @notice Pauses the specified action in the vault.
-     *
-     * @param action The action to pause.
-     */
-    function pause(Actions action) external onlyAdmin {
+    /// @inheritdoc IPausableActions
+    function pause(Actions action) external override onlyRole(ADMIN_ROLE) {
         _pause(action);
     }
 
-    /**
-     * @notice Unpauses the specified action in the vault.
-     *
-     * @param action The action to unpause.
-     */
-    function unpause(Actions action) external onlyAdmin {
+    /// @inheritdoc IPausableActions
+    function unpause(Actions action) external override onlyRole(ADMIN_ROLE) {
         _unpause(action);
     }
 
@@ -503,7 +560,9 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @param _activeProvider The contract of the new active provider.
      *
      */
-    function setActiveProvider(IProvider _activeProvider) external onlyAdmin {
+    function setActiveProvider(
+        IProvider _activeProvider
+    ) external onlyRole(ADMIN_ROLE) {
         _setActiveProvider(_activeProvider);
     }
 
@@ -511,7 +570,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @notice Sets the treasury address for this vault.
      * @param _treasury The new treasury address.
      */
-    function setTreasury(address _treasury) external onlyAdmin {
+    function setTreasury(address _treasury) external onlyRole(ADMIN_ROLE) {
         _applyFees();
         _setTreasury(_treasury);
     }
@@ -520,7 +579,9 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @notice Sets the performance fee percentage for this vault.
      * @param _performanceFee The new performance fee percentage.
      */
-    function setPerformanceFee(uint96 _performanceFee) external onlyAdmin {
+    function setPerformanceFee(
+        uint96 _performanceFee
+    ) external onlyRole(ADMIN_ROLE) {
         _applyFees();
         _setPerformanceFee(_performanceFee);
     }
@@ -529,7 +590,9 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @notice Sets the management fee percentage for this vault.
      * @param _managementFee The new management fee percentage.
      */
-    function setManagementFee(uint96 _managementFee) external onlyAdmin {
+    function setManagementFee(
+        uint96 _managementFee
+    ) external onlyRole(ADMIN_ROLE) {
         _applyFees();
         _setManagementFee(_managementFee);
     }
@@ -538,7 +601,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @notice Sets the minimum amount required for deposit and mint actions.
      * @param _minAmount The new minimum amount.
      */
-    function setMinAmount(uint256 _minAmount) external onlyAdmin {
+    function setMinAmount(uint256 _minAmount) external onlyRole(ADMIN_ROLE) {
         _setMinAmount(_minAmount);
     }
 
@@ -548,9 +611,10 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      */
     function _setTimelock(address _timelock) internal {
         if (_timelock == address(0)) {
-            revert Vault__AddressZero();
+            revert AddressZero();
         }
-        timelock = _timelock;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $.timelock = _timelock;
         emit TimelockUpdated(_timelock);
     }
 
@@ -559,16 +623,17 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @param providers An array of provider contracts.
      */
     function _setProviders(IProvider[] memory providers) internal {
+        RebalancerStorage storage $ = _getRebalancerStorage();
         for (uint256 i; i < providers.length; i++) {
             if (address(providers[i]) == address(0)) {
-                revert Vault__AddressZero();
+                revert AddressZero();
             }
-            _asset.forceApprove(
+            $._asset.forceApprove(
                 providers[i].getSource(asset(), address(this), address(0)),
                 type(uint256).max
             );
         }
-        _providers = providers;
+        $._providers = providers;
 
         emit ProvidersUpdated(providers);
     }
@@ -579,9 +644,10 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      */
     function _setActiveProvider(IProvider _activeProvider) internal {
         if (!_validateProvider(address(_activeProvider))) {
-            revert Vault__InvalidInput();
+            revert InvalidInput();
         }
-        activeProvider = _activeProvider;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $.activeProvider = _activeProvider;
         emit ActiveProviderUpdated(_activeProvider);
     }
 
@@ -591,9 +657,10 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      */
     function _setTreasury(address _treasury) internal {
         if (_treasury == address(0)) {
-            revert Vault__AddressZero();
+            revert AddressZero();
         }
-        treasury = _treasury;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $.treasury = _treasury;
         emit TreasuryUpdated(_treasury);
     }
 
@@ -603,10 +670,10 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      */
     function _setPerformanceFee(uint96 _performanceFee) internal {
         if (_performanceFee > MAX_PERFORMANCE_FEE) {
-            revert Vault__InvalidInput();
+            revert InvalidInput();
         }
-
-        performanceFee = _performanceFee;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $.performanceFee = _performanceFee;
         emit PerformanceFeeUpdated(_performanceFee);
     }
 
@@ -616,10 +683,10 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      */
     function _setManagementFee(uint96 _managementFee) internal {
         if (_managementFee > MAX_MANAGEMENT_FEE) {
-            revert Vault__InvalidInput();
+            revert InvalidInput();
         }
-
-        managementFee = _managementFee;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $.managementFee = _managementFee;
         emit ManagementFeeUpdated(_managementFee);
     }
 
@@ -628,7 +695,8 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @param _minAmount The new minimum amount.
      */
     function _setMinAmount(uint256 _minAmount) internal {
-        minAmount = _minAmount;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $.minAmount = _minAmount;
         emit MinAmountUpdated(_minAmount);
     }
 
@@ -659,23 +727,26 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
             uint256 managementFeeShares
         ) = _getAccruedFees(totalBalance);
 
+        RebalancerStorage storage $ = _getRebalancerStorage();
+
         emit FeesApplied(
-            lastTotalBalance,
+            $.lastTotalBalance,
             totalBalance,
             performanceFeeShares,
             managementFeeShares
         );
 
-        lastTotalBalance = totalBalance;
+        $.lastTotalBalance = totalBalance;
+        address _treasury = $.treasury;
 
         if (performanceFeeShares != 0) {
-            _mint(treasury, performanceFeeShares);
+            _mint(_treasury, performanceFeeShares);
         }
         if (managementFeeShares != 0) {
-            _mint(treasury, managementFeeShares);
+            _mint(_treasury, managementFeeShares);
         }
 
-        lastTimestamp = block.timestamp.toUint64();
+        $.lastTimestamp = block.timestamp.toUint64();
     }
 
     /**
@@ -686,10 +757,11 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         view
         returns (uint256 totalBalance)
     {
+        RebalancerStorage storage $ = _getRebalancerStorage();
         uint256 providerBalance;
-        uint256 count = _providers.length;
+        uint256 count = $._providers.length;
         for (uint256 i; i < count; i++) {
-            providerBalance = _providers[i].getDepositBalance(
+            providerBalance = $._providers[i].getDepositBalance(
                 address(this),
                 this
             );
@@ -704,19 +776,20 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
         view
         returns (uint256 performanceFeeShares, uint256 managementFeeShares)
     {
-        uint256 dt = block.timestamp - lastTimestamp;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        uint256 dt = block.timestamp - $.lastTimestamp;
 
-        uint256 yield = totalBalance > lastTotalBalance
-            ? totalBalance - lastTotalBalance
+        uint256 yield = totalBalance > $.lastTotalBalance
+            ? totalBalance - $.lastTotalBalance
             : 0;
 
-        uint256 performanceFeeAssets = yield > 0 && performanceFee > 0
-            ? yield.mulDiv(performanceFee, SCALE, Math.Rounding.Floor)
+        uint256 performanceFeeAssets = yield > 0 && $.performanceFee > 0
+            ? yield.mulDiv($.performanceFee, SCALE, Math.Rounding.Floor)
             : 0;
 
-        uint256 managementFeeAssets = dt > 0 && managementFee > 0
+        uint256 managementFeeAssets = dt > 0 && $.managementFee > 0
             ? (totalBalance * dt).mulDiv(
-                managementFee,
+                $.managementFee,
                 365 days * SCALE,
                 Math.Rounding.Floor
             )
@@ -747,9 +820,10 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
     function _validateProvider(
         address provider
     ) internal view returns (bool valid) {
-        uint256 count = _providers.length;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        uint256 count = $._providers.length;
         for (uint256 i; i < count; i++) {
-            if (provider == address(_providers[i])) {
+            if (provider == address($._providers[i])) {
                 valid = true;
                 break;
             }
@@ -765,6 +839,7 @@ abstract contract Vault is ERC20Permit, AccessManager, PausableActions, IVault {
      * @notice Returns the array of providers of this vault.
      */
     function getProviders() public view returns (IProvider[] memory) {
-        return _providers;
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._providers;
     }
 }
