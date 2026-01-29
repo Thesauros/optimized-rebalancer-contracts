@@ -35,9 +35,7 @@ abstract contract AccessManager is ContextUpgradeable, IAccessManager {
 
     /// @dev Modifier that checks that an account has a specific role.
     modifier onlyRole(bytes32 role) {
-        if (!hasRole(role, _msgSender())) {
-            revert Unauthorized();
-        }
+        _onlyRole(role);
         _;
     }
 
@@ -85,8 +83,17 @@ abstract contract AccessManager is ContextUpgradeable, IAccessManager {
         }
     }
 
+    function _onlyRole(bytes32 role) internal view {
+        if (!hasRole(role, _msgSender())) {
+            revert Unauthorized();
+        }
+    }
+
     /// @dev Returns true if an account has been granted role.
-    function hasRole(bytes32 role, address account) public view virtual returns (bool) {
+    function hasRole(
+        bytes32 role,
+        address account
+    ) public view virtual returns (bool) {
         AccessManagerStorage storage $ = _getAccessManagerStorage();
         return $._roles[role][account];
     }

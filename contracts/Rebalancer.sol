@@ -63,10 +63,7 @@ contract Rebalancer is
      * @dev Reverts if called by any account other than the timelock contract.
      */
     modifier onlyTimelock() {
-        RebalancerStorage storage $ = _getRebalancerStorage();
-        if (msg.sender != $.timelock) {
-            revert Unauthorized();
-        }
+        _onlyTimelock();
         _;
     }
 
@@ -827,6 +824,13 @@ contract Rebalancer is
                 valid = true;
                 break;
             }
+        }
+    }
+
+    function _onlyTimelock() internal view {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        if (msg.sender != $.timelock) {
+            revert Unauthorized();
         }
     }
 

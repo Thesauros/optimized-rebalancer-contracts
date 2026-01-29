@@ -112,16 +112,6 @@ contract Timelock is Ownable2Step {
     );
 
     /**
-     * @dev Reverts if called by any account other than the contract itself.
-     */
-    modifier onlySelf() {
-        if (msg.sender != address(this)) {
-            revert Timelock__Unauthorized();
-        }
-        _;
-    }
-
-    /**
      * @dev Initializes the Timelock contract with the specified parameters.
      * @param owner_ The address of the initial owner of the contract.
      * @param delay_ The initial delay for queued transactions.
@@ -279,7 +269,10 @@ contract Timelock is Ownable2Step {
      * @notice Sets a new delay for queued transactions.
      * @param _delay The new delay duration in seconds.
      */
-    function setDelay(uint256 _delay) public onlySelf {
+    function setDelay(uint256 _delay) public {
+        if (msg.sender != address(this)) {
+            revert Timelock__Unauthorized();
+        }
         _setDelay(_delay);
     }
 
