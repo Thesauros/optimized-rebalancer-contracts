@@ -8,8 +8,8 @@ import { networkConfig } from './network-config';
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: '0.8.23',
-    settings: { optimizer: { enabled: true, runs: 1 } },
+    version: '0.8.33',
+    settings: { optimizer: { enabled: true, runs: 200 } },
   },
   mocha: {
     timeout: 150000000,

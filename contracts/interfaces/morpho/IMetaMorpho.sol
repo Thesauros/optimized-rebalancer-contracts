@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity >=0.5.0;
+pragma solidity 0.8.33;
 
 import {IERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IMorpho, Id, MarketParams} from "morpho-blue/interfaces/IMorpho.sol";

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.0;
+pragma solidity 0.8.33;
 
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IInterestRateModel} from "./IInterestRateModel.sol";
