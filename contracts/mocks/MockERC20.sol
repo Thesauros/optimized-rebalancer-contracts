@@ -37,7 +37,8 @@ contract MockERC20 is ERC20 {
     // mocking WETH
     function withdraw(uint256 value) public {
         _burn(msg.sender, value);
-        payable(msg.sender).transfer(value);
+        (bool success,) = payable(msg.sender).call{value: value}("");
+        require(success);
     }
 
     function mint(address to, uint256 value) public {
