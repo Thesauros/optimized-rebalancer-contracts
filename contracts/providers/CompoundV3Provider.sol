@@ -50,6 +50,7 @@ contract CompoundV3Provider is IProvider {
      */
     error CompoundV3Provider__AddressZero();
 
+    // consider using SCREAMING_SNAKE_CASE
     IProviderManager private immutable _providerManager;
 
     constructor(address providerManager_) {

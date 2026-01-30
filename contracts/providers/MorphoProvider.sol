@@ -48,6 +48,7 @@ contract MorphoProvider is IProvider {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
+    // consider using SCREAMING_SNAKE_CASE
     IMetaMorpho private immutable _metaMorpho;
 
     constructor(address metaMorpho_) {
