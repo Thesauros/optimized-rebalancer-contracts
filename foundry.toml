@@ -8,6 +8,8 @@ libs = ['node_modules', 'lib']
 test = 'test'
 cache_path = 'cache_forge'
 
+ignored_warnings_from = ["lib/", "node_modules/"] # ignore warnings from dependencies
+
 [lint]
 exclude_lints = [
     "mixed-case-function",
