@@ -39,14 +39,14 @@ contract Rebalancer is
         IProvider[] _providers;
         IProvider _entryProvider;
         // access
-        address timelock;
+        address _timelock;
         // fees
-        address treasury;
-        uint96 managementFee;
-        uint96 performanceFee;
+        address _treasury;
+        uint96 _managementFee;
+        uint96 _performanceFee;
         // accounting
-        uint256 lastTotalBalance;
-        uint64 lastTimestamp;
+        uint256 _lastTotalBalance;
+        uint64 _lastTimestamp;
         // operational
         uint256 _minDeposit;
     }
@@ -121,7 +121,7 @@ contract Rebalancer is
         _setPerformanceFee(performanceFee_);
         _setMinDeposit(minDeposit_);
 
-        $.lastTimestamp = block.timestamp.toUint64();
+        $._lastTimestamp = block.timestamp.toUint64();
 
         // requires a non-trivial initial deposit to mitigate inflation attacks.
         // the appropriate amount depends on the underlying asset’s decimals.
@@ -399,7 +399,7 @@ contract Rebalancer is
         $._asset.safeTransferFrom(caller, address(this), assets);
         _delegateActionToProvider(assets, "deposit", $._entryProvider);
         _mint(receiver, shares);
-        $.lastTotalBalance += assets;
+        $._lastTotalBalance += assets;
 
         emit Deposit(caller, receiver, assets, shares);
     }
@@ -470,7 +470,7 @@ contract Rebalancer is
             if (assetsToWithdraw == 0) break;
         }
 
-        $.lastTotalBalance -= assets;
+        $._lastTotalBalance -= assets;
         $._asset.safeTransfer(receiver, assets);
 
         emit Withdraw(caller, receiver, owner, assets, shares);
@@ -544,10 +544,10 @@ contract Rebalancer is
 
     /**
      * @notice Sets the address of the timelock contract.
-     * @param _timelock The address of the new timelock contract.
+     * @param timelock The address of the new timelock contract.
      */
-    function setTimelock(address _timelock) external onlyTimelock {
-        _setTimelock(_timelock);
+    function setTimelock(address timelock) external onlyTimelock {
+        _setTimelock(timelock);
     }
 
     /**
@@ -571,33 +571,33 @@ contract Rebalancer is
 
     /**
      * @notice Sets the treasury address for this vault.
-     * @param _treasury The new treasury address.
+     * @param treasury The new treasury address.
      */
-    function setTreasury(address _treasury) external onlyRole(ADMIN_ROLE) {
+    function setTreasury(address treasury) external onlyRole(ADMIN_ROLE) {
         _applyFees();
-        _setTreasury(_treasury);
+        _setTreasury(treasury);
     }
 
     /**
      * @notice Sets the performance fee percentage for this vault.
-     * @param _performanceFee The new performance fee percentage.
+     * @param performanceFee The new performance fee percentage.
      */
     function setPerformanceFee(
-        uint96 _performanceFee
+        uint96 performanceFee
     ) external onlyRole(ADMIN_ROLE) {
         _applyFees();
-        _setPerformanceFee(_performanceFee);
+        _setPerformanceFee(performanceFee);
     }
 
     /**
      * @notice Sets the management fee percentage for this vault.
-     * @param _managementFee The new management fee percentage.
+     * @param managementFee The new management fee percentage.
      */
     function setManagementFee(
-        uint96 _managementFee
+        uint96 managementFee
     ) external onlyRole(ADMIN_ROLE) {
         _applyFees();
-        _setManagementFee(_managementFee);
+        _setManagementFee(managementFee);
     }
 
     /**
@@ -610,15 +610,15 @@ contract Rebalancer is
 
     /**
      * @dev Internal function to update the address of the timelock contract.
-     * @param _timelock The address of the new timelock contract.
+     * @param timelock The address of the new timelock contract.
      */
-    function _setTimelock(address _timelock) internal {
-        if (_timelock == address(0)) {
+    function _setTimelock(address timelock) internal {
+        if (timelock == address(0)) {
             revert AddressZero();
         }
         RebalancerStorage storage $ = _getRebalancerStorage();
-        $.timelock = _timelock;
-        emit TimelockUpdated(_timelock);
+        $._timelock = timelock;
+        emit TimelockUpdated(timelock);
     }
 
     /**
@@ -656,41 +656,41 @@ contract Rebalancer is
 
     /**
      * @dev Internal function to set the treasury address for this vault.
-     * @param _treasury The new treasury address.
+     * @param treasury The new treasury address.
      */
-    function _setTreasury(address _treasury) internal {
-        if (_treasury == address(0)) {
+    function _setTreasury(address treasury) internal {
+        if (treasury == address(0)) {
             revert AddressZero();
         }
         RebalancerStorage storage $ = _getRebalancerStorage();
-        $.treasury = _treasury;
-        emit TreasuryUpdated(_treasury);
+        $._treasury = treasury;
+        emit TreasuryUpdated(treasury);
     }
 
     /**
      * @dev Internal function to set the performance fee percentage for this vault.
-     * @param _performanceFee The new performance fee percentage.
+     * @param performanceFee The new performance fee percentage.
      */
-    function _setPerformanceFee(uint96 _performanceFee) internal {
-        if (_performanceFee > MAX_PERFORMANCE_FEE) {
+    function _setPerformanceFee(uint96 performanceFee) internal {
+        if (performanceFee > MAX_PERFORMANCE_FEE) {
             revert InvalidInput();
         }
         RebalancerStorage storage $ = _getRebalancerStorage();
-        $.performanceFee = _performanceFee;
-        emit PerformanceFeeUpdated(_performanceFee);
+        $._performanceFee = performanceFee;
+        emit PerformanceFeeUpdated(performanceFee);
     }
 
     /**
      * @dev Internal function to set the management fee percentage for this vault.
-     * @param _managementFee The new management fee percentage.
+     * @param managementFee The new management fee percentage.
      */
-    function _setManagementFee(uint96 _managementFee) internal {
-        if (_managementFee > MAX_MANAGEMENT_FEE) {
+    function _setManagementFee(uint96 managementFee) internal {
+        if (managementFee > MAX_MANAGEMENT_FEE) {
             revert InvalidInput();
         }
         RebalancerStorage storage $ = _getRebalancerStorage();
-        $.managementFee = _managementFee;
-        emit ManagementFeeUpdated(_managementFee);
+        $._managementFee = managementFee;
+        emit ManagementFeeUpdated(managementFee);
     }
 
     /**
@@ -733,23 +733,23 @@ contract Rebalancer is
         RebalancerStorage storage $ = _getRebalancerStorage();
 
         emit FeesApplied(
-            $.lastTotalBalance,
+            $._lastTotalBalance,
             totalBalance,
             performanceFeeShares,
             managementFeeShares
         );
 
-        $.lastTotalBalance = totalBalance;
-        address _treasury = $.treasury;
+        $._lastTotalBalance = totalBalance;
+        address treasury = $._treasury;
 
         if (performanceFeeShares != 0) {
-            _mint(_treasury, performanceFeeShares);
+            _mint(treasury, performanceFeeShares);
         }
         if (managementFeeShares != 0) {
-            _mint(_treasury, managementFeeShares);
+            _mint(treasury, managementFeeShares);
         }
 
-        $.lastTimestamp = block.timestamp.toUint64();
+        $._lastTimestamp = block.timestamp.toUint64();
     }
 
     /**
@@ -780,19 +780,19 @@ contract Rebalancer is
         returns (uint256 performanceFeeShares, uint256 managementFeeShares)
     {
         RebalancerStorage storage $ = _getRebalancerStorage();
-        uint256 dt = block.timestamp - $.lastTimestamp;
+        uint256 dt = block.timestamp - $._lastTimestamp;
 
-        uint256 yield = totalBalance > $.lastTotalBalance
-            ? totalBalance - $.lastTotalBalance
+        uint256 yield = totalBalance > $._lastTotalBalance
+            ? totalBalance - $._lastTotalBalance
             : 0;
 
-        uint256 performanceFeeAssets = yield > 0 && $.performanceFee > 0
-            ? yield.mulDiv($.performanceFee, SCALE, Math.Rounding.Floor)
+        uint256 performanceFeeAssets = yield > 0 && $._performanceFee > 0
+            ? yield.mulDiv($._performanceFee, SCALE, Math.Rounding.Floor)
             : 0;
 
-        uint256 managementFeeAssets = dt > 0 && $.managementFee > 0
+        uint256 managementFeeAssets = dt > 0 && $._managementFee > 0
             ? (totalBalance * dt).mulDiv(
-                $.managementFee,
+                $._managementFee,
                 365 days * SCALE,
                 Math.Rounding.Floor
             )
@@ -835,7 +835,7 @@ contract Rebalancer is
 
     function _onlyTimelock() internal view {
         RebalancerStorage storage $ = _getRebalancerStorage();
-        if (msg.sender != $.timelock) {
+        if (msg.sender != $._timelock) {
             revert Unauthorized();
         }
     }
