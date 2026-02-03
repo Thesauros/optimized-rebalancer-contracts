@@ -61,9 +61,9 @@ interface IRebalancer is IERC4626 {
     /**
      * @notice Emitted when the minimum amount is changed.
      *
-     * @param minAmount The new minimum amount.
+     * @param minDeposit The new minimum amount.
      */
-    event MinAmountUpdated(uint256 minAmount);
+    event MinDepositUpdated(uint256 minDeposit);
 
     /**
      * @notice Emitted when fees are applied.

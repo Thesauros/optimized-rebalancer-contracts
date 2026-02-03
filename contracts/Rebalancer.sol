@@ -32,17 +32,23 @@ contract Rebalancer is
 
     /// @custom:storage-location erc7201:thesauros.storage.Rebalancer
     struct RebalancerStorage {
+        // core
         IERC20Metadata _asset;
         uint8 _underlyingDecimals;
+        // providers
         IProvider[] _providers;
-        IProvider activeProvider; // to-do: better to change naming, all the providers are active when optimized
+        IProvider activeProvider;
+        // access
+        address timelock;
+        // fees
+        address treasury;
+        uint96 managementFee;
+        uint96 performanceFee;
+        // accounting
         uint256 lastTotalBalance;
         uint64 lastTimestamp;
-        uint96 managementFee;
-        address treasury;
-        uint96 performanceFee;
-        address timelock;
-        uint256 minAmount; /// to-do: better to change naming
+        // operational
+        uint256 _minDeposit;
     }
 
     // keccak256(abi.encode(uint256(keccak256("thesauros.storage.Rebalancer")) - 1)) & ~bytes32(uint256(0xff))
@@ -77,26 +83,32 @@ contract Rebalancer is
      * @dev Initializes the Rebalancer contract with the specified parameters.
      */
     function initialize(
+        address admin_,
+        address timelock_,
         address asset_,
         string memory name_,
         string memory symbol_,
         IProvider[] memory providers_,
-        uint256 initialDeposit_,
+        address treasury_,
         uint96 managementFee_,
         uint96 performanceFee_,
-        address treasury_,
-        address timelock_
-    ) public initializer {
-        __AccessManager_init();
-        __ERC20_init(name_, symbol_);
-        __ERC20Permit_init(name_);
-
+        uint256 minDeposit_
+    ) external initializer {
         if (asset_ == address(0)) {
             revert AddressZero();
         }
+        if (admin_ == address(0)) {
+            revert AddressZero();
+        }
+        if (minDeposit_ == 0) {
+            revert InvalidInput();
+        }
+
+        __AccessManager_init(admin_);
+        __ERC20_init(name_, symbol_);
+        __ERC20Permit_init(name_);
 
         RebalancerStorage storage $ = _getRebalancerStorage();
-
         $._asset = IERC20Metadata(asset_);
         // note: think about also adding virtual shares and decimals offset
         $._underlyingDecimals = IERC20Metadata(asset_).decimals();
@@ -104,22 +116,16 @@ contract Rebalancer is
         _setTimelock(timelock_);
         _setProviders(providers_);
         _setActiveProvider(providers_[0]);
-        // note: 1 token for most stablecoins, depends on the decimals of underlying
-        _setMinAmount(1e6);
-
-        $.lastTimestamp = block.timestamp.toUint64();
-
-        // note: care should be taken for the initial deposit to be a non-trivial amount, depends on the decimals of underlying
-        if (initialDeposit_ < $.minAmount) {
-            revert DepositLessThanMin();
-        }
-
-        // may need an approve to the precomputed address before deployment
-        _deposit(msg.sender, address(this), initialDeposit_, initialDeposit_);
-
         _setTreasury(treasury_);
         _setManagementFee(managementFee_);
         _setPerformanceFee(performanceFee_);
+        _setMinDeposit(minDeposit_);
+
+        $.lastTimestamp = block.timestamp.toUint64();
+
+        // requires a non-trivial initial deposit to mitigate inflation attacks.
+        // the appropriate amount depends on the underlying asset’s decimals.
+        _deposit(_msgSender(), address(this), minDeposit_, minDeposit_);
     }
 
     /*////////////////////
@@ -371,7 +377,7 @@ contract Rebalancer is
         if (assets == 0 || shares == 0) {
             revert InvalidInput();
         }
-        if (assets < $.minAmount) {
+        if (assets < $._minDeposit) {
             revert DepositLessThanMin();
         }
     }
@@ -596,10 +602,10 @@ contract Rebalancer is
 
     /**
      * @notice Sets the minimum amount required for deposit and mint actions.
-     * @param _minAmount The new minimum amount.
+     * @param minDeposit The new minimum amount.
      */
-    function setMinAmount(uint256 _minAmount) external onlyRole(ADMIN_ROLE) {
-        _setMinAmount(_minAmount);
+    function setMinDeposit(uint256 minDeposit) external onlyRole(ADMIN_ROLE) {
+        _setMinDeposit(minDeposit);
     }
 
     /**
@@ -689,12 +695,12 @@ contract Rebalancer is
 
     /**
      * @dev Internal function to set the minimum amount required for deposit and mint actions.
-     * @param _minAmount The new minimum amount.
+     * @param minDeposit The new minimum amount.
      */
-    function _setMinAmount(uint256 _minAmount) internal {
+    function _setMinDeposit(uint256 minDeposit) internal {
         RebalancerStorage storage $ = _getRebalancerStorage();
-        $.minAmount = _minAmount;
-        emit MinAmountUpdated(_minAmount);
+        $._minDeposit = minDeposit;
+        emit MinDepositUpdated(minDeposit);
     }
 
     /**
