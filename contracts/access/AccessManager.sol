@@ -39,14 +39,13 @@ abstract contract AccessManager is ContextUpgradeable, IAccessManager {
         _;
     }
 
-    /// @dev Sets the initializer as admin.
-    function __AccessManager_init() internal onlyInitializing {
-        __AccessManager_init_unchained();
+    /// @dev Sets the initial admin during initialization.
+    function __AccessManager_init(address admin_) internal onlyInitializing {
+        __AccessManager_init_unchained(admin_);
     }
 
-    function __AccessManager_init_unchained() internal onlyInitializing {
-        // to-do: change to a param
-        _grantRole(ADMIN_ROLE, _msgSender());
+    function __AccessManager_init_unchained(address admin_) internal onlyInitializing {
+        _grantRole(ADMIN_ROLE, admin_);
     }
 
     /// @dev Grants a role to an account.
