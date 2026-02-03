@@ -37,7 +37,7 @@ contract Rebalancer is
         uint8 _underlyingDecimals;
         // providers
         IProvider[] _providers;
-        IProvider activeProvider;
+        IProvider _entryProvider;
         // access
         address timelock;
         // fees
@@ -115,7 +115,7 @@ contract Rebalancer is
 
         _setTimelock(timelock_);
         _setProviders(providers_);
-        _setActiveProvider(providers_[0]);
+        _setEntryProvider(providers_[0]);
         _setTreasury(treasury_);
         _setManagementFee(managementFee_);
         _setPerformanceFee(performanceFee_);
@@ -397,7 +397,7 @@ contract Rebalancer is
     ) internal {
         RebalancerStorage storage $ = _getRebalancerStorage();
         $._asset.safeTransferFrom(caller, address(this), assets);
-        _delegateActionToProvider(assets, "deposit", $.activeProvider);
+        _delegateActionToProvider(assets, "deposit", $._entryProvider);
         _mint(receiver, shares);
         $.lastTotalBalance += assets;
 
@@ -560,13 +560,13 @@ contract Rebalancer is
 
     /**
      * @notice Sets the active provider for this vault.
-     * @param _activeProvider The contract of the new active provider.
+     * @param entryProvider The contract of the new entry provider.
      *
      */
-    function setActiveProvider(
-        IProvider _activeProvider
+    function setEntryProvider(
+        IProvider entryProvider
     ) external onlyRole(ADMIN_ROLE) {
-        _setActiveProvider(_activeProvider);
+        _setEntryProvider(entryProvider);
     }
 
     /**
@@ -643,15 +643,15 @@ contract Rebalancer is
 
     /**
      * @dev Internal function to set the active provider for this vault.
-     * @param _activeProvider The contract of the new active provider.
+     * @param entryProvider The contract of the new active provider.
      */
-    function _setActiveProvider(IProvider _activeProvider) internal {
-        if (!_validateProvider(address(_activeProvider))) {
+    function _setEntryProvider(IProvider entryProvider) internal {
+        if (!_validateProvider(address(entryProvider))) {
             revert InvalidInput();
         }
         RebalancerStorage storage $ = _getRebalancerStorage();
-        $.activeProvider = _activeProvider;
-        emit ActiveProviderUpdated(_activeProvider);
+        $._entryProvider = entryProvider;
+        emit EntryProviderUpdated(entryProvider);
     }
 
     /**

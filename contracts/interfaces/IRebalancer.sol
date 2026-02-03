@@ -31,11 +31,11 @@ interface IRebalancer is IERC4626 {
     event ProvidersUpdated(IProvider[] providers);
 
     /**
-     * @notice Emitted when the active provider is changed.
+     * @notice Emitted when the entry provider is changed.
      *
-     * @param activeProvider The new active provider.
+     * @param entryProvider The new entry provider.
      */
-    event ActiveProviderUpdated(IProvider activeProvider);
+    event EntryProviderUpdated(IProvider entryProvider);
 
     /**
      * @notice Emitted when the treasury address is changed.
