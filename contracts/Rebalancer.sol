@@ -94,10 +94,10 @@ contract Rebalancer is
         uint96 performanceFee_,
         uint256 minDeposit_
     ) external initializer {
-        if (asset_ == address(0)) {
+        if (admin_ == address(0)) {
             revert AddressZero();
         }
-        if (admin_ == address(0)) {
+        if (asset_ == address(0)) {
             revert AddressZero();
         }
         if (minDeposit_ == 0) {
@@ -480,9 +480,10 @@ contract Rebalancer is
       REBALANCE functions
     /////////////////////*/
 
-    /**
-     *
-     */
+    function applyFees() external {
+        _applyFees();
+    }
+
     function rebalance(
         uint256[] memory amounts,
         IProvider[] memory sources,
@@ -526,10 +527,6 @@ contract Rebalancer is
         }
 
         return true;
-    }
-
-    function applyFees() external {
-        _applyFees();
     }
 
     /// @inheritdoc IPausableActions
@@ -752,6 +749,13 @@ contract Rebalancer is
         $._lastTimestamp = block.timestamp.toUint64();
     }
 
+    function _onlyTimelock() internal view {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        if (msg.sender != $._timelock) {
+            revert Unauthorized();
+        }
+    }
+
     /**
      * @dev Returns the total balance of the asset held by this vault across all listed providers.
      */
@@ -833,13 +837,6 @@ contract Rebalancer is
         }
     }
 
-    function _onlyTimelock() internal view {
-        RebalancerStorage storage $ = _getRebalancerStorage();
-        if (msg.sender != $._timelock) {
-            revert Unauthorized();
-        }
-    }
-
     function getAccruedFees() public view returns (uint256, uint256) {
         uint256 totalBalance = _getBalanceAtProviders();
         return _getAccruedFees(totalBalance);
@@ -851,5 +848,45 @@ contract Rebalancer is
     function getProviders() public view returns (IProvider[] memory) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._providers;
+    }
+
+    function getEntryProvider() public view returns (IProvider) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._entryProvider;
+    }
+
+    function getTimelock() public view returns (address) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._timelock;
+    }
+
+    function getTreasury() public view returns (address) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._treasury;
+    }
+
+    function getManagementFee() public view returns (uint96) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._managementFee;
+    }
+
+    function getPerformanceFee() public view returns (uint96) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._performanceFee;
+    }
+
+    function getLastTotalBalance() public view returns (uint256) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._lastTotalBalance;
+    }
+
+    function getLastTimestamp() public view returns (uint64) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._lastTimestamp;
+    }
+
+    function getMinDeposit() public view returns (uint256) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._minDeposit;
     }
 }
