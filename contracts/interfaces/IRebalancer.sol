@@ -10,10 +10,9 @@ import {IProvider} from "./IProvider.sol";
 interface IRebalancer is IERC4626 {
     error AddressZero();
     error InvalidInput();
-    error DepositLessThanMin();
+    error AssetsBelowMin();
     error InvalidCount();
     error ArrayMismatch();
-    error InvalidAssetAmount();
     error InvalidProvider();
 
     /**
@@ -61,9 +60,9 @@ interface IRebalancer is IERC4626 {
     /**
      * @notice Emitted when the minimum amount is changed.
      *
-     * @param minDeposit The new minimum amount.
+     * @param minAssets The new minimum amount.
      */
-    event MinDepositUpdated(uint256 minDeposit);
+    event MinAssetsUpdated(uint256 minAssets);
 
     /**
      * @notice Emitted when fees are applied.

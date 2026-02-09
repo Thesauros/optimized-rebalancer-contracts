@@ -17,9 +17,9 @@ interface IERC4626 {
         uint256 shares
     );
 
-    function asset() external view returns (address assetTokenAddress);
+    function asset() external view returns (address);
 
-    function totalAssets() external view returns (uint256 totalManagedAssets);
+    function totalAssets() external view returns (uint256);
 
     function convertToShares(
         uint256 assets
