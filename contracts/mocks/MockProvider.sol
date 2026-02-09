@@ -3,49 +3,28 @@ pragma solidity 0.8.33;
 
 import {IProvider} from "../interfaces/IProvider.sol";
 import {IRebalancer} from "../interfaces/IRebalancer.sol";
-import {MockERC20} from "./MockERC20.sol";
+import {MockProtocol} from "./MockProtocol.sol";
 
 /**
- * @title BaseMockProvider
+ * @title MockProvider
  */
-contract BaseMockProvider is IProvider {
-    /**
-     * @inheritdoc IProvider
-     */
-    function getIdentifier()
-        public
-        pure
-        virtual
-        override
-        returns (string memory)
-    {
-        return "Base_Provider";
+contract MockProvider is IProvider {
+    MockProtocol private immutable _protocol;
+
+    constructor(MockProtocol protocol_) {
+        _protocol = protocol_;
     }
 
     /**
      * @inheritdoc IProvider
      */
-    function getSource(
-        address keyOne,
-        address,
-        address
-    ) external pure override returns (address source) {
-        source = keyOne;
-    }
 
-    /**
-     * @inheritdoc IProvider
-     */
     function deposit(
         uint256 amount,
         IRebalancer vault
     ) external override returns (bool success) {
-        MockERC20 token = MockERC20(vault.asset());
-        try
-            token.depositTokens(address(vault), amount, getIdentifier())
-        returns (bool result) {
-            success = result;
-        } catch {}
+        _protocol.supply(amount, address(vault));
+        return true;
     }
 
     /**
@@ -55,12 +34,15 @@ contract BaseMockProvider is IProvider {
         uint256 amount,
         IRebalancer vault
     ) external override returns (bool success) {
-        MockERC20 token = MockERC20(vault.asset());
-        try
-            token.withdrawTokens(address(vault), amount, getIdentifier())
-        returns (bool result) {
-            success = result;
-        } catch {}
+        _protocol.withdraw(amount, address(vault));
+        return true;
+    }
+
+    function getDepositBalance(
+        address user,
+        IRebalancer
+    ) external view override returns (uint256 balance) {
+        return _protocol.balances(user);
     }
 
     /**
@@ -75,49 +57,24 @@ contract BaseMockProvider is IProvider {
     /**
      * @inheritdoc IProvider
      */
-    function getDepositBalance(
-        address user,
-        IRebalancer vault
-    ) external view override returns (uint256 balance) {
-        balance = MockERC20(vault.asset()).depositBalance(
-            user,
-            getIdentifier()
-        );
+    function getSource(
+        address,
+        address,
+        address
+    ) external view override returns (address source) {
+        return address(_protocol);
     }
-}
 
-/**
- * @title MockProviderA
- */
-contract MockProviderA is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Provider_A";
-    }
-}
-
-/**
- * @title MockProviderB
- */
-contract MockProviderB is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Provider_B";
-    }
-}
-
-/**
- * @title MockProviderC
- */
-contract MockProviderC is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Provider_C";
-    }
-}
-
-/**
- * @title InvalidProvider
- */
-contract InvalidProvider is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Invalid_Provider";
+    /**
+     * @inheritdoc IProvider
+     */
+    function getIdentifier()
+        public
+        pure
+        virtual
+        override
+        returns (string memory)
+    {
+        return "Mock_Provider";
     }
 }
