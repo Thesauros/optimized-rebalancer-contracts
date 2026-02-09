@@ -1,69 +1,68 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import {AccessManager} from "../../contracts/access/AccessManager.sol";
-import {PausableActions} from "../../contracts/base/PausableActions.sol";
-import {Vault} from "../../contracts/base/Vault.sol";
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {IPausableActions} from "../../contracts/interfaces/IPausableActions.sol";
+import {IAccessManager} from "../../contracts/interfaces/IAccessManager.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
 
-contract PausableActionsTests is MockingUtilities {
-    event Paused(address account, PausableActions.Actions action);
-    event Unpaused(address account, PausableActions.Actions action);
-
-    function setUp() public {
-        initializeVault(vault, MIN_AMOUNT, initializer);
-    }
-
+contract PausableActionsTests is MockingBase {
+    
     // =========================================
     // pause
     // =========================================
 
     function testPauseRevertsIfCallerIsNotAdmin() public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
         vm.prank(alice);
-        vault.pause(PausableActions.Actions.Deposit);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.pause(IPausableActions.Actions.Deposit);
     }
 
     function testPauseRevertsIfAlreadyPaused() public {
-        vault.pause(PausableActions.Actions.Deposit);
+        vault.pause(IPausableActions.Actions.Deposit);
 
-        vm.expectRevert(PausableActions.PausableActions__ActionPaused.selector);
-        vault.pause(PausableActions.Actions.Deposit);
+        vm.expectRevert(IPausableActions.ActionPaused.selector);
+        vault.pause(IPausableActions.Actions.Deposit);
     }
 
     function testDepositRevertsIfPaused() public {
-        vault.pause(PausableActions.Actions.Deposit);
+        vault.pause(IPausableActions.Actions.Deposit);
 
-        vm.expectRevert(PausableActions.PausableActions__ActionPaused.selector);
         vm.prank(alice);
-        vault.deposit(DEPOSIT_AMOUNT, alice);
+        vm.expectRevert(IPausableActions.ActionPaused.selector);
+        vault.deposit(HUNDRED, alice);
     }
 
     function testWithdrawRevertsIfPaused() public {
-        vault.pause(PausableActions.Actions.Withdraw);
-        executeDeposit(vault, DEPOSIT_AMOUNT, alice);
+        vault.pause(IPausableActions.Actions.Withdraw);
+        _executeDeposit(vault, HUNDRED, alice);
 
-        vm.expectRevert(PausableActions.PausableActions__ActionPaused.selector);
         vm.prank(alice);
-        vault.withdraw(DEPOSIT_AMOUNT, alice, alice);
+        vm.expectRevert(IPausableActions.ActionPaused.selector);
+        vault.withdraw(HUNDRED, alice, alice);
     }
 
     function testPause() public {
-        vault.pause(PausableActions.Actions.Deposit);
-        assertTrue(vault.paused(PausableActions.Actions.Deposit));
+        vault.pause(IPausableActions.Actions.Deposit);
+        assertTrue(vault.paused(IPausableActions.Actions.Deposit));
 
-        vault.pause(PausableActions.Actions.Withdraw);
-        assertTrue(vault.paused(PausableActions.Actions.Withdraw));
+        vault.pause(IPausableActions.Actions.Withdraw);
+        assertTrue(vault.paused(IPausableActions.Actions.Withdraw));
     }
 
-    function testPauseEmitsEvent() public {
-        vm.expectEmit();
-        emit Paused(address(this), PausableActions.Actions.Deposit);
-        vault.pause(PausableActions.Actions.Deposit);
+    function testPauseEmitsEvents() public {
+        vm.expectEmit(address(vault));
+        emit IPausableActions.Paused(
+            address(this),
+            IPausableActions.Actions.Deposit
+        );
+        vault.pause(IPausableActions.Actions.Deposit);
 
-        vm.expectEmit();
-        emit Paused(address(this), PausableActions.Actions.Withdraw);
-        vault.pause(PausableActions.Actions.Withdraw);
+        vm.expectEmit(address(vault));
+        emit IPausableActions.Paused(
+            address(this),
+            IPausableActions.Actions.Withdraw
+        );
+        vault.pause(IPausableActions.Actions.Withdraw);
     }
 
     // =========================================
@@ -71,39 +70,43 @@ contract PausableActionsTests is MockingUtilities {
     // =========================================
 
     function testUnpauseRevertsIfCallerIsNotAdmin() public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
         vm.prank(alice);
-        vault.unpause(PausableActions.Actions.Deposit);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.unpause(IPausableActions.Actions.Deposit);
     }
 
     function testUnpauseRevertsIfNotPaused() public {
-        vm.expectRevert(
-            PausableActions.PausableActions__ActionNotPaused.selector
-        );
-        vault.unpause(PausableActions.Actions.Deposit);
+        vm.expectRevert(IPausableActions.ActionNotPaused.selector);
+        vault.unpause(IPausableActions.Actions.Deposit);
     }
 
     function testUnpause() public {
-        vault.pause(PausableActions.Actions.Deposit);
-        vault.pause(PausableActions.Actions.Withdraw);
+        vault.pause(IPausableActions.Actions.Deposit);
+        vault.pause(IPausableActions.Actions.Withdraw);
 
-        vault.unpause(PausableActions.Actions.Deposit);
-        assertFalse(vault.paused(PausableActions.Actions.Deposit));
+        vault.unpause(IPausableActions.Actions.Deposit);
+        assertFalse(vault.paused(IPausableActions.Actions.Deposit));
 
-        vault.unpause(PausableActions.Actions.Withdraw);
-        assertFalse(vault.paused(PausableActions.Actions.Withdraw));
+        vault.unpause(IPausableActions.Actions.Withdraw);
+        assertFalse(vault.paused(IPausableActions.Actions.Withdraw));
     }
 
-    function testUnpauseEmitsEvent() public {
-        vault.pause(PausableActions.Actions.Deposit);
-        vault.pause(PausableActions.Actions.Withdraw);
+    function testUnpauseEmitsEvents() public {
+        vault.pause(IPausableActions.Actions.Deposit);
+        vault.pause(IPausableActions.Actions.Withdraw);
 
-        vm.expectEmit();
-        emit Unpaused(address(this), PausableActions.Actions.Deposit);
-        vault.unpause(PausableActions.Actions.Deposit);
+        vm.expectEmit(address(vault));
+        emit IPausableActions.Unpaused(
+            address(this),
+            IPausableActions.Actions.Deposit
+        );
+        vault.unpause(IPausableActions.Actions.Deposit);
 
-        vm.expectEmit();
-        emit Unpaused(address(this), PausableActions.Actions.Withdraw);
-        vault.unpause(PausableActions.Actions.Withdraw);
+        vm.expectEmit(address(vault));
+        emit IPausableActions.Unpaused(
+            address(this),
+            IPausableActions.Actions.Withdraw
+        );
+        vault.unpause(IPausableActions.Actions.Withdraw);
     }
 }

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
 
-contract RebalancerPermitTests is MockingUtilities {
+contract RebalancerPermitTests is MockingBase {
     struct Permit {
         address owner;
         address spender;
@@ -23,43 +23,37 @@ contract RebalancerPermitTests is MockingUtilities {
     address public owner;
     uint256 public ownerKey;
 
-    function setUp() public {
-        (owner, ownerKey) = makeAddrAndKey("owner");
+    function setUp() public override {
+        super.setUp();
 
-        initializeVault(vault, MIN_AMOUNT, initializer);
+        (owner, ownerKey) = makeAddrAndKey("owner");
     }
 
     // =========================================
     // permit & redeem
     // =========================================
 
-    function testRedeemWithPermit(
-        uint128 mintAmount,
-        uint128 redeemAmount
-    ) public {
-        vm.assume(
-            mintAmount >= MIN_AMOUNT &&
-                redeemAmount > 0 &&
-                redeemAmount < mintAmount
-        );
+    function testRedeemWithPermit(uint256 shares) public {
+        uint256 minShares = vault.convertToShares(minAssets); // explicit even if price is 1:1
+        shares = bound(shares, minShares, maxTestShares);
 
-        executeMint(vault, mintAmount, owner);
+        _executeMint(vault, shares, owner);
 
         Permit memory permit = Permit({
             owner: owner,
             spender: spender,
-            value: redeemAmount,
+            value: shares,
             nonce: vault.nonces(owner),
             deadline: block.timestamp + 1 days
         });
 
         bytes32 structHash = getStructHash(permit);
         bytes32 digest = getHashTypedDataV4(
-            vault.DOMAIN_SEPARATOR(), // This domain should be from the chain where the state changes
+            vault.DOMAIN_SEPARATOR(), // this domain should be from the chain where the state changes
             structHash
         );
 
-        // This message signing is supposed to be off-chain
+        // this message signing is supposed to be off-chain
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerKey, digest);
 
         vm.prank(operator);
@@ -73,18 +67,13 @@ contract RebalancerPermitTests is MockingUtilities {
             s
         );
 
-        assertEq(vault.allowance(owner, spender), redeemAmount);
-
-        uint256 withdrawAmount = vault.previewRedeem(redeemAmount);
-        uint256 fee = (withdrawAmount * WITHDRAW_FEE_PERCENT) /
-            PRECISION_FACTOR;
-        uint256 assetBalance = withdrawAmount - fee;
+        assertEq(vault.allowance(owner, spender), shares);
 
         vm.prank(spender);
-        vault.redeem(redeemAmount, spender, owner);
+        uint256 assets = vault.redeem(shares, spender, owner);
 
-        assertEq(vault.balanceOf(owner), mintAmount - redeemAmount);
-        assertEq(asset.balanceOf(spender), assetBalance);
+        assertEq(vault.balanceOf(owner), 0);
+        assertEq(asset.balanceOf(spender), assets);
     }
 
     // =========================================

@@ -1,45 +1,28 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {Timelock} from "../../contracts/Timelock.sol";
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {Timelock} from "../../contracts/access/Timelock.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
 
-contract TimelockTests is MockingUtilities {
+contract TimelockTests is MockingBase {
+    uint256 public constant GRACE_PERIOD = 14 days;
+
+    Timelock public timelock;
+    uint256 public delay;
+
     address public target;
     string public signature;
     uint256 public timestamp;
 
-    event DelayUpdated(uint256 indexed newDelay);
-    event Queued(
-        bytes32 indexed txId,
-        address indexed target,
-        uint256 value,
-        string signature,
-        bytes data,
-        uint256 timestamp
-    );
-    event Cancelled(
-        bytes32 indexed txId,
-        address indexed target,
-        uint256 value,
-        string signature,
-        bytes data,
-        uint256 timestamp
-    );
-    event Executed(
-        bytes32 indexed txId,
-        address indexed target,
-        uint256 value,
-        string signature,
-        bytes data,
-        uint256 timestamp
-    );
+    function setUp() public override {
+        delay = 30 minutes;
 
-    function setUp() public {
+        timelock = new Timelock(address(this), delay);
+
         target = address(timelock);
         signature = "setDelay(uint256)";
-        timestamp = block.timestamp + TIMELOCK_DELAY;
+        timestamp = block.timestamp + delay;
     }
 
     // =========================================
@@ -48,7 +31,7 @@ contract TimelockTests is MockingUtilities {
 
     function testConstructor() public view {
         assertEq(timelock.owner(), address(this));
-        assertEq(timelock.delay(), TIMELOCK_DELAY);
+        assertEq(timelock.delay(), delay);
     }
 
     // =========================================
@@ -59,13 +42,13 @@ contract TimelockTests is MockingUtilities {
         uint256 newDelay = 1 days;
         bytes memory data = abi.encode(newDelay);
 
+        vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
                 alice
             )
         );
-        vm.prank(alice);
         timelock.queue(target, 0, signature, data, timestamp);
     }
 
@@ -102,8 +85,8 @@ contract TimelockTests is MockingUtilities {
             abi.encode(target, 0, signature, data, timestamp)
         );
 
-        vm.expectEmit();
-        emit Queued(txId, target, 0, signature, data, timestamp);
+        vm.expectEmit(address(timelock));
+        emit Timelock.Queued(txId, target, 0, signature, data, timestamp);
         timelock.queue(target, 0, signature, data, timestamp);
     }
 
@@ -115,13 +98,13 @@ contract TimelockTests is MockingUtilities {
         uint256 newDelay = 1 days;
         bytes memory data = abi.encode(newDelay);
 
+        vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
                 alice
             )
         );
-        vm.prank(alice);
         timelock.cancel(target, 0, signature, data, timestamp);
     }
 
@@ -152,8 +135,8 @@ contract TimelockTests is MockingUtilities {
             abi.encode(target, 0, signature, data, timestamp)
         );
 
-        vm.expectEmit();
-        emit Cancelled(txId, target, 0, signature, data, timestamp);
+        vm.expectEmit(address(timelock));
+        emit Timelock.Cancelled(txId, target, 0, signature, data, timestamp);
         timelock.cancel(target, 0, signature, data, timestamp);
     }
 
@@ -165,13 +148,13 @@ contract TimelockTests is MockingUtilities {
         uint256 newDelay = 1 days;
         bytes memory data = abi.encode(newDelay);
 
+        vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
                 alice
             )
         );
-        vm.prank(alice);
         timelock.execute(target, 0, signature, data, timestamp);
     }
 
@@ -199,7 +182,7 @@ contract TimelockTests is MockingUtilities {
 
         timelock.queue(target, 0, signature, data, timestamp);
 
-        vm.warp(timestamp + TIMELOCK_GRACE_PERIOD + 1);
+        vm.warp(timestamp + GRACE_PERIOD + 1);
 
         vm.expectRevert(Timelock.Timelock__Expired.selector);
         timelock.execute(target, 0, signature, data, timestamp);
@@ -247,9 +230,9 @@ contract TimelockTests is MockingUtilities {
             abi.encode(target, 0, signature, data, timestamp)
         );
 
-        vm.expectEmit();
-        emit DelayUpdated(newDelay);
-        emit Executed(txId, target, 0, signature, data, timestamp);
+        vm.expectEmit(address(timelock));
+        emit Timelock.DelayUpdated(newDelay);
+        emit Timelock.Executed(txId, target, 0, signature, data, timestamp);
         timelock.execute(target, 0, signature, data, timestamp);
     }
 

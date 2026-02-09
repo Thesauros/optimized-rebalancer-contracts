@@ -1,91 +1,130 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import {AccessManager} from "../../contracts/access/AccessManager.sol";
-import {Rebalancer} from "../../contracts/Rebalancer.sol";
-import {InvalidProvider} from "../../contracts/mocks/MockProvider.sol";
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {IAccessManager} from "../../contracts/interfaces/IAccessManager.sol";
+import {IProvider} from "../../contracts/interfaces/IProvider.sol";
+import {IRebalancer} from "../../contracts/interfaces/IRebalancer.sol";
+import {MockProvider} from "../../contracts/mocks/MockProvider.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
 
-contract RebalancerRebalancingTests is MockingUtilities {
-    InvalidProvider public invalidProvider;
+contract RebalancerRebalancingTests is MockingBase {
+    IProvider[] public sources;
+    IProvider[] public destinations;
 
-    event FeeCharged(address indexed treasury, uint256 fee);
-    event RebalanceExecuted(
-        uint256 assetsFrom,
-        uint256 assetsTo,
-        address indexed from,
-        address indexed to
-    );
+    function setUp() public override {
+        super.setUp();
 
-    function setUp() public {
-        invalidProvider = new InvalidProvider();
+        _executeDeposit(vault, THOUSAND, alice);
+        _executeDeposit(vault, THOUSAND, bob);
 
-        initializeVault(vault, MIN_AMOUNT, initializer);
-
-        executeDeposit(vault, DEPOSIT_AMOUNT, alice);
-        executeDeposit(vault, DEPOSIT_AMOUNT, bob);
+        sources.push(mockProviderA);
+        destinations.push(mockProviderB);
     }
 
     // =========================================
     // rebalance
     // =========================================
 
-    function testRebalanceRevertsIfCallerIsNotOperator() public {
-        uint256 assets = 2 * DEPOSIT_AMOUNT;
-        uint256 fee = (assets * REBALANCE_FEE_PERCENT) / PRECISION_FACTOR;
+    function testRebalanceRevertsIfCallerIsNotExecutor() public {
+        uint256[] memory amounts = new uint256[](1);
 
-        vm.expectRevert(
-            AccessManager.AccessManager__CallerIsNotOperator.selector
-        );
         vm.prank(alice);
-        vault.rebalance(assets, mockProviderA, mockProviderB, fee);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.rebalance(amounts, sources, destinations);
+    }
+
+    function testRebalanceRevertsIfCountIsZero() public {
+        uint256[] memory amounts = new uint256[](0);
+
+        vm.expectRevert(IRebalancer.InvalidCount.selector);
+        vault.rebalance(amounts, sources, destinations);
+    }
+
+    function testRebalanceRevertsIfArraysMismatch() public {
+        uint256[] memory amounts = new uint256[](1);
+        IProvider[] memory invalidSources = new IProvider[](2);
+        IProvider[] memory invalidDestinations = new IProvider[](0);
+
+        vm.expectRevert(IRebalancer.ArrayMismatch.selector);
+        vault.rebalance(amounts, invalidSources, destinations);
+
+        vm.expectRevert(IRebalancer.ArrayMismatch.selector);
+        vault.rebalance(amounts, sources, invalidDestinations);
     }
 
     function testRebalanceRevertsIfProviderIsInvalid() public {
-        uint256 assets = 2 * DEPOSIT_AMOUNT;
-        uint256 fee = (assets * REBALANCE_FEE_PERCENT) / PRECISION_FACTOR;
+        uint256[] memory amounts = new uint256[](1);
 
-        vm.expectRevert(Rebalancer.Rebalancer__InvalidProvider.selector);
-        vault.rebalance(assets, invalidProvider, mockProviderB, fee);
+        IProvider[] memory invalidSources = new IProvider[](1);
+        invalidSources[0] = mockProviderC;
 
-        vm.expectRevert(Rebalancer.Rebalancer__InvalidProvider.selector);
-        vault.rebalance(assets, mockProviderA, invalidProvider, fee);
+        IProvider[] memory invalidDestinations = new IProvider[](1);
+        invalidDestinations[0] = mockProviderC;
+
+        vm.expectRevert(IRebalancer.InvalidProvider.selector);
+        vault.rebalance(amounts, sources, invalidDestinations);
+
+        vm.expectRevert(IRebalancer.InvalidProvider.selector);
+        vault.rebalance(amounts, invalidSources, destinations);
     }
 
-    function testRebalanceRevertsIfFeeIsNotReasonable() public {
-        uint256 assets = 2 * DEPOSIT_AMOUNT;
-        uint256 excessFee = (assets * MAX_REBALANCE_FEE_PERCENT) /
-            PRECISION_FACTOR +
-            1;
+    function testRebalanceRevertsIfAssetsIsZero() public {
+        uint256[] memory amounts = new uint256[](1);
 
-        vm.expectRevert(Rebalancer.Rebalancer__ExcessRebalanceFee.selector);
-        vault.rebalance(assets, mockProviderA, mockProviderB, excessFee);
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vault.rebalance(amounts, sources, destinations);
+    }
+
+    function testRebalanceRevertsIfAssetsExceedsFrom() public {
+        uint256[] memory amounts = new uint256[](1);
+
+        amounts[0] = _getAssetsAtProvider(vault, mockProviderA) + 1;
+
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vault.rebalance(amounts, sources, destinations);
+    }
+
+    function testRebalanceWhenAssetsIsMax() public {
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = type(uint256).max;
+
+        uint256 assetsAtFrom = initialTotalAssets + (2 * THOUSAND);
+
+        assertEq(_getAssetsAtProvider(vault, mockProviderA), assetsAtFrom);
+
+        vault.rebalance(amounts, sources, destinations);
+
+        assertEq(_getAssetsAtProvider(vault, mockProviderA), 0);
+        assertEq(_getAssetsAtProvider(vault, mockProviderB), assetsAtFrom);
     }
 
     function testRebalance() public {
-        uint256 assets = 2 * DEPOSIT_AMOUNT;
-        uint256 fee = (assets * REBALANCE_FEE_PERCENT) / PRECISION_FACTOR;
+        uint256 assets = 2 * THOUSAND;
 
-        vault.rebalance(assets, mockProviderA, mockProviderB, fee);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = assets;
 
-        assertEq(getBalanceAtProvider(vault, mockProviderA), MIN_AMOUNT);
-        assertEq(getBalanceAtProvider(vault, mockProviderB), assets - fee);
-        assertEq(asset.balanceOf(treasury), fee);
+        vault.rebalance(amounts, sources, destinations);
+
+        assertEq(
+            _getAssetsAtProvider(vault, mockProviderA),
+            initialTotalAssets
+        );
+        assertEq(_getAssetsAtProvider(vault, mockProviderB), assets);
     }
 
     function testRebalanceEmitsEvent() public {
-        uint256 assets = 2 * DEPOSIT_AMOUNT;
-        uint256 fee = (assets * REBALANCE_FEE_PERCENT) / PRECISION_FACTOR;
+        uint256 assets = 2 * THOUSAND;
 
-        vm.expectEmit();
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = assets;
 
-        emit FeeCharged(treasury, fee);
-        emit RebalanceExecuted(
+        vm.expectEmit(address(vault));
+        emit IRebalancer.RebalanceExecuted(
             assets,
-            assets - fee,
             address(mockProviderA),
             address(mockProviderB)
         );
-        vault.rebalance(assets, mockProviderA, mockProviderB, fee);
+        vault.rebalance(amounts, sources, destinations);
     }
 }

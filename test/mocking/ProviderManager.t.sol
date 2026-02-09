@@ -1,23 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {ProviderManager} from "../../contracts/providers/ProviderManager.sol";
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {IProviderManager} from "../../contracts/interfaces/IProviderManager.sol";
+import {ProviderManager} from "../../contracts/utils/ProviderManager.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
 
-contract ProviderManagerTests is MockingUtilities {
-    event YieldTokenUpdated(
-        string identifier,
-        address indexed asset,
-        address yieldToken
-    );
+contract ProviderManagerTests is MockingBase {
+    ProviderManager public providerManager;
 
-    event MarketUpdated(
-        string identifier,
-        address indexed assetOne,
-        address indexed assetTwo,
-        address market
-    );
+    function setUp() public override {
+        providerManager = new ProviderManager(address(this));
+    }
 
     // =========================================
     // constructor
@@ -36,13 +30,13 @@ contract ProviderManagerTests is MockingUtilities {
         address asset,
         address yieldToken
     ) public {
+        vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
                 alice
             )
         );
-        vm.prank(alice);
         providerManager.setYieldToken(identifier, asset, yieldToken);
     }
 
@@ -64,8 +58,8 @@ contract ProviderManagerTests is MockingUtilities {
         address asset,
         address yieldToken
     ) public {
-        vm.expectEmit();
-        emit YieldTokenUpdated(identifier, asset, yieldToken);
+        vm.expectEmit(address(providerManager));
+        emit IProviderManager.YieldTokenUpdated(identifier, asset, yieldToken);
         providerManager.setYieldToken(identifier, asset, yieldToken);
     }
 
@@ -79,13 +73,13 @@ contract ProviderManagerTests is MockingUtilities {
         address assetTwo,
         address market
     ) public {
+        vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
                 Ownable.OwnableUnauthorizedAccount.selector,
                 alice
             )
         );
-        vm.prank(alice);
         providerManager.setMarket(identifier, assetOne, assetTwo, market);
     }
 
@@ -112,8 +106,13 @@ contract ProviderManagerTests is MockingUtilities {
         address assetTwo,
         address market
     ) public {
-        vm.expectEmit();
-        emit MarketUpdated(identifier, assetOne, assetTwo, market);
+        vm.expectEmit(address(providerManager));
+        emit IProviderManager.MarketUpdated(
+            identifier,
+            assetOne,
+            assetTwo,
+            market
+        );
         providerManager.setMarket(identifier, assetOne, assetTwo, market);
     }
 }
