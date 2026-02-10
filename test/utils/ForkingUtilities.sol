@@ -1,31 +1,18 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import {IERC20Metadata, IERC20} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {IProvider} from "../../contracts/interfaces/IProvider.sol";
-import {IVault} from "../../contracts/interfaces/IVault.sol";
-import {Vault} from "../../contracts/base/Vault.sol";
+import {IRebalancer} from "../../contracts/interfaces/IRebalancer.sol";
 import {Rebalancer} from "../../contracts/Rebalancer.sol";
-import {Timelock} from "../../contracts/Timelock.sol";
-import {VaultManager} from "../../contracts/VaultManager.sol";
-import {ProviderManager} from "../../contracts/providers/ProviderManager.sol";
-import {CompoundV3Provider} from "../../contracts/providers/CompoundV3Provider.sol";
-import {AaveV3Provider} from "../../contracts/providers/AaveV3Provider.sol";
 import {Test} from "forge-std/Test.sol";
+import "../../contracts/libraries/Constants.sol";
 
-contract ForkingUtilities is Test {
-    address public alice = makeAddr("alice");
-    address public bob = makeAddr("bob");
-    address public initializer = makeAddr("initializer");
-    address public treasury = makeAddr("treasury");
-
-    Rebalancer public vault;
-    Timelock public timelock;
-
-    ProviderManager public providerManager;
-
-    IERC20 public usdc;
-    IERC20 public usdt;
+contract ForkingBase is Test {
+    uint256 public constant ONE = 1e6;
+    uint256 public constant HUNDRED = 100e6;
+    uint256 public constant THOUSAND = 1000e6;
 
     address public constant USDC_ADDRESS =
         0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
@@ -45,102 +32,144 @@ contract ForkingUtilities is Test {
     address public constant MORPHO_HYPERITHM_VAULT_ADDRESS =
         0x4B6F1C9E5d470b97181786b26da0d0945A7cf027;
 
-    uint256 public constant PRECISION_FACTOR = 1 ether;
-    uint256 public constant WITHDRAW_FEE_PERCENT = 0.001 ether; // 0.1%
+    address public alice = makeAddr("alice");
+    address public bob = makeAddr("bob");
+    address public treasury = makeAddr("treasury");
 
-    uint256 public constant MIN_AMOUNT = 1e6;
-    uint256 public constant DEPOSIT_AMOUNT = 1000e6;
-    uint256 public constant TIMELOCK_DELAY = 30 minutes;
+    Rebalancer public vault;
 
-    constructor() {
+    IERC20Metadata public usdc;
+    IERC20Metadata public usdt;
+
+    uint256 public minAssets;
+
+    uint256 public initialTotalSupply;
+    uint256 public initialTotalAssets;
+
+    function setUp() public virtual {
         string memory ARBITRUM_RPC_URL = vm.envString("ARBITRUM_RPC_URL");
         vm.createSelectFork(ARBITRUM_RPC_URL);
 
-        usdt = IERC20(USDT_ADDRESS);
-        vm.label(address(usdt), "USDT");
-
-        usdc = IERC20(USDC_ADDRESS);
+        usdc = IERC20Metadata(USDC_ADDRESS);
         vm.label(address(usdc), "USDC");
 
-        providerManager = new ProviderManager(address(this));
-        providerManager.setYieldToken(
-            "Compound_V3_Provider",
-            USDT_ADDRESS,
-            COMET_USDT_ADDRESS
-        );
+        usdt = IERC20Metadata(USDT_ADDRESS);
+        vm.label(address(usdt), "USDT");
 
-        timelock = new Timelock(address(this), TIMELOCK_DELAY);
+        minAssets = ONE;
+
+        // 1:1 price during initial deposit
+        initialTotalAssets = minAssets;
+        initialTotalSupply = minAssets;
     }
 
-    function deployVault(
-        address _asset,
-        IProvider[] memory _providers
-    ) internal {
-        string memory name = string.concat(
-            "Rebalance ",
-            IERC20Metadata(_asset).name()
+    function _deployVault() internal returns (Rebalancer) {
+        Rebalancer impl = new Rebalancer();
+        TransparentUpgradeableProxy p = new TransparentUpgradeableProxy(
+            address(impl),
+            address(this), // owner of the proxy admin for testing
+            ""
         );
-        string memory symbol = string.concat(
-            "r",
-            IERC20Metadata(_asset).symbol()
-        );
+        Rebalancer v = Rebalancer(payable(address(p)));
 
-        vault = new Rebalancer(
-            _asset,
+        return v;
+    }
+
+    function _initializeVault(
+        Rebalancer v,
+        IERC20Metadata asset,
+        IProvider[] memory providers
+    ) internal {
+        string memory name = string.concat("Thesauros ", asset.name());
+        string memory symbol = string.concat("t", asset.symbol());
+
+        deal(address(asset), address(this), minAssets);
+        asset.approve(address(v), minAssets);
+
+        v.initialize(
+            address(this), // admin for testing
+            address(this), // timelock for testing
+            address(asset),
             name,
             symbol,
-            _providers,
-            WITHDRAW_FEE_PERCENT,
-            address(timelock),
-            treasury
+            providers,
+            treasury,
+            0,
+            0,
+            minAssets
         );
     }
 
-    function initializeVault(
-        IVault _vault,
-        uint256 _amount,
-        address _from
-    ) internal {
-        address asset = _vault.asset();
+    function _executeDeposit(
+        IRebalancer v,
+        uint256 amount,
+        address from
+    ) internal returns (uint256 shares) {
+        address asset = v.asset();
+        deal(asset, from, amount);
 
-        deal(asset, _from, _amount);
+        uint256 assetsBefore = IERC20Metadata(asset).balanceOf(from);
 
-        vm.startPrank(_from);
-        IERC20(asset).approve(address(_vault), _amount);
-        _vault.setupVault(_amount);
+        vm.startPrank(from);
+        IERC20Metadata(asset).approve(address(v), amount);
+        shares = v.deposit(amount, from);
         vm.stopPrank();
+
+        assertEq(IERC20Metadata(asset).balanceOf(from), assetsBefore - amount);
     }
 
-    function executeDeposit(
-        IVault _vault,
-        uint256 _amount,
-        address _from
-    ) internal {
-        address asset = _vault.asset();
+    function _executeMint(
+        IRebalancer v,
+        uint256 amount,
+        address from
+    ) internal returns (uint256 assets) {
+        address asset = v.asset();
 
-        deal(asset, _from, _amount);
+        uint256 previewed = v.previewMint(amount);
 
-        vm.startPrank(_from);
-        IERC20(asset).approve(address(_vault), _amount);
-        _vault.deposit(_amount, _from);
+        deal(asset, from, previewed);
+
+        uint256 assetsBefore = IERC20Metadata(asset).balanceOf(from);
+
+        vm.startPrank(from);
+        IERC20Metadata(asset).approve(address(v), previewed);
+        assets = v.mint(amount, from);
         vm.stopPrank();
+
+        assertEq(assets, previewed);
+        assertEq(
+            IERC20Metadata(asset).balanceOf(from),
+            assetsBefore - previewed
+        );
     }
 
-    function executeWithdraw(
-        IVault _vault,
-        uint256 _amount,
-        address _from
-    ) internal {
-        vm.prank(_from);
-        _vault.withdraw(_amount, _from, _from);
+    function _executeWithdraw(
+        IRebalancer v,
+        uint256 amount,
+        address from
+    ) internal returns (uint256 shares) {
+        address asset = v.asset();
+
+        uint256 assetsBefore = IERC20Metadata(asset).balanceOf(from);
+
+        vm.prank(from);
+        shares = v.withdraw(amount, from, from);
+
+        assertEq(IERC20Metadata(asset).balanceOf(from), assetsBefore + amount);
     }
 
-    function executeRedeem(
-        IVault _vault,
-        uint256 _amount,
-        address _from
-    ) internal {
-        vm.prank(_from);
-        _vault.redeem(_amount, _from, _from);
+    function _executeRedeem(
+        IRebalancer v,
+        uint256 amount,
+        address from
+    ) internal returns (uint256 assets) {
+        address asset = v.asset();
+
+        uint256 assetsBefore = IERC20Metadata(asset).balanceOf(from);
+
+        vm.prank(from);
+        assets = v.redeem(amount, from, from);
+
+        assertEq(IERC20Metadata(asset).balanceOf(from), assetsBefore + assets);
     }
 }
