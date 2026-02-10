@@ -20,7 +20,7 @@ contract ForkingBase is Test {
         0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9;
 
     address public constant COMET_USDC_ADDRESS =
-        0xb125E6687d4313864e53df431d5425969c15Eb2F;
+        0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf;
     address public constant COMET_USDT_ADDRESS =
         0xd98Be00b5D27fc98112BdE293e487f8D4cA57d07;
     address public constant MORPHO_STEAKHOUSE_HIGH_YIELD_VAULT_ADDRESS =
