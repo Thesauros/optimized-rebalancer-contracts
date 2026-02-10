@@ -1,29 +1,39 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IProvider} from "../../contracts/interfaces/IProvider.sol";
+import {ProviderManager} from "../../contracts/utils/ProviderManager.sol";
 import {CompoundV3Provider} from "../../contracts/providers/CompoundV3Provider.sol";
-import {ForkingUtilities} from "../utils/ForkingUtilities.sol";
+import {ForkingBase} from "./ForkingBase.t.sol";
 
-contract CompoundV3ProviderTests is ForkingUtilities {
+contract CompoundV3ProviderTests is ForkingBase {
+    ProviderManager public providerManager;
     CompoundV3Provider public compoundV3Provider;
 
-    function setUp() public {
+    function setUp() public override {
+        super.setUp();
+
+        providerManager = new ProviderManager(address(this));
+        providerManager.setYieldToken(
+            "Compound_V3_Provider",
+            USDC_ADDRESS,
+            COMET_USDC_ADDRESS
+        );
+
         compoundV3Provider = new CompoundV3Provider(address(providerManager));
 
         IProvider[] memory providers = new IProvider[](1);
         providers[0] = compoundV3Provider;
 
-        deployVault(address(usdt), providers);
-        initializeVault(vault, MIN_AMOUNT, initializer);
+        vault = _deployVault();
+        _initializeVault(vault, usdc, providers);
     }
 
     // =========================================
     // constructor
     // =========================================
 
-    function testConstructorRevertsIfProviderManagerIsInvalid() public {
+    function testConstructorRevertsIfProviderManagerIsAddressZero() public {
         vm.expectRevert(
             CompoundV3Provider.CompoundV3Provider__AddressZero.selector
         );
@@ -42,18 +52,21 @@ contract CompoundV3ProviderTests is ForkingUtilities {
     // =========================================
 
     function testDeposit() public {
-        uint256 mintedSharesBefore = vault.balanceOf(alice);
-        uint256 assetBalanceBefore = vault.convertToAssets(mintedSharesBefore);
+        uint256 assets = THOUSAND;
 
-        executeDeposit(vault, DEPOSIT_AMOUNT, alice);
+        uint256 sharesBefore = vault.balanceOf(alice);
+        uint256 previewed = vault.previewDeposit(assets);
 
-        vm.warp(block.timestamp + 10 seconds);
+        uint256 shares = _executeDeposit(vault, assets, alice);
+
+        assertEq(shares, previewed);
+
+        skip(10 seconds);
         vm.roll(block.number + 1);
 
-        uint256 mintedShares = vault.balanceOf(alice);
-        uint256 assetBalance = vault.convertToAssets(mintedShares);
-
-        assertGe(assetBalance - assetBalanceBefore, DEPOSIT_AMOUNT);
+        assertEq(vault.balanceOf(alice), sharesBefore + shares);
+        assertEq(vault.totalSupply(), initialTotalSupply + shares);
+        assertGe(vault.convertToAssets(shares), assets);
     }
 
     // =========================================
@@ -61,23 +74,20 @@ contract CompoundV3ProviderTests is ForkingUtilities {
     // =========================================
 
     function testWithdraw() public {
-        executeDeposit(vault, DEPOSIT_AMOUNT, alice);
+        uint256 assets = THOUSAND;
 
-        vm.warp(block.timestamp + 10 seconds);
+        _executeDeposit(vault, assets, alice);
+
+        skip(10 seconds);
         vm.roll(block.number + 1);
 
-        address asset = vault.asset();
+        uint256 totalSupplyBefore = vault.totalSupply();
+        uint256 previewed = vault.previewWithdraw(assets);
 
-        uint256 balanceBefore = IERC20(asset).balanceOf(alice);
-        uint256 maxWithdrawable = vault.maxWithdraw(alice);
-        uint256 fee = (maxWithdrawable * WITHDRAW_FEE_PERCENT) /
-            PRECISION_FACTOR;
+        uint256 shares = _executeWithdraw(vault, assets, alice);
 
-        executeWithdraw(vault, maxWithdrawable, alice);
-
-        uint256 balanceAfter = balanceBefore + maxWithdrawable - fee;
-
-        assertEq(IERC20(asset).balanceOf(alice), balanceAfter);
+        assertEq(shares, previewed);
+        assertEq(vault.totalSupply(), totalSupplyBefore - shares);
     }
 
     // =========================================
@@ -85,12 +95,14 @@ contract CompoundV3ProviderTests is ForkingUtilities {
     // =========================================
 
     function testDepositBalance() public {
-        executeDeposit(vault, DEPOSIT_AMOUNT, alice);
+        uint256 assets = THOUSAND;
 
-        vm.warp(block.timestamp + 10 seconds);
+        _executeDeposit(vault, assets, alice);
+
+        skip(10 seconds);
         vm.roll(block.number + 1);
 
-        assertGe(vault.totalAssets(), DEPOSIT_AMOUNT + MIN_AMOUNT);
+        assertGe(vault.totalAssets(), initialTotalAssets + assets);
     }
 
     // =========================================
