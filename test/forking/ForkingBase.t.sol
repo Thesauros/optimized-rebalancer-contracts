@@ -15,22 +15,17 @@ contract ForkingBase is Test {
     uint256 public constant THOUSAND = 1000e6;
 
     address public constant USDC_ADDRESS =
-        0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
-    address public constant USDT_ADDRESS =
-        0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9;
+        0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
 
     address public constant COMET_USDC_ADDRESS =
-        0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf;
-    address public constant COMET_USDT_ADDRESS =
-        0xd98Be00b5D27fc98112BdE293e487f8D4cA57d07;
+        0xb125E6687d4313864e53df431d5425969c15Eb2F;
+
+    address public constant MORPHO_STEAKHOUSE_PRIME_VAULT_ADDRESS =
+        0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2;
     address public constant MORPHO_STEAKHOUSE_HIGH_YIELD_VAULT_ADDRESS =
-        0x5c0C306Aaa9F877de636f4d5822cA9F2E81563BA;
+        0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F;
     address public constant MORPHO_GAUNTLET_CORE_VAULT_ADDRESS =
-        0x7e97fa6893871A2751B5fE961978DCCb2c201E65;
-    address public constant MORPHO_YEARN_DEGEN_VAULT_ADDRESS =
-        0x36b69949d60d06ECcC14DE0Ae63f4E00cc2cd8B9;
-    address public constant MORPHO_HYPERITHM_VAULT_ADDRESS =
-        0x4B6F1C9E5d470b97181786b26da0d0945A7cf027;
+        0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12;
 
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
@@ -39,7 +34,6 @@ contract ForkingBase is Test {
     Rebalancer public vault;
 
     IERC20Metadata public usdc;
-    IERC20Metadata public usdt;
 
     uint256 public minAssets;
 
@@ -47,14 +41,11 @@ contract ForkingBase is Test {
     uint256 public initialTotalAssets;
 
     function setUp() public virtual {
-        string memory ARBITRUM_RPC_URL = vm.envString("ARBITRUM_RPC_URL");
-        vm.createSelectFork(ARBITRUM_RPC_URL);
+        string memory BASE_RPC_URL = vm.envString("BASE_RPC_URL");
+        vm.createSelectFork(BASE_RPC_URL);
 
         usdc = IERC20Metadata(USDC_ADDRESS);
         vm.label(address(usdc), "USDC");
-
-        usdt = IERC20Metadata(USDT_ADDRESS);
-        vm.label(address(usdt), "USDT");
 
         minAssets = ONE;
 

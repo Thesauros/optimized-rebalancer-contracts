@@ -5,13 +5,15 @@ import {IProvider} from "../../contracts/interfaces/IProvider.sol";
 import {MorphoProvider} from "../../contracts/providers/MorphoProvider.sol";
 import {ForkingBase} from "./ForkingBase.t.sol";
 
-contract HyperithmMorphoProviderTests is ForkingBase {
+contract SteakhousePrimeMorphoProviderTests is ForkingBase {
     MorphoProvider public morphoProvider;
 
     function setUp() public override {
         super.setUp();
 
-        morphoProvider = new MorphoProvider(MORPHO_HYPERITHM_VAULT_ADDRESS);
+        morphoProvider = new MorphoProvider(
+            MORPHO_STEAKHOUSE_PRIME_VAULT_ADDRESS
+        );
 
         IProvider[] memory providers = new IProvider[](1);
         providers[0] = morphoProvider;
