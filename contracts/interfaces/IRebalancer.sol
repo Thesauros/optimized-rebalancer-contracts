@@ -67,14 +67,14 @@ interface IRebalancer is IERC4626 {
     /**
      * @notice Emitted when fees are applied.
      *
-     * @param lastTotalBalance The previous recorded total balance.
-     * @param currentTotalBalance The current total balance.
+     * @param lastTotalAssets The previous recorded total assets.
+     * @param totalManagedAssets The current total assets.
      * @param performanceFeeShares The amount of shares minted as performance fee.
      * @param managementFeeShares The amount of shares minted as management fee.
      */
     event FeesApplied(
-        uint256 lastTotalBalance,
-        uint256 currentTotalBalance,
+        uint256 lastTotalAssets,
+        uint256 totalManagedAssets,
         uint256 performanceFeeShares,
         uint256 managementFeeShares
     );
@@ -103,4 +103,40 @@ interface IRebalancer is IERC4626 {
         IProvider[] memory sources,
         IProvider[] memory destinations
     ) external returns (bool);
+
+    function applyFees() external;
+
+    function setProviders(IProvider[] memory providers) external;
+
+    function setEntryProvider(IProvider entryProvider) external;
+
+    function setTimelock(address timelock) external;
+
+    function setTreasury(address treasury) external;
+
+    function setManagementFee(uint96 managementFee) external;
+
+    function setPerformanceFee(uint96 performanceFee) external;
+
+    function setMinAssets(uint256 minAssets) external;
+
+    function getAccruedFees() external view returns (uint256, uint256);
+
+    function getProviders() external view returns (IProvider[] memory);
+
+    function getEntryProvider() external view returns (IProvider);
+
+    function getTimelock() external view returns (address);
+
+    function getTreasury() external view returns (address);
+
+    function getManagementFee() external view returns (uint96);
+
+    function getPerformanceFee() external view returns (uint96);
+
+    function getLastTotalAssets() external view returns (uint256);
+
+    function getLastTimestamp() external view returns (uint64);
+
+    function getMinAssets() external view returns (uint256);
 }
