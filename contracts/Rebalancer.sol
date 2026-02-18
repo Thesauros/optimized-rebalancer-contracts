@@ -7,11 +7,11 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {AccessManager} from "./access/AccessManager.sol";
 import {PausableActions} from "./utils/PausableActions.sol";
 import {IPausableActions} from "./interfaces/IPausableActions.sol";
 import {IProvider} from "./interfaces/IProvider.sol";
-import {IERC4626} from "./interfaces/IERC4626.sol";
 import {IRebalancer} from "./interfaces/IRebalancer.sol";
 import "./libraries/Constants.sol";
 
@@ -133,7 +133,12 @@ contract Rebalancer is
     /**
      * @notice Returns the number of decimals used to get number representation.
      */
-    function decimals() public view override(ERC20Upgradeable) returns (uint8) {
+    function decimals()
+        public
+        view
+        override(ERC20Upgradeable, IERC20Metadata)
+        returns (uint8)
+    {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._underlyingDecimals;
     }
@@ -141,7 +146,7 @@ contract Rebalancer is
     /**
      * @inheritdoc IERC4626
      */
-    function asset() public view override returns (address) {
+    function asset() public view returns (address) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return address($._asset);
     }
@@ -149,7 +154,7 @@ contract Rebalancer is
     /**
      * @inheritdoc IERC4626
      */
-    function totalAssets() public view override returns (uint256) {
+    function totalAssets() public view returns (uint256) {
         return _totalAssetsAtProviders();
     }
 
