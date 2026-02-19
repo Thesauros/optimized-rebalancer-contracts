@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IAccessManager} from "../../contracts/interfaces/IAccessManager.sol";
 import {IProvider} from "../../contracts/interfaces/IProvider.sol";
-import {IERC4626} from "../../contracts/interfaces/IERC4626.sol";
 import {IRebalancer} from "../../contracts/interfaces/IRebalancer.sol";
 import {MockProvider} from "../../contracts/mocks/MockProvider.sol";
 import {AccessManager} from "../../contracts/access/AccessManager.sol";
@@ -405,7 +405,7 @@ contract RebalancerCoreTests is MockingBase {
     }
 
     function testSetEntryProviderRevertsIfProviderIsInvalid() public {
-        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vm.expectRevert(IRebalancer.InvalidProvider.selector);
         vault.setEntryProvider(mockProviderC);
     }
 
