@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.33;
 
-/**
- * @title IInterestRateModel
- * @author Revert
- * @dev Modified version of the original Revert interface.
- */
+/// @title IInterestRateModel
+/// @author Revert
+/// @dev Modified version of the original Revert interface.
 interface IInterestRateModel {
     // gets borrow and supply interest rate per second
     function getRatesPerSecondX64(

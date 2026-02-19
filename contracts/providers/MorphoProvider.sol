@@ -10,83 +10,55 @@ import {IIrm} from "morpho-blue/interfaces/IIrm.sol";
 import {IProvider} from "../interfaces/IProvider.sol";
 import {IRebalancer} from "../interfaces/IRebalancer.sol";
 
-/**
- * @title MorphoProvider
- * @notice Provider implementation for Morpho Blue protocol integration
- * @dev This provider integrates with Morpho Blue's MetaMorpho vaults to provide
- *      yield generation through automated market making and lending strategies.
- * 
- * @custom:architecture The provider works with MetaMorpho vaults that:
- * - Automatically allocate funds across multiple Morpho Blue markets
- * - Optimize yield through dynamic rebalancing
- * - Handle complex market interactions transparently
- * 
- * @custom:yield-calculation The APY calculation considers:
- * - Individual market rates from Interest Rate Models (IRM)
- * - Market utilization rates
- * - Protocol fees
- * - Asset allocation across markets
- * 
- * @custom:security Features:
- * - Uses MetaMorpho's battle-tested vault strategies
- * - Leverages Morpho Blue's peer-to-peer lending model
- * - Implements proper access controls through IProvider interface
- * 
- * @custom:usage Example:
- * ```solidity
- * // Deploy with a MetaMorpho vault address
- * MorphoProvider provider = new MorphoProvider(metaMorphoVaultAddress);
- * 
- * // The vault can now deposit/withdraw through this provider
- * provider.deposit(amount, vault);
- * uint256 balance = provider.getDepositBalance(user, vault);
- * uint256 apy = provider.getDepositRate(vault);
- * ```
- */
+/// @title MorphoProvider
+/// @notice Provider implementation for Morpho protocol integration.
 contract MorphoProvider is IProvider {
     using MathLib for uint256;
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
-    // consider using SCREAMING_SNAKE_CASE
+    /// @dev The address is zero.
+    error AddressZero();
+
     IMetaMorpho private immutable _metaMorpho;
 
+    /// @dev Initializes the MorphoProvider with the specified parameters.
+    /// @param metaMorpho_ The address of the MetaMorpho vault.
     constructor(address metaMorpho_) {
+        if (metaMorpho_ == address(0)) {
+            revert AddressZero();
+        }
         _metaMorpho = IMetaMorpho(metaMorpho_);
     }
 
-    /**
-     * @inheritdoc IProvider
-     */
+    /// @inheritdoc IProvider
     function deposit(
         uint256 amount,
         IRebalancer vault
-    ) external override returns (bool success) {
+    ) external returns (bool success) {
         _metaMorpho.deposit(amount, address(vault));
         success = true;
     }
 
-    /**
-     * @inheritdoc IProvider
-     */
+    /// @inheritdoc IProvider
     function withdraw(
         uint256 amount,
         IRebalancer vault
-    ) external override returns (bool success) {
+    ) external returns (bool success) {
         _metaMorpho.withdraw(amount, address(vault), address(vault));
         success = true;
     }
 
-    /**
-     * @dev Returns the Morpho contract of Morpho Blue.
-     */
+    /// @dev Returns the Morpho contract of Morpho.
+    /// @return The Morpho contract.
     function _getMorpho() internal view returns (IMorpho) {
         return _metaMorpho.MORPHO();
     }
 
-    /**
-     * @dev Returns the current APY of a Morpho Blue market.
-     */
+    /// @dev Returns the current APY of a market.
+    /// @param marketParams The market parameters.
+    /// @param market The market.
+    /// @return marketRate The market APY.
     function _getMarketRate(
         MarketParams memory marketParams,
         Market memory market
@@ -114,23 +86,19 @@ contract MorphoProvider is IProvider {
         );
     }
 
-    /**
-     * @inheritdoc IProvider
-     */
+    /// @inheritdoc IProvider
     function getDepositBalance(
         address user,
         IRebalancer
-    ) external view override returns (uint256 balance) {
+    ) external view returns (uint256 balance) {
         uint256 shares = _metaMorpho.balanceOf(user);
         balance = _metaMorpho.convertToAssets(shares);
     }
 
-    /**
-     * @inheritdoc IProvider
-     */
+    /// @inheritdoc IProvider
     function getDepositRate(
         IRebalancer
-    ) external view override returns (uint256 rate) {
+    ) external view returns (uint256 rate) {
         IMorpho morpho = _getMorpho();
 
         uint256 ratio;
@@ -153,27 +121,23 @@ contract MorphoProvider is IProvider {
             );
             ratio += marketRate.wMulDown(assetsInMarket);
         }
-        // Scaled by 1e9 to return ray(1e27) per IProvider specs, Morpho Blue uses base 1e18 number.
+        // scaled by 1e9 to return ray(1e27) per IProvider specs, Morpho uses base 1e18 number.
         rate =
             ratio.mulDivDown(1e18 - _metaMorpho.fee(), totalDeposits) *
             10 ** 9;
     }
 
-    /**
-     * @inheritdoc IProvider
-     */
+    /// @inheritdoc IProvider
     function getSource(
         address,
         address,
         address
-    ) external view override returns (address source) {
+    ) external view returns (address source) {
         source = address(_metaMorpho);
     }
 
-    /**
-     * @inheritdoc IProvider
-     */
-    function getIdentifier() public pure override returns (string memory) {
+    /// @inheritdoc IProvider
+    function getIdentifier() external pure returns (string memory) {
         return "Morpho_Provider";
     }
 }
