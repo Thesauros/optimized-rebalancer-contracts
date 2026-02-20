@@ -1,88 +1,84 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import {IProvider} from "../../contracts/interfaces/IProvider.sol";
-import {Vault} from "../../contracts/base/Vault.sol";
+import {IRebalancer} from "../../contracts/interfaces/IRebalancer.sol";
 import {Rebalancer} from "../../contracts/Rebalancer.sol";
-import {PausableActions} from "../../contracts/base/PausableActions.sol";
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
 
-contract RebalancerSetupTests is MockingUtilities {
-    event SetupCompleted(address indexed setupAddress);
-
+contract RebalancerSetupTests is MockingBase {
+    
     // =========================================
-    // constructor
+    // initialize
     // =========================================
 
-    function testConstructorRevertsIfAssetIsInvalid() public {
-        IProvider[] memory providers = new IProvider[](1);
-        providers[0] = mockProviderA;
-
-        vm.expectRevert(Vault.Vault__AddressZero.selector);
-        new Rebalancer(
+    function testInitializeRevertsIfAdminIsAddressZero() public {
+        (, , Rebalancer otherVault) = _deployVault();
+        vm.expectRevert(IRebalancer.AddressZero.selector);
+        otherVault.initialize(
             address(0),
-            "Rebalance tUSDT",
-            "rtUSDT",
+            address(this),
+            address(asset),
+            NAME,
+            SYMBOL,
             providers,
-            WITHDRAW_FEE_PERCENT,
-            address(timelock),
-            treasury
+            treasury,
+            0,
+            0,
+            minAssets
         );
     }
 
-    function testConstructor() public view {
+    function testInitializeRevertsIfAssetIsAddressZero() public {
+        (, , Rebalancer otherVault) = _deployVault();
+        vm.expectRevert(IRebalancer.AddressZero.selector);
+        otherVault.initialize(
+            address(this),
+            address(this),
+            address(0),
+            NAME,
+            SYMBOL,
+            providers,
+            treasury,
+            0,
+            0,
+            minAssets
+        );
+    }
+
+    function testInitializeRevertsIfMinAssetsIsZero() public {
+        (, , Rebalancer otherVault) = _deployVault();
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        otherVault.initialize(
+            address(this),
+            address(this),
+            address(asset),
+            NAME,
+            SYMBOL,
+            providers,
+            treasury,
+            0,
+            0,
+            0
+        );
+    }
+
+    function testInitialize() public {
+        assertTrue(vault.hasRole(ADMIN_ROLE, address(this)));
         assertEq(vault.asset(), address(asset));
         assertEq(vault.decimals(), ASSET_DECIMALS);
-        assertEq(vault.name(), "Rebalance tUSDT");
-        assertEq(vault.symbol(), "rtUSDT");
-        assertEq(vault.timelock(), address(this));
+        assertEq(vault.name(), NAME);
+        assertEq(vault.symbol(), SYMBOL);
+        assertEq(vault.getTimelock(), address(this));
         assertEq(address(vault.getProviders()[0]), address(mockProviderA));
         assertEq(address(vault.getProviders()[1]), address(mockProviderB));
-        assertEq(address(vault.activeProvider()), address(mockProviderA));
-        assertEq(vault.minAmount(), MIN_AMOUNT);
-        assertEq(vault.withdrawFeePercent(), WITHDRAW_FEE_PERCENT);
-        assertEq(vault.treasury(), treasury);
-        assertTrue(vault.paused(PausableActions.Actions.Deposit));
-    }
-
-    // =========================================
-    // setupVault
-    // =========================================
-
-    function testSetupVaultRevertsifAlreadyCompleted() public {
-        initializeVault(vault, MIN_AMOUNT, initializer);
-
-        vm.expectRevert(Vault.Vault__SetupAlreadyCompleted.selector);
-        vault.setupVault(MIN_AMOUNT);
-    }
-
-    function testSetupVaultRevertsIfAmountBelowMin() public {
-        uint256 assets = MIN_AMOUNT - 1;
-
-        vm.expectRevert(Vault.Vault__DepositLessThanMin.selector);
-        vault.setupVault(assets);
-    }
-
-    function testSetupVault() public {
-        initializeVault(vault, MIN_AMOUNT, initializer);
-
-        uint256 shares = vault.balanceOf(address(vault));
-
-        assertTrue(vault.setupCompleted());
-        assertFalse(vault.paused(PausableActions.Actions.Deposit));
-        assertEq(vault.totalAssets(), MIN_AMOUNT);
-        assertEq(shares, MIN_AMOUNT);
-    }
-
-    function testSetupVaultEmitsEvent() public {
-        uint256 assets = MIN_AMOUNT;
-        asset.mint(initializer, assets);
-
-        vm.startPrank(initializer);
-        asset.approve(address(vault), assets);
-
-        vm.expectEmit();
-        emit SetupCompleted(initializer);
-        vault.setupVault(assets);
+        assertEq(address(vault.getEntryProvider()), address(mockProviderA));
+        assertEq(vault.getTreasury(), treasury);
+        assertEq(vault.getManagementFee(), 0);
+        assertEq(vault.getPerformanceFee(), 0);
+        assertEq(vault.getMinAssets(), minAssets);
+        assertEq(vault.getLastTimestamp(), block.timestamp);
+        assertEq(vault.totalAssets(), initialTotalAssets);
+        assertEq(vault.balanceOf(address(vault)), minAssets);
+        assertEq(vault.getLastTotalAssets(), minAssets);
     }
 }

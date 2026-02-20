@@ -1,202 +1,161 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IAccessManager} from "../../contracts/interfaces/IAccessManager.sol";
 import {IProvider} from "../../contracts/interfaces/IProvider.sol";
-import {MockProviderC} from "../../contracts/mocks/MockProvider.sol";
-import {PausableActions} from "../../contracts/base/PausableActions.sol";
+import {IRebalancer} from "../../contracts/interfaces/IRebalancer.sol";
+import {MockProvider} from "../../contracts/mocks/MockProvider.sol";
 import {AccessManager} from "../../contracts/access/AccessManager.sol";
-import {Vault} from "../../contracts/base/Vault.sol";
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
+import "../../contracts/libraries/Constants.sol";
 
-contract RebalancerCoreTests is MockingUtilities {
-    event Deposit(
-        address indexed sender,
-        address indexed owner,
-        uint256 assets,
-        uint256 shares
-    );
-    event Withdraw(
-        address indexed sender,
-        address indexed receiver,
-        address indexed owner,
-        uint256 assets,
-        uint256 shares
-    );
-    event FeeCharged(address indexed treasury, uint256 fee);
-    event TimelockUpdated(address indexed timelock);
-    event ProvidersUpdated(IProvider[] providers);
-    event ActiveProviderUpdated(IProvider activeProvider);
-    event TreasuryUpdated(address indexed treasury);
-    event WithdrawFeePercentUpdated(uint256 withdrawFeePercent);
-    event MinAmountUpdated(uint256 minAmount);
-
-    function setUp() public {
-        initializeVault(vault, MIN_AMOUNT, initializer);
-    }
-
+contract RebalancerCoreTests is MockingBase {
+    
     // =========================================
     // deposit & mint
     // =========================================
 
-    function testDepositRevertsIfReceiverIsInvalid(uint256 assets) public {
-        vm.expectRevert(Vault.Vault__AddressZero.selector);
+    function testDepositRevertsIfReceiverIsAddressZero(uint256 assets) public {
         vm.prank(alice);
+        vm.expectRevert(IRebalancer.AddressZero.selector);
         vault.deposit(assets, address(0));
     }
 
-    function testDepositRevertsIfAssetAmountIsInvalid() public {
+    function testDepositRevertsIfAssetsIsZero() public {
         uint256 assets = 0;
 
-        vm.expectRevert(Vault.Vault__InvalidInput.selector);
         vm.prank(alice);
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
         vault.deposit(assets, alice);
     }
 
-    function testDepositRevertsIfAssetAmountIsBelowMin() public {
-        uint256 assets = MIN_AMOUNT - 1;
+    function testDepositRevertsIfAssetsBelowMin() public {
+        uint256 assets = minAssets - 1;
 
-        vm.expectRevert(Vault.Vault__DepositLessThanMin.selector);
         vm.prank(alice);
+        vm.expectRevert(IRebalancer.AssetsBelowMin.selector);
         vault.deposit(assets, alice);
     }
 
-    function testDeposit(uint128 assets) public {
-        vm.assume(assets >= MIN_AMOUNT);
+    function testDeposit(uint256 assets) public {
+        assets = bound(assets, minAssets, maxTestAssets);
 
-        uint256 previousSharesBalance = vault.balanceOf(alice);
-        uint256 mintedShares = executeDeposit(vault, assets, alice);
+        uint256 sharesBefore = vault.balanceOf(alice);
+        uint256 previewed = vault.previewDeposit(assets);
 
-        uint256 assetBalance = vault.convertToAssets(mintedShares);
-        uint256 totalAssets = vault.totalAssets();
+        uint256 shares = _executeDeposit(vault, assets, alice);
 
-        assertEq(vault.balanceOf(alice), previousSharesBalance + mintedShares);
-        assertEq(assetBalance, assets);
-        assertEq(totalAssets, assets + MIN_AMOUNT);
+        assertEq(shares, previewed);
+
+        assertEq(vault.balanceOf(alice), sharesBefore + shares);
+        assertEq(vault.convertToAssets(shares), assets);
+        assertEq(vault.totalAssets(), initialTotalAssets + assets);
+        assertEq(vault.totalSupply(), initialTotalSupply + shares);
     }
 
-    function testDepositEmitsEvent(uint128 assets) public {
-        vm.assume(assets >= MIN_AMOUNT);
-        asset.mint(alice, assets);
+    function testDepositEmitsEvents(uint256 assets) public {
+        assets = bound(assets, minAssets, maxTestAssets);
 
-        uint256 shares = vault.previewDeposit(assets);
+        deal(address(asset), alice, assets);
+
+        uint256 previewed = vault.previewDeposit(assets);
 
         vm.startPrank(alice);
         asset.approve(address(vault), assets);
 
-        vm.expectEmit();
-        emit Deposit(alice, alice, assets, shares);
+        vm.expectEmit(address(vault));
+        emit IRebalancer.FeesApplied(
+            initialTotalAssets,
+            initialTotalAssets,
+            0,
+            0
+        );
+        vm.expectEmit(address(vault));
+        emit IERC4626.Deposit(alice, alice, assets, previewed);
         vault.deposit(assets, alice);
+
+        vm.stopPrank();
     }
 
-    function testMint(uint128 shares) public {
-        vm.assume(shares >= MIN_AMOUNT);
+    function testMint(uint256 shares) public {
+        uint256 minShares = vault.convertToShares(minAssets); // explicit even if price is 1:1
+        shares = bound(shares, minShares, maxTestShares);
 
-        uint256 pulledAssets = executeMint(vault, shares, alice);
-        uint256 totalAssets = vault.totalAssets();
+        uint256 sharesBefore = vault.balanceOf(alice);
 
-        assertEq(vault.balanceOf(alice), shares);
-        assertEq(totalAssets, pulledAssets + MIN_AMOUNT);
+        uint256 assets = _executeMint(vault, shares, alice);
+
+        assertEq(vault.balanceOf(alice), sharesBefore + shares);
+        assertEq(vault.convertToAssets(shares), assets);
+        assertEq(vault.totalAssets(), initialTotalAssets + assets);
+        assertEq(vault.totalSupply(), initialTotalSupply + shares);
     }
 
-    function testMintEmitsEvent(uint128 shares) public {
-        vm.assume(shares >= MIN_AMOUNT);
+    function testMintEmitsEvents(uint256 shares) public {
+        uint256 minShares = vault.convertToShares(minAssets);
+        shares = bound(shares, minShares, maxTestShares);
 
-        uint256 assets = vault.previewMint(shares);
-
-        asset.mint(alice, assets);
+        uint256 previewed = vault.previewMint(shares);
+        deal(address(asset), alice, previewed);
 
         vm.startPrank(alice);
-        asset.approve(address(vault), assets);
+        asset.approve(address(vault), previewed);
 
-        vm.expectEmit();
-        emit Deposit(alice, alice, assets, shares);
+        vm.expectEmit(address(vault));
+        emit IRebalancer.FeesApplied(
+            initialTotalAssets,
+            initialTotalAssets,
+            0,
+            0
+        );
+        vm.expectEmit(address(vault));
+        emit IERC4626.Deposit(alice, alice, previewed, shares);
         vault.mint(shares, alice);
+
+        vm.stopPrank();
     }
 
     // =========================================
     // withdraw & redeem
     // =========================================
 
-    function testWithdrawRevertsIfReceiverIsInvalid(uint256 assets) public {
-        vm.expectRevert(Vault.Vault__AddressZero.selector);
+    function testWithdrawRevertsIfReceiverIsAddressZero(uint256 assets) public {
         vm.prank(alice);
+        vm.expectRevert(IRebalancer.AddressZero.selector);
         vault.withdraw(assets, address(0), alice);
     }
 
-    function testWithdrawRevertsIfOwnerIsInvalid(uint256 assets) public {
-        vm.expectRevert(Vault.Vault__AddressZero.selector);
+    function testWithdrawRevertsIfOwnerIsAddressZero(uint256 assets) public {
         vm.prank(alice);
+        vm.expectRevert(IRebalancer.AddressZero.selector);
         vault.withdraw(assets, alice, address(0));
     }
 
-    function testWithdrawRevertsIfAssetAmountIsInvalid() public {
+    function testWithdrawRevertsIfAssetsIsZero() public {
         uint256 assets = 0;
 
-        vm.expectRevert(Vault.Vault__InvalidInput.selector);
         vm.prank(alice);
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
         vault.withdraw(assets, alice, alice);
     }
 
-    function testWithdrawMaxPossible(
-        uint128 assets,
-        uint128 moreThanAvailable
-    ) public {
-        vm.assume(assets >= MIN_AMOUNT && assets < moreThanAvailable);
-
-        executeDeposit(vault, assets, alice);
-
-        uint256 maxWithdraw = vault.maxWithdraw(alice);
-
-        require(maxWithdraw < moreThanAvailable);
-
-        executeWithdraw(vault, moreThanAvailable, alice);
-
-        uint256 fee = (maxWithdraw * WITHDRAW_FEE_PERCENT) / PRECISION_FACTOR;
-        uint256 assetBalance = maxWithdraw - fee;
-
-        assertEq(asset.balanceOf(alice), assetBalance);
-        assertEq(vault.balanceOf(alice), 0);
-    }
-
-    function testRedeemMaxPossible(
-        uint128 shares,
-        uint128 moreThanAvailable
-    ) public {
-        vm.assume(shares >= MIN_AMOUNT && shares < moreThanAvailable);
-
-        executeMint(vault, shares, alice);
-
-        uint256 maxRedeem = vault.maxRedeem(alice);
-
-        require(maxRedeem < moreThanAvailable);
-
-        uint256 assets = vault.previewRedeem(maxRedeem);
-
-        executeRedeem(vault, moreThanAvailable, alice);
-
-        uint256 fee = (assets * WITHDRAW_FEE_PERCENT) / PRECISION_FACTOR;
-        uint256 assetBalance = assets - fee;
-
-        assertEq(asset.balanceOf(alice), assetBalance);
-        assertEq(vault.balanceOf(alice), 0);
-    }
-
-    function testWithdraw(uint128 assets) public {
-        vm.assume(assets >= MIN_AMOUNT);
+    function testWithdraw(uint256 assets) public {
+        assets = bound(assets, minAssets, maxTestAssets);
 
         IProvider[] memory providers = new IProvider[](3);
         providers[0] = mockProviderC;
         providers[1] = mockProviderB;
-        providers[2] = mockProviderA; // remains the activeProvider
+        providers[2] = mockProviderA; // remains the entryProvider
 
         vault.setProviders(providers);
 
-        executeDeposit(vault, assets, alice);
-        executeDeposit(vault, assets, bob);
+        _executeDeposit(vault, assets, alice);
+        _executeDeposit(vault, assets, bob);
 
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = assets;
-        amounts[1] = MIN_AMOUNT;
+        amounts[1] = initialTotalAssets;
 
         IProvider[] memory sources = new IProvider[](2);
         sources[0] = mockProviderA;
@@ -206,74 +165,103 @@ contract RebalancerCoreTests is MockingUtilities {
         destinations[0] = mockProviderB;
         destinations[1] = mockProviderC;
 
-        vaultManager.rebalanceVault(
-            vault,
-            amounts,
-            sources,
-            destinations,
-            new uint256[](2)
+        vault.rebalance(amounts, sources, destinations);
+
+        assertEq(
+            _getAssetsAtProvider(vault, mockProviderC),
+            initialTotalAssets
+        );
+        assertEq(_getAssetsAtProvider(vault, mockProviderB), assets);
+        assertEq(_getAssetsAtProvider(vault, mockProviderA), assets);
+
+        uint256 expectedTotalAssets = vault.totalAssets();
+        uint256 expectedTotalSupply = vault.totalSupply();
+
+        // alice withdraws
+
+        uint256 previewedAlice = vault.previewWithdraw(assets);
+        uint256 sharesAlice = _executeWithdraw(vault, assets, alice);
+
+        assertEq(sharesAlice, previewedAlice);
+
+        expectedTotalAssets -= assets;
+        expectedTotalSupply -= sharesAlice;
+
+        assertEq(vault.totalAssets(), expectedTotalAssets);
+        assertEq(vault.totalSupply(), expectedTotalSupply);
+        assertEq(vault.getLastTotalAssets(), vault.totalAssets());
+
+        assertEq(_getAssetsAtProvider(vault, mockProviderC), 0);
+        assertEq(
+            _getAssetsAtProvider(vault, mockProviderB),
+            initialTotalAssets
+        );
+        assertEq(_getAssetsAtProvider(vault, mockProviderA), assets);
+
+        // bob withdraws
+
+        uint256 previewedBob = vault.previewWithdraw(assets);
+        uint256 sharesBob = _executeWithdraw(vault, assets, bob);
+
+        assertEq(sharesBob, previewedBob);
+
+        expectedTotalAssets -= assets;
+        expectedTotalSupply -= sharesBob;
+
+        assertEq(vault.totalAssets(), expectedTotalAssets);
+        assertEq(vault.totalSupply(), expectedTotalSupply);
+        assertEq(vault.getLastTotalAssets(), vault.totalAssets());
+
+        assertEq(_getAssetsAtProvider(vault, mockProviderC), 0);
+        assertEq(_getAssetsAtProvider(vault, mockProviderB), 0);
+        assertEq(
+            _getAssetsAtProvider(vault, mockProviderA),
+            initialTotalAssets
         );
 
-        assertEq(getBalanceAtProvider(vault, mockProviderC), MIN_AMOUNT);
-        assertEq(getBalanceAtProvider(vault, mockProviderB), assets);
-        assertEq(getBalanceAtProvider(vault, mockProviderA), assets);
-
-        executeWithdraw(vault, assets, alice);
-
-        assertEq(getBalanceAtProvider(vault, mockProviderC), 0);
-        assertEq(getBalanceAtProvider(vault, mockProviderB), MIN_AMOUNT);
-        assertEq(getBalanceAtProvider(vault, mockProviderA), assets);
-
-        executeWithdraw(vault, assets, bob);
-
-        assertEq(getBalanceAtProvider(vault, mockProviderC), 0);
-        assertEq(getBalanceAtProvider(vault, mockProviderB), 0);
-        assertEq(getBalanceAtProvider(vault, mockProviderA), MIN_AMOUNT);
-
-        uint256 fee = (assets * WITHDRAW_FEE_PERCENT) / PRECISION_FACTOR;
-        uint256 assetBalance = assets - fee;
-
-        assertEq(asset.balanceOf(alice), assetBalance);
-        assertEq(asset.balanceOf(bob), assetBalance);
         assertEq(vault.balanceOf(alice), 0);
         assertEq(vault.balanceOf(bob), 0);
     }
 
-    function testWithdrawEmitsEvent(uint128 assets) public {
-        vm.assume(assets >= MIN_AMOUNT);
+    function testWithdrawEmitsEvents(uint256 assets) public {
+        assets = bound(assets, minAssets, maxTestAssets);
 
-        executeDeposit(vault, assets, alice);
+        _executeDeposit(vault, assets, alice);
 
-        uint256 shares = vault.previewWithdraw(assets);
+        uint256 previewed = vault.previewWithdraw(assets);
 
-        uint256 fee = (assets * WITHDRAW_FEE_PERCENT) / PRECISION_FACTOR;
-        uint256 assetsToReceiver = assets - fee;
-
-        vm.expectEmit();
-        emit FeeCharged(treasury, fee);
-        emit Withdraw(alice, alice, alice, assetsToReceiver, shares);
         vm.prank(alice);
+        vm.expectEmit(address(vault));
+        emit IRebalancer.FeesApplied(
+            initialTotalAssets + assets,
+            initialTotalAssets + assets,
+            0,
+            0
+        );
+        vm.expectEmit(address(vault));
+        emit IERC4626.Withdraw(alice, alice, alice, assets, previewed);
         vault.withdraw(assets, alice, alice);
     }
 
-    function testRedeem(uint128 shares) public {
-        vm.assume(shares >= MIN_AMOUNT);
+    function testRedeem(uint256 shares) public {
+        uint256 minShares = vault.convertToShares(minAssets); // explicit even if price is 1:1
+        shares = bound(shares, minShares, maxTestShares);
 
         IProvider[] memory providers = new IProvider[](3);
         providers[0] = mockProviderC;
         providers[1] = mockProviderB;
-        providers[2] = mockProviderA; // remains the activeProvider
+        providers[2] = mockProviderA; // remains the entryProvider
 
         vault.setProviders(providers);
 
-        executeMint(vault, shares, alice);
-        executeMint(vault, shares, bob);
+        _executeMint(vault, shares, alice);
+        _executeMint(vault, shares, bob);
 
-        uint256 assets = vault.previewRedeem(shares);
+        uint256 assets = vault.convertToAssets(shares);
 
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = assets;
-        amounts[1] = MIN_AMOUNT;
+        amounts[1] = initialTotalAssets;
 
         IProvider[] memory sources = new IProvider[](2);
         sources[0] = mockProviderA;
@@ -283,85 +271,83 @@ contract RebalancerCoreTests is MockingUtilities {
         destinations[0] = mockProviderB;
         destinations[1] = mockProviderC;
 
-        vaultManager.rebalanceVault(
-            vault,
-            amounts,
-            sources,
-            destinations,
-            new uint256[](2)
+        vault.rebalance(amounts, sources, destinations);
+
+        assertEq(
+            _getAssetsAtProvider(vault, mockProviderC),
+            initialTotalAssets
+        );
+        assertEq(_getAssetsAtProvider(vault, mockProviderB), assets);
+        assertEq(_getAssetsAtProvider(vault, mockProviderA), assets);
+
+        uint256 expectedTotalAssets = vault.totalAssets();
+        uint256 expectedTotalSupply = vault.totalSupply();
+
+        // alice redeems
+
+        uint256 previewedAlice = vault.previewRedeem(shares);
+        uint256 assetsAlice = _executeRedeem(vault, shares, alice);
+
+        assertEq(assetsAlice, previewedAlice);
+
+        expectedTotalAssets -= assetsAlice;
+        expectedTotalSupply -= shares;
+
+        assertEq(vault.totalAssets(), expectedTotalAssets);
+        assertEq(vault.totalSupply(), expectedTotalSupply);
+        assertEq(vault.getLastTotalAssets(), vault.totalAssets());
+
+        assertEq(_getAssetsAtProvider(vault, mockProviderC), 0);
+        assertEq(
+            _getAssetsAtProvider(vault, mockProviderB),
+            initialTotalAssets
+        );
+        assertEq(_getAssetsAtProvider(vault, mockProviderA), assets);
+
+        // bob redeems
+
+        uint256 previewedBob = vault.previewRedeem(shares);
+        uint256 assetsBob = _executeRedeem(vault, shares, bob);
+
+        assertEq(assetsBob, previewedBob);
+
+        expectedTotalAssets -= assetsBob;
+        expectedTotalSupply -= shares;
+
+        assertEq(vault.totalAssets(), expectedTotalAssets);
+        assertEq(vault.totalSupply(), expectedTotalSupply);
+        assertEq(vault.getLastTotalAssets(), vault.totalAssets());
+
+        assertEq(_getAssetsAtProvider(vault, mockProviderC), 0);
+        assertEq(_getAssetsAtProvider(vault, mockProviderB), 0);
+        assertEq(
+            _getAssetsAtProvider(vault, mockProviderA),
+            initialTotalAssets
         );
 
-        assertEq(getBalanceAtProvider(vault, mockProviderC), MIN_AMOUNT);
-        assertEq(getBalanceAtProvider(vault, mockProviderB), assets);
-        assertEq(getBalanceAtProvider(vault, mockProviderA), assets);
-
-        executeRedeem(vault, shares, alice);
-
-        assertEq(getBalanceAtProvider(vault, mockProviderC), 0);
-        assertEq(getBalanceAtProvider(vault, mockProviderB), MIN_AMOUNT);
-        assertEq(getBalanceAtProvider(vault, mockProviderA), assets);
-
-        executeRedeem(vault, shares, bob);
-
-        assertEq(getBalanceAtProvider(vault, mockProviderC), 0);
-        assertEq(getBalanceAtProvider(vault, mockProviderB), 0);
-        assertEq(getBalanceAtProvider(vault, mockProviderA), MIN_AMOUNT);
-
-        uint256 fee = (assets * WITHDRAW_FEE_PERCENT) / PRECISION_FACTOR;
-        uint256 assetBalance = assets - fee;
-
-        assertEq(asset.balanceOf(alice), assetBalance);
         assertEq(vault.balanceOf(alice), 0);
+        assertEq(vault.balanceOf(bob), 0);
     }
 
-    function testRedeemEmitsEvent(uint128 shares) public {
-        vm.assume(shares >= MIN_AMOUNT);
+    function testRedeemEmitsEvents(uint256 shares) public {
+        uint256 minShares = vault.convertToShares(minAssets); // explicit even if price is 1:1
+        shares = bound(shares, minShares, maxTestShares);
 
-        executeMint(vault, shares, alice);
+        uint256 assets = _executeMint(vault, shares, alice);
 
-        uint256 assets = vault.previewRedeem(shares);
+        uint256 previewed = vault.previewRedeem(shares);
 
-        uint256 fee = (assets * WITHDRAW_FEE_PERCENT) / PRECISION_FACTOR;
-        uint256 assetsToReceiver = assets - fee;
-
-        vm.expectEmit();
-        emit FeeCharged(treasury, fee);
-        emit Withdraw(alice, alice, alice, assetsToReceiver, shares);
         vm.prank(alice);
+        vm.expectEmit(address(vault));
+        emit IRebalancer.FeesApplied(
+            initialTotalAssets + assets,
+            initialTotalAssets + assets,
+            0,
+            0
+        );
+        vm.expectEmit(address(vault));
+        emit IERC4626.Withdraw(alice, alice, alice, previewed, shares);
         vault.redeem(shares, alice, alice);
-    }
-
-    // =========================================
-    // setTimelock
-    // =========================================
-
-    function testSetTimelockRevertsIfCallerIsNotTimelock(
-        address _timelock
-    ) public {
-        vm.expectRevert(Vault.Vault__Unauthorized.selector);
-        vm.prank(alice);
-        vault.setTimelock(_timelock);
-    }
-
-    function testSetTimelockRevertsIfTimelockIsInvalid() public {
-        vm.expectRevert(Vault.Vault__AddressZero.selector);
-        vault.setTimelock(address(0));
-    }
-
-    function testSetTimelock(address _timelock) public {
-        vm.assume(_timelock != address(0));
-
-        vault.setTimelock(_timelock);
-
-        assertEq(vault.timelock(), _timelock);
-    }
-
-    function testSetTimelockEmitsEvent(address _timelock) public {
-        vm.assume(_timelock != address(0));
-
-        vm.expectEmit();
-        emit TimelockUpdated(_timelock);
-        vault.setTimelock(_timelock);
     }
 
     // =========================================
@@ -372,17 +358,17 @@ contract RebalancerCoreTests is MockingUtilities {
         IProvider[] memory providers = new IProvider[](1);
         providers[0] = mockProviderC;
 
-        vm.expectRevert(Vault.Vault__Unauthorized.selector);
         vm.prank(alice);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
         vault.setProviders(providers);
     }
 
-    function testSetProvidersRevertsIfProviderIsInvalid() public {
+    function testSetProvidersRevertsIfProviderIsAddressZero() public {
         IProvider[] memory providers = new IProvider[](2);
         providers[0] = mockProviderC;
         providers[1] = IProvider(address(0));
 
-        vm.expectRevert(Vault.Vault__AddressZero.selector);
+        vm.expectRevert(IRebalancer.AddressZero.selector);
         vault.setProviders(providers);
     }
 
@@ -393,162 +379,240 @@ contract RebalancerCoreTests is MockingUtilities {
         vault.setProviders(providers);
 
         assertEq(address(vault.getProviders()[0]), address(mockProviderC));
+        assertEq(
+            asset.allowance(address(vault), address(mockProtocolC)),
+            type(uint256).max
+        );
     }
 
     function testSetProvidersEmitsEvent() public {
         IProvider[] memory providers = new IProvider[](1);
         providers[0] = mockProviderC;
 
-        vm.expectEmit();
-        emit ProvidersUpdated(providers);
+        vm.expectEmit(address(vault));
+        emit IRebalancer.ProvidersUpdated(providers);
         vault.setProviders(providers);
     }
 
     // =========================================
-    // setActiveProvider
+    // setEntryProvider
     // =========================================
 
-    function testSetActiveProviderRevertsIfCallerIsNotAdmin() public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
+    function testSetEntryProviderRevertsIfCallerIsNotAdmin() public {
         vm.prank(alice);
-        vault.setActiveProvider(mockProviderB);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.setEntryProvider(mockProviderB);
     }
 
-    function testSetActiveProviderRevertsIfProviderIsInvalid() public {
-        vm.expectRevert(Vault.Vault__InvalidInput.selector);
-        vault.setActiveProvider(mockProviderC);
+    function testSetEntryProviderRevertsIfProviderIsInvalid() public {
+        vm.expectRevert(IRebalancer.InvalidProvider.selector);
+        vault.setEntryProvider(mockProviderC);
     }
 
-    function testSetActiveProvider() public {
-        vault.setActiveProvider(mockProviderB);
+    function testSetEntryProvider() public {
+        vault.setEntryProvider(mockProviderB);
 
-        assertEq(address(vault.activeProvider()), address(mockProviderB));
+        assertEq(address(vault.getEntryProvider()), address(mockProviderB));
     }
 
-    function testSetActiveProviderEmitsEvent() public {
-        vm.expectEmit();
-        emit ActiveProviderUpdated(mockProviderB);
-        vault.setActiveProvider(mockProviderB);
+    function testSetEntryProviderEmitsEvent() public {
+        vm.expectEmit(address(vault));
+        emit IRebalancer.EntryProviderUpdated(mockProviderB);
+        vault.setEntryProvider(mockProviderB);
+    }
+
+    // =========================================
+    // setTimelock
+    // =========================================
+
+    function testSetTimelockRevertsIfCallerIsNotTimelock(
+        address timelock
+    ) public {
+        vm.prank(alice);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.setTimelock(timelock);
+    }
+
+    function testSetTimelockRevertsIfTimelockIsAddressZero() public {
+        vm.expectRevert(IRebalancer.AddressZero.selector);
+        vault.setTimelock(address(0));
+    }
+
+    function testSetTimelock(address timelock) public {
+        vm.assume(timelock != address(0));
+        vault.setTimelock(timelock);
+
+        assertEq(vault.getTimelock(), timelock);
+    }
+
+    function testSetTimelockEmitsEvent(address timelock) public {
+        vm.assume(timelock != address(0));
+
+        vm.expectEmit(address(vault));
+        emit IRebalancer.TimelockUpdated(timelock);
+        vault.setTimelock(timelock);
     }
 
     // =========================================
     // setTreasury
     // =========================================
 
-    function testSetTreasuryRevertsIfCallerIsNotAdmin(
-        address _treasury
-    ) public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
+    function testSetTreasuryRevertsIfCallerIsNotAdmin(address treasury) public {
         vm.prank(alice);
-        vault.setTreasury(_treasury);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.setTreasury(treasury);
     }
 
-    function testSetTreasuryRevertsWhenInvalidTreasury() public {
-        vm.expectRevert(Vault.Vault__AddressZero.selector);
+    function testSetTreasuryRevertsIfTreasuryIsAddressZero() public {
+        vm.expectRevert(IRebalancer.AddressZero.selector);
         vault.setTreasury(address(0));
     }
 
-    function testSetTreasury(address _treasury) public {
-        vm.assume(_treasury != address(0));
-        vault.setTreasury(_treasury);
+    function testSetTreasury(address treasury) public {
+        vm.assume(treasury != address(0));
+        vault.setTreasury(treasury);
 
-        assertEq(vault.treasury(), _treasury);
+        assertEq(vault.getTreasury(), treasury);
     }
 
-    function testSetTreasuryEmitsEvent(address _treasury) public {
-        vm.assume(_treasury != address(0));
-        vm.expectEmit();
-        emit TreasuryUpdated(_treasury);
-        vault.setTreasury(_treasury);
+    function testSetTreasuryEmitsEvents(address treasury) public {
+        vm.assume(treasury != address(0));
+
+        vm.expectEmit(address(vault));
+        emit IRebalancer.FeesApplied(
+            initialTotalAssets,
+            initialTotalAssets,
+            0,
+            0
+        );
+        vm.expectEmit(address(vault));
+        emit IRebalancer.TreasuryUpdated(treasury);
+        vault.setTreasury(treasury);
     }
 
     // =========================================
-    // setWithdrawFeePercent
+    // setManagementFee
     // =========================================
 
-    function testSetWithdrawFeePercentRevertsIfCallerIsNotAdmin(
-        uint256 withdrawFeePercent
+    function testSetManagementFeeRevertsIfCallerIsNotAdmin(
+        uint96 managementFee
     ) public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
         vm.prank(alice);
-        vault.setWithdrawFeePercent(withdrawFeePercent);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.setManagementFee(managementFee);
     }
 
-    function testSetWithdrawFeePercentRevertsIfFeeIsInvalid() public {
-        uint256 withdrawFeePercent = MAX_WITHDRAW_FEE_PERCENT + 1;
-        vm.expectRevert(Vault.Vault__InvalidInput.selector);
-        vault.setWithdrawFeePercent(withdrawFeePercent);
+    function testSetManagementFeeRevertsIfFeeExceedsMax() public {
+        uint96 managementFee = uint96(MAX_MANAGEMENT_FEE) + 1;
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vault.setManagementFee(managementFee);
     }
 
-    function testSetWithdrawFeePercent(uint256 withdrawFeePercent) public {
-        vm.assume(withdrawFeePercent <= MAX_WITHDRAW_FEE_PERCENT);
-        vault.setWithdrawFeePercent(withdrawFeePercent);
+    function testSetManagementFee(uint96 managementFee) public {
+        vm.assume(managementFee <= MAX_MANAGEMENT_FEE);
+        vault.setManagementFee(managementFee);
 
-        assertEq(vault.withdrawFeePercent(), withdrawFeePercent);
+        assertEq(vault.getManagementFee(), managementFee);
     }
 
-    function testSetWithdrawFeePercentEmitsEvent(
-        uint256 withdrawFeePercent
-    ) public {
-        vm.assume(withdrawFeePercent <= MAX_WITHDRAW_FEE_PERCENT);
-        vm.expectEmit();
-        emit WithdrawFeePercentUpdated(withdrawFeePercent);
-        vault.setWithdrawFeePercent(withdrawFeePercent);
+    function testSetManagementFeeEmitsEvents(uint96 managementFee) public {
+        vm.assume(managementFee <= MAX_MANAGEMENT_FEE);
+
+        vm.expectEmit(address(vault));
+        emit IRebalancer.FeesApplied(
+            initialTotalAssets,
+            initialTotalAssets,
+            0,
+            0
+        );
+        vm.expectEmit(address(vault));
+        emit IRebalancer.ManagementFeeUpdated(managementFee);
+        vault.setManagementFee(managementFee);
     }
 
     // =========================================
-    // setMinAmount
+    // setPerformanceFee
     // =========================================
 
-    function testSetMinAmountRevertsIfCallerIsNotAdmin(
-        uint256 minAmount
+    function testSetPerformanceFeeRevertsIfCallerIsNotAdmin(
+        uint96 performanceFee
     ) public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
         vm.prank(alice);
-        vault.setMinAmount(minAmount);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.setPerformanceFee(performanceFee);
     }
 
-    function testSetMinAmount(uint256 minAmount) public {
-        vault.setMinAmount(minAmount);
-
-        assertEq(vault.minAmount(), minAmount);
+    function testSetPerformanceFeeRevertsIfFeeExceedsMax() public {
+        uint96 performanceFee = uint96(MAX_PERFORMANCE_FEE) + 1;
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vault.setPerformanceFee(performanceFee);
     }
 
-    function testSetMinAmountEmitsEvent(uint256 minAmount) public {
-        vm.expectEmit();
-        emit MinAmountUpdated(minAmount);
-        vault.setMinAmount(minAmount);
+    function testSetPerformanceFee(uint96 performanceFee) public {
+        vm.assume(performanceFee <= MAX_PERFORMANCE_FEE);
+        vault.setPerformanceFee(performanceFee);
+
+        assertEq(vault.getPerformanceFee(), performanceFee);
+    }
+
+    function testSetPerformanceFeeEmitsEvents(uint96 performanceFee) public {
+        vm.assume(performanceFee <= MAX_PERFORMANCE_FEE);
+
+        vm.expectEmit(address(vault));
+        emit IRebalancer.FeesApplied(
+            initialTotalAssets,
+            initialTotalAssets,
+            0,
+            0
+        );
+        vm.expectEmit(address(vault));
+        emit IRebalancer.PerformanceFeeUpdated(performanceFee);
+        vault.setPerformanceFee(performanceFee);
+    }
+
+    // =========================================
+    // setMinAssets
+    // =========================================
+
+    function testSetMinAssetsRevertsIfCallerIsNotAdmin(uint256 min) public {
+        vm.prank(alice);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.setMinAssets(min);
+    }
+
+    function testSetMinAssets(uint256 min) public {
+        vault.setMinAssets(min);
+
+        assertEq(vault.getMinAssets(), min);
+    }
+
+    function testSetMinAssetsEmitsEvent(uint256 min) public {
+        vm.expectEmit(address(vault));
+        emit IRebalancer.MinAssetsUpdated(min);
+        vault.setMinAssets(min);
     }
 
     // =========================================
     // maxDeposit & maxMint
     // =========================================
 
-    function testMaxDepositAndMaxMint() public {
-        vault.pause(PausableActions.Actions.Deposit);
+    function testMaxDeposit() public {
         assertEq(vault.maxDeposit(alice), 0);
-        assertEq(vault.maxMint(alice), 0);
+    }
 
-        vault.unpause(PausableActions.Actions.Deposit);
-        assertEq(vault.maxDeposit(alice), type(uint256).max);
-        assertEq(vault.maxMint(alice), type(uint256).max);
+    function testMaxMint() public {
+        assertEq(vault.maxMint(alice), 0);
     }
 
     // =========================================
     // maxWithdraw & maxRedeem
     // =========================================
 
-    function testMaxWithdrawAndMaxRedeem(uint128 assets) public {
-        vm.assume(assets >= MIN_AMOUNT);
-
-        executeDeposit(vault, assets, alice);
-
-        vault.pause(PausableActions.Actions.Withdraw);
+    function testMaxWithdraw() public {
         assertEq(vault.maxWithdraw(alice), 0);
-        assertEq(vault.maxRedeem(alice), 0);
+    }
 
-        vault.unpause(PausableActions.Actions.Withdraw);
-        assertEq(vault.maxWithdraw(alice), vault.getBalanceOfAsset(alice));
-        assertEq(vault.maxRedeem(alice), vault.balanceOf(alice));
+    function testMaxRedeem() public {
+        assertEq(vault.maxRedeem(alice), 0);
     }
 }

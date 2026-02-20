@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.0;
+pragma solidity 0.8.33;
 
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IInterestRateModel} from "./IInterestRateModel.sol";
 
-/**
- * @title IV3Vault
- * @author Revert
- * @dev Modified version of the original Revert interface.
- */
+/// @title IV3Vault
+/// @author Revert
+/// @dev Modified version of the original Revert interface.
 interface IV3Vault is IERC4626 {
     function transformedTokenId() external view returns (uint256 tokenId);
 

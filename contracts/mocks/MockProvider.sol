@@ -1,14 +1,70 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
 import {IProvider} from "../interfaces/IProvider.sol";
-import {IVault} from "../interfaces/IVault.sol";
-import {MockERC20} from "./MockERC20.sol";
+import {IRebalancer} from "../interfaces/IRebalancer.sol";
+import {MockProtocol} from "./MockProtocol.sol";
 
 /**
- * @title BaseMockProvider
+ * @title MockProvider
  */
-contract BaseMockProvider is IProvider {
+contract MockProvider is IProvider {
+    MockProtocol private immutable _protocol;
+
+    constructor(MockProtocol protocol_) {
+        _protocol = protocol_;
+    }
+
+    /**
+     * @inheritdoc IProvider
+     */
+
+    function deposit(
+        uint256 amount,
+        IRebalancer vault
+    ) external override returns (bool success) {
+        _protocol.supply(amount, address(vault));
+        return true;
+    }
+
+    /**
+     * @inheritdoc IProvider
+     */
+    function withdraw(
+        uint256 amount,
+        IRebalancer vault
+    ) external override returns (bool success) {
+        _protocol.withdraw(amount, address(vault));
+        return true;
+    }
+
+    function getDepositBalance(
+        address user,
+        IRebalancer
+    ) external view override returns (uint256 balance) {
+        return _protocol.balances(user);
+    }
+
+    /**
+     * @inheritdoc IProvider
+     */
+    function getDepositRate(
+        IRebalancer
+    ) external pure override returns (uint256 rate) {
+        rate = 1e27;
+    }
+
+    /**
+     * @inheritdoc IProvider
+     */
+    function getSource(
+        address,
+        address,
+        address
+    ) external view override returns (address source) {
+        return address(_protocol);
+    }
+
     /**
      * @inheritdoc IProvider
      */
@@ -19,105 +75,6 @@ contract BaseMockProvider is IProvider {
         override
         returns (string memory)
     {
-        return "Base_Provider";
-    }
-
-    /**
-     * @inheritdoc IProvider
-     */
-    function getSource(
-        address keyOne,
-        address,
-        address
-    ) external pure override returns (address source) {
-        source = keyOne;
-    }
-
-    /**
-     * @inheritdoc IProvider
-     */
-    function deposit(
-        uint256 amount,
-        IVault vault
-    ) external override returns (bool success) {
-        MockERC20 token = MockERC20(vault.asset());
-        try
-            token.depositTokens(address(vault), amount, getIdentifier())
-        returns (bool result) {
-            success = result;
-        } catch {}
-    }
-
-    /**
-     * @inheritdoc IProvider
-     */
-    function withdraw(
-        uint256 amount,
-        IVault vault
-    ) external override returns (bool success) {
-        MockERC20 token = MockERC20(vault.asset());
-        try
-            token.withdrawTokens(address(vault), amount, getIdentifier())
-        returns (bool result) {
-            success = result;
-        } catch {}
-    }
-
-    /**
-     * @inheritdoc IProvider
-     */
-    function getDepositRate(
-        IVault
-    ) external pure override returns (uint256 rate) {
-        rate = 1e27;
-    }
-
-    /**
-     * @inheritdoc IProvider
-     */
-    function getDepositBalance(
-        address user,
-        IVault vault
-    ) external view override returns (uint256 balance) {
-        balance = MockERC20(vault.asset()).depositBalance(
-            user,
-            getIdentifier()
-        );
-    }
-}
-
-/**
- * @title MockProviderA
- */
-contract MockProviderA is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Provider_A";
-    }
-}
-
-/**
- * @title MockProviderB
- */
-contract MockProviderB is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Provider_B";
-    }
-}
-
-/**
- * @title MockProviderC
- */
-contract MockProviderC is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Provider_C";
-    }
-}
-
-/**
- * @title InvalidProvider
- */
-contract InvalidProvider is BaseMockProvider {
-    function getIdentifier() public pure override returns (string memory) {
-        return "Invalid_Provider";
+        return "Mock_Provider";
     }
 }

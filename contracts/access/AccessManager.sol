@@ -1,151 +1,112 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import "@openzeppelin/contracts/utils/Context.sol";
+import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
+import {IAccessManager} from "../interfaces/IAccessManager.sol";
 
-/**
- * @title AccessManager
- *
- * @dev Inspired and modified from OpenZeppelin's AccessControl contract.
- */
-contract AccessManager is Context {
-    /**
-     * @dev Errors
-     */
-    error AccessManager__CallerIsNotAdmin();
-    error AccessManager__CallerIsNotOperator();
-    error AccessManager__CallerIsNotExecutor();
-
-    mapping(bytes32 role => mapping(address account => bool)) private _roles;
-
+/// @title AccessManager
+/// @notice Allows role-based access management.
+/// @dev Inspired and modified from OpenZeppelin's AccessControl contract.
+abstract contract AccessManager is ContextUpgradeable, IAccessManager {
+    /// @notice Admin role identifier.
     bytes32 public constant ADMIN_ROLE = 0x00;
-    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
-    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
 
-    /**
-     * @dev Emitted when `account` is granted `role`.
-     */
-    event RoleGranted(
-        bytes32 indexed role,
-        address indexed account,
-        address indexed sender
-    );
+    /// @notice Executor role identifier.
+    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE"); // may become vault-specific
 
-    /**
-     * @dev Emitted when `account` is revoked `role`.
-     */
-    event RoleRevoked(
-        bytes32 indexed role,
-        address indexed account,
-        address indexed sender
-    );
+    /// @custom:storage-location erc7201:thesauros.storage.AccessManager
+    struct AccessManagerStorage {
+        mapping(bytes32 role => mapping(address account => bool)) _roles;
+    }
 
-    /**
-     * @dev Modifier that checks that an account has an admin role. Reverts
-     * with an {AccessManager__CallerIsNotAdmin} error.
-     */
-    modifier onlyAdmin() {
-        if (!hasRole(ADMIN_ROLE, _msgSender())) {
-            revert AccessManager__CallerIsNotAdmin();
+    // keccak256(abi.encode(uint256(keccak256("thesauros.storage.AccessManager")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant AccessManagerStorageLocation =
+        0x269ca335d49f0b8bbf3a5a2cc9876243b5841edd3dfc837ebccdab385b0bb300;
+
+    /// @dev Returns the ERC-7201 namespaced storage pointer.
+    function _getAccessManagerStorage()
+        private
+        pure
+        returns (AccessManagerStorage storage $)
+    {
+        assembly {
+            $.slot := AccessManagerStorageLocation
         }
+    }
+
+    /// @dev Checks that the caller has the specified role.
+    /// @param role The role required for the call.
+    modifier onlyRole(bytes32 role) {
+        _onlyRole(role);
         _;
     }
 
-    /**
-     * @dev Modifier that checks that an account has an operator role. Reverts
-     * with an {AccessManager__CallerIsNotOperator} error.
-     */
-    modifier onlyOperator() {
-        if (!hasRole(OPERATOR_ROLE, _msgSender())) {
-            revert AccessManager__CallerIsNotOperator();
-        }
-        _;
+    /// @dev Initializes the AccessManager with the specified parameters.
+    /// @param admin_ The address of the initial admin.
+    function __AccessManager_init(address admin_) internal onlyInitializing {
+        __AccessManager_init_unchained(admin_);
     }
 
-    /**
-     * @dev Modifier that checks that an account has an executor role. Reverts
-     * with an {AccessManager__CallerIsNotExecutor} error.
-     */
-    modifier onlyExecutor() {
-        if (!hasRole(EXECUTOR_ROLE, _msgSender())) {
-            revert AccessManager__CallerIsNotExecutor();
-        }
-        _;
+    /// @dev Grants the admin role to the initial admin.
+    /// @param admin_ The address of the initial admin.
+    function __AccessManager_init_unchained(
+        address admin_
+    ) internal onlyInitializing {
+        _grantRole(ADMIN_ROLE, admin_);
     }
 
-    /**
-     * @dev Sets the deployer of the contract as the initial admin.
-     */
-    constructor() {
-        _grantRole(ADMIN_ROLE, _msgSender());
-    }
-
-    /**
-     * @dev Returns `true` if `account` has been granted `role`.
-     */
-    function hasRole(
+    /// @inheritdoc IAccessManager
+    function grantRole(
         bytes32 role,
         address account
-    ) public view virtual returns (bool) {
-        return _roles[role][account];
-    }
-
-    /**
-     * @dev Grants `role` to `account`.
-     *
-     * If `account` had not been already granted `role`, emits a {RoleGranted}
-     * event.
-     *
-     * Requirements:
-     *
-     * - the caller must have the admin role.
-     *
-     * May emit a {RoleGranted} event.
-     */
-    function grantRole(bytes32 role, address account) public onlyAdmin {
+    ) public virtual onlyRole(ADMIN_ROLE) {
         _grantRole(role, account);
     }
 
-    /**
-     * @dev Revokes `role` from `account`.
-     *
-     * If `account` had been granted `role`, emits a {RoleRevoked} event.
-     *
-     * Requirements:
-     *
-     * - the caller must have the admin role.
-     *
-     * May emit a {RoleRevoked} event.
-     */
-    function revokeRole(bytes32 role, address account) public onlyAdmin {
+    /// @inheritdoc IAccessManager
+    function revokeRole(
+        bytes32 role,
+        address account
+    ) public virtual onlyRole(ADMIN_ROLE) {
         _revokeRole(role, account);
     }
 
-    /**
-     * @dev Attempts to grant `role` to `account`.
-     *
-     * Internal function without access restriction.
-     *
-     * May emit a {RoleGranted} event.
-     */
+    /// @dev Grants a role to an account if not already granted.
+    /// @param role The role to grant.
+    /// @param account The account receiving the role.
     function _grantRole(bytes32 role, address account) internal {
+        AccessManagerStorage storage $ = _getAccessManagerStorage();
         if (!hasRole(role, account)) {
-            _roles[role][account] = true;
+            $._roles[role][account] = true;
             emit RoleGranted(role, account, _msgSender());
         }
     }
 
-    /**
-     * @dev Attempts to revoke `role` from `account`.
-     *
-     * Internal function without access restriction.
-     *
-     * May emit a {RoleRevoked} event.
-     */
+    /// @dev Revokes a role from an account if currently granted.
+    /// @param role The role to revoke.
+    /// @param account The account losing the role.
     function _revokeRole(bytes32 role, address account) internal {
+        AccessManagerStorage storage $ = _getAccessManagerStorage();
         if (hasRole(role, account)) {
-            _roles[role][account] = false;
+            $._roles[role][account] = false;
             emit RoleRevoked(role, account, _msgSender());
         }
+    }
+
+    /// @dev Reverts if the caller does not have the specified role.
+    /// @param role The role required for the call.
+    function _onlyRole(bytes32 role) internal view {
+        if (!hasRole(role, _msgSender())) {
+            revert Unauthorized();
+        }
+    }
+
+    /// @inheritdoc IAccessManager
+    function hasRole(
+        bytes32 role,
+        address account
+    ) public view virtual returns (bool) {
+        AccessManagerStorage storage $ = _getAccessManagerStorage();
+        return $._roles[role][account];
     }
 }

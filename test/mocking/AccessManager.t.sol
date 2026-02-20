@@ -1,55 +1,30 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.33;
 
-import {AccessManager} from "../../contracts/access/AccessManager.sol";
-import {Vault} from "../../contracts/base/Vault.sol";
-import {MockingUtilities} from "../utils/MockingUtilities.sol";
+import {IAccessManager} from "../../contracts/interfaces/IAccessManager.sol";
+import {MockingBase} from "../mocking/MockingBase.t.sol";
 
-contract AccessManagerTests is MockingUtilities {
-    AccessManager public accessManager;
-
-    event RoleGranted(
-        bytes32 indexed role,
-        address indexed account,
-        address indexed sender
-    );
-    event RoleRevoked(
-        bytes32 indexed role,
-        address indexed account,
-        address indexed sender
-    );
-
-    function setUp() public {
-        accessManager = new AccessManager();
-    }
-
-    // =========================================
-    // constructor
-    // =========================================
-
-    function testConstructor() public view {
-        assertTrue(accessManager.hasRole(ADMIN_ROLE, address(this)));
-    }
-
+contract AccessManagerTests is MockingBase {
+    
     // =========================================
     // grantRole
     // =========================================
 
     function testGrantRoleRevertsIfCallerIsNotAdmin() public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
         vm.prank(alice);
-        accessManager.grantRole(ADMIN_ROLE, alice);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.grantRole(ADMIN_ROLE, alice);
     }
 
     function testGrantRole() public {
-        accessManager.grantRole(EXECUTOR_ROLE, alice);
-        assertTrue(accessManager.hasRole(EXECUTOR_ROLE, alice));
+        vault.grantRole(EXECUTOR_ROLE, alice);
+        assertTrue(vault.hasRole(EXECUTOR_ROLE, alice));
     }
 
     function testGrantRoleEmitsEvent() public {
-        vm.expectEmit();
-        emit RoleGranted(EXECUTOR_ROLE, alice, address(this));
-        accessManager.grantRole(EXECUTOR_ROLE, alice);
+        vm.expectEmit(address(vault));
+        emit IAccessManager.RoleGranted(EXECUTOR_ROLE, alice, address(this));
+        vault.grantRole(EXECUTOR_ROLE, alice);
     }
 
     // =========================================
@@ -57,21 +32,21 @@ contract AccessManagerTests is MockingUtilities {
     // =========================================
 
     function testRevokeRoleRevertsIfCallerIsNotAdmin() public {
-        vm.expectRevert(AccessManager.AccessManager__CallerIsNotAdmin.selector);
         vm.prank(alice);
-        accessManager.revokeRole(ADMIN_ROLE, alice);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.revokeRole(ADMIN_ROLE, alice);
     }
 
     function testRevokeRole() public {
-        accessManager.grantRole(EXECUTOR_ROLE, alice);
-        accessManager.revokeRole(EXECUTOR_ROLE, alice);
-        assertFalse(accessManager.hasRole(EXECUTOR_ROLE, alice));
+        vault.grantRole(EXECUTOR_ROLE, alice);
+        vault.revokeRole(EXECUTOR_ROLE, alice);
+        assertFalse(vault.hasRole(EXECUTOR_ROLE, alice));
     }
 
     function testRevokeRoleEmitsEvent() public {
-        accessManager.grantRole(EXECUTOR_ROLE, alice);
-        vm.expectEmit();
-        emit RoleRevoked(EXECUTOR_ROLE, alice, address(this));
-        accessManager.revokeRole(EXECUTOR_ROLE, alice);
+        vault.grantRole(EXECUTOR_ROLE, alice);
+        vm.expectEmit(address(vault));
+        emit IAccessManager.RoleRevoked(EXECUTOR_ROLE, alice, address(this));
+        vault.revokeRole(EXECUTOR_ROLE, alice);
     }
 }
