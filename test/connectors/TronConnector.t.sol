@@ -102,6 +102,17 @@ contract MockAssetBridge is IAssetBridge {
         IERC20(transfer.token).forceApprove(address(connector), 0);
     }
 
+    function deliverDepositAmount(
+        bytes32 transferId,
+        uint256 amount,
+        EvmTronConnector connector
+    ) external {
+        Transfer storage transfer = _transfers[transferId];
+        IERC20(transfer.token).forceApprove(address(connector), amount);
+        connector.receiveBridgedDeposit(amount, transfer.payload);
+        IERC20(transfer.token).forceApprove(address(connector), 0);
+    }
+
     function deliverWithdrawal(bytes32 transferId, TronGateway gateway) external {
         Transfer storage transfer = _transfers[transferId];
         IERC20(transfer.token).forceApprove(address(gateway), transfer.amount);
@@ -358,6 +369,20 @@ contract TronConnectorTests is Test {
         (, , , , , , , , bytes32 bridgeTransferId) = tronGateway.deposits(requestId);
         vm.expectRevert(EvmTronConnector.SlippageExceeded.selector);
         bridge.deliverDeposit(bridgeTransferId, evmConnector);
+
+        assertEq(vault.balanceOf(address(evmConnector)), 0);
+        assertEq(tUsdt.totalSupply(), 0);
+    }
+
+    function testDepositRevertsWhenBridgeOutputMissesMinBaseAssets() public {
+        (, bytes32 bridgeTransferId) = _requestDeposit(DEPOSIT_ASSETS);
+
+        vm.expectRevert(EvmTronConnector.SlippageExceeded.selector);
+        bridge.deliverDepositAmount(
+            bridgeTransferId,
+            DEPOSIT_ASSETS - 1,
+            evmConnector
+        );
 
         assertEq(vault.balanceOf(address(evmConnector)), 0);
         assertEq(tUsdt.totalSupply(), 0);

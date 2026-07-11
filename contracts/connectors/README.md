@@ -26,15 +26,45 @@ A messenger adapter must pass the verified source chain and source connector to 
 
 ## Deployment
 
-The remote connector addresses are immutable. Predict both deployment addresses, or deploy them deterministically with `CREATE2`, before constructing the pair. Owners should be timelock-controlled multisigs.
+The deployment uses one-time pairing instead of nonce-based address prediction. `TronGateway.evmConnector` and the TRON messenger's `remoteAdapter` start unset, cannot process user requests, and are permanently bound after the Base contracts exist. Owners should be timelock-controlled multisigs.
 
-TRON contracts compile with Solidity 0.8.20:
+TRON contracts compile with the TRON Solidity 0.8.24 compiler:
 
 ```bash
-forge build contracts/connectors/TronGateway.sol contracts/connectors/TronTUSDT.sol --use 0.8.20
+npm run compile:tron
 ```
 
-Before mainnet, add the selected bridge adapters, run a Nile-to-EVM end-to-end test, set transport limits, and audit the complete deployment configuration.
+Before mainnet, run a Nile-to-Base end-to-end test, set transport limits, and audit the complete deployment configuration.
+
+### Staged deployment
+
+1. Fill the TRON variables in `.env` and deploy the TRON contracts:
+
+```bash
+npm run deploy:tron-connector
+```
+
+This uses the TRON Solidity 0.8.24 compiler, checks protocol bytecode and USDT decimals, then deploys:
+
+- `DeBridgeMessengerAdapter` (initially unpaired);
+- `TronDlnAssetBridge` and binds it to the gateway;
+- `TronGateway`, which creates `TronTUSDT` in its constructor.
+
+The resulting manifest is stored in `deployments/tron/<network>-deployment.json`. Copy its `baseEnv` values to `.env`.
+
+2. Deploy the Base side:
+
+```bash
+npm run deploy:base-tron-connector
+```
+
+3. Bind the Base connector and messenger on TRON and transfer/propose ownership to `TRON_CONNECTOR_OWNER`:
+
+```bash
+npm run configure:tron-connector
+```
+
+If `TronGateway` ownership is proposed to a multisig, that multisig must finish the two-step transfer by calling `acceptOwnership()`.
 
 ## Base deployment
 

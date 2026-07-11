@@ -3,7 +3,7 @@
   "scripts": {
     "build": "hardhat compile",
     "test": "forge test",
-    "compile:tron": "tronbox compile --all",
+    "compile:tron": "node scripts/compile-tron.js",
     "deploy:tron-connector": "npm run compile:tron && node scripts/deploy-tron-connector.js",
     "deploy:base-tron-connector": "hardhat deploy --network base --tags base-tron-connector",
     "configure:tron-connector": "node scripts/configure-tron-connector.js"

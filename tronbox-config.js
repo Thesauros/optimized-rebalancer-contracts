@@ -1,11 +1,9 @@
-require('dotenv').config();
-
 module.exports = {
-  contracts_directory: './tron-contracts',
+  contracts_directory: './.tron-contracts',
   contracts_build_directory: './build/tron-contracts',
   compilers: {
     solc: {
-      version: '0.8.20',
+      version: '0.8.24',
       settings: {
         optimizer: {
           enabled: true,
@@ -16,4 +14,3 @@ module.exports = {
     },
   },
 };
-

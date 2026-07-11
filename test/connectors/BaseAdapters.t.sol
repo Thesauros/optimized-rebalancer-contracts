@@ -236,6 +236,23 @@ contract BaseAdapterTests is Test {
         );
     }
 
+    function testMessengerCanOnlyBePairedOnce() public {
+        MockCallProxy proxy = new MockCallProxy();
+        MockDeBridgeGate gate = new MockDeBridgeGate(address(proxy));
+        DeBridgeMessengerAdapter messenger = new DeBridgeMessengerAdapter(
+            address(this),
+            address(gate),
+            TRON_CHAIN,
+            bytes32(0)
+        );
+
+        messenger.setRemoteAdapter(_addressToBytes32(TRON_MESSENGER));
+        assertEq(messenger.remoteAdapter(), _addressToBytes32(TRON_MESSENGER));
+
+        vm.expectRevert(DeBridgeMessengerAdapter.AlreadyConfigured.selector);
+        messenger.setRemoteAdapter(_addressToBytes32(address(0xdead)));
+    }
+
     function testBuildsBoundAtomicDlnDepositOrder() public {
         TronDlnAssetBridge tronBridge = new TronDlnAssetBridge(
             address(this),
