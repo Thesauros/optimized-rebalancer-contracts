@@ -135,6 +135,11 @@ contract MockAssetBridge is IAssetBridge {
         IERC20(transfer.token).safeTransfer(address(connector), transfer.amount);
     }
 
+    function cancelDeposit(bytes32 transferId, TronGateway gateway) external {
+        Transfer storage transfer = _transfers[transferId];
+        IERC20(transfer.token).safeTransfer(address(gateway), transfer.amount);
+    }
+
     function transferData(
         bytes32 transferId
     ) external view returns (address token, uint256 amount, bytes memory payload) {
@@ -343,13 +348,14 @@ contract TronConnectorTests is Test {
         usdt.approve(address(tronGateway), DEPOSIT_ASSETS);
         bytes32 requestId = tronGateway.requestDeposit(
             DEPOSIT_ASSETS,
+            DEPOSIT_ASSETS,
             DEPOSIT_ASSETS + 1,
             uint64(block.timestamp + 1 hours),
             alice
         );
         vm.stopPrank();
 
-        (, , , , , , , bytes32 bridgeTransferId) = tronGateway.deposits(requestId);
+        (, , , , , , , , bytes32 bridgeTransferId) = tronGateway.deposits(requestId);
         vm.expectRevert(EvmTronConnector.SlippageExceeded.selector);
         bridge.deliverDeposit(bridgeTransferId, evmConnector);
 
@@ -475,7 +481,7 @@ contract TronConnectorTests is Test {
         vm.startPrank(alice);
         usdt.approve(address(tronGateway), 1);
         vm.expectRevert();
-        tronGateway.requestDeposit(1, 1, uint64(block.timestamp + 1 hours), alice);
+        tronGateway.requestDeposit(1, 1, 1, uint64(block.timestamp + 1 hours), alice);
         vm.stopPrank();
 
         bytes32 ackId = evmConnector.sendDepositAck(requestId);
@@ -492,6 +498,46 @@ contract TronConnectorTests is Test {
         vm.expectRevert(EvmTronConnector.BackingTokenRescueForbidden.selector);
         evmConnector.rescueToken(address(vault), owner, 1);
         vm.stopPrank();
+    }
+
+    function testOwnerCanRetryCancelledDepositBridge() public {
+        (bytes32 requestId, bytes32 cancelledTransferId) = _requestDeposit(
+            DEPOSIT_ASSETS
+        );
+        bridge.cancelDeposit(cancelledTransferId, tronGateway);
+
+        vm.prank(owner);
+        bytes32 retryTransferId = tronGateway.retryDepositBridge(requestId);
+
+        assertTrue(retryTransferId != cancelledTransferId);
+        assertEq(usdt.balanceOf(address(tronGateway)), 0);
+        (, , , , , , , , bytes32 storedTransferId) = tronGateway.deposits(
+            requestId
+        );
+        assertEq(storedTransferId, retryTransferId);
+    }
+
+    function testCannotUseGatewayBeforePairing() public {
+        TronGateway unpaired = new TronGateway(
+            owner,
+            address(usdt),
+            address(bridge),
+            address(bridge),
+            address(messenger),
+            EVM_CHAIN,
+            bytes32(0)
+        );
+        usdt.mint(alice, 1);
+
+        vm.startPrank(alice);
+        usdt.approve(address(unpaired), 1);
+        vm.expectRevert(TronGateway.InvalidState.selector);
+        unpaired.requestDeposit(1, 1, 1, uint64(block.timestamp + 1 hours), alice);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        unpaired.setEvmConnector(_addressToBytes32(address(evmConnector)));
+        assertEq(unpaired.evmConnector(), _addressToBytes32(address(evmConnector)));
     }
 
     function testFuzzRoundTripMaintainsShareBacking(
@@ -540,12 +586,13 @@ contract TronConnectorTests is Test {
         requestId = tronGateway.requestDeposit(
             assets,
             assets,
+            assets,
             uint64(block.timestamp + 1 hours),
             alice
         );
         vm.stopPrank();
 
-        (, , , , , , , bridgeTransferId) = tronGateway.deposits(requestId);
+        (, , , , , , , , bridgeTransferId) = tronGateway.deposits(requestId);
     }
 
     function _addressToBytes32(address account) private pure returns (bytes32) {

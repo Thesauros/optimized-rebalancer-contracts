@@ -7,6 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IDlnSource} from "../../contracts/connectors/interfaces/IDlnSource.sol";
 import {BaseDlnAssetBridge} from "../../contracts/connectors/BaseDlnAssetBridge.sol";
+import {TronDlnAssetBridge} from "../../contracts/connectors/TronDlnAssetBridge.sol";
 import {DeBridgeMessengerAdapter} from "../../contracts/connectors/DeBridgeMessengerAdapter.sol";
 import {ConnectorCodec} from "../../contracts/connectors/libraries/ConnectorCodec.sol";
 
@@ -115,6 +116,7 @@ contract MockConnectorReceiver {
 }
 
 contract BaseAdapterTests is Test {
+    uint32 private constant BASE_CHAIN = 8453;
     uint32 private constant TRON_CHAIN = 100000026;
     address private constant TRON_USDT = address(0x1111);
     address private constant TRON_GATEWAY = address(0x2222);
@@ -197,6 +199,7 @@ contract BaseAdapterTests is Test {
         MockCallProxy proxy = new MockCallProxy();
         MockDeBridgeGate gate = new MockDeBridgeGate(address(proxy));
         DeBridgeMessengerAdapter messenger = new DeBridgeMessengerAdapter(
+            address(this),
             address(gate),
             TRON_CHAIN,
             _addressToBytes32(TRON_MESSENGER)
@@ -230,6 +233,65 @@ contract BaseAdapterTests is Test {
             incomingCall,
             TRON_CHAIN,
             abi.encodePacked(address(0xdead))
+        );
+    }
+
+    function testBuildsBoundAtomicDlnDepositOrder() public {
+        TronDlnAssetBridge tronBridge = new TronDlnAssetBridge(
+            address(this),
+            address(source),
+            address(usdc),
+            BASE_CHAIN,
+            _addressToBytes32(address(0x8335)),
+            1_000_000,
+            0
+        );
+        tronBridge.setConnector(address(this));
+
+        uint256 amount = 100e6;
+        uint256 minBaseAssets = 99e6;
+        address baseConnector = address(0x5555);
+        bytes memory payload = ConnectorCodec.encodeDeposit(
+            bytes32(uint256(8)),
+            minBaseAssets,
+            98e6,
+            uint64(block.timestamp + 1 hours),
+            _addressToBytes32(address(0x4444))
+        );
+        usdc.mint(address(this), amount);
+        usdc.approve(address(tronBridge), amount);
+
+        tronBridge.bridgeAsset{value: source.FEE()}(
+            address(usdc),
+            amount,
+            BASE_CHAIN,
+            _addressToBytes32(baseConnector),
+            payload,
+            address(this)
+        );
+
+        IDlnSource.OrderCreation memory order = source.lastOrder();
+        assertEq(order.giveAmount, amount);
+        assertEq(order.takeAmount, minBaseAssets);
+        assertEq(order.takeChainId, BASE_CHAIN);
+        assertEq(order.receiverDst, abi.encodePacked(baseConnector));
+        assertEq(order.allowedCancelBeneficiarySrc, abi.encodePacked(address(this)));
+
+        TronDlnAssetBridge.ExternalCallEnvelopeV1 memory envelope = abi.decode(
+            order.externalCall,
+            (TronDlnAssetBridge.ExternalCallEnvelopeV1)
+        );
+        assertEq(envelope.fallbackAddress, baseConnector);
+        assertTrue(envelope.requireSuccessfulExecution);
+
+        TronDlnAssetBridge.UniversalHookPayload memory hook = abi.decode(
+            envelope.payload,
+            (TronDlnAssetBridge.UniversalHookPayload)
+        );
+        assertEq(hook.to, baseConnector);
+        assertEq(
+            bytes4(hook.callData),
+            bytes4(keccak256("receiveBridgedDeposit(uint256,bytes)"))
         );
     }
 

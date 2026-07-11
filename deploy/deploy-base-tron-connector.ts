@@ -99,6 +99,7 @@ const deployBaseTronConnector: DeployFunction = async function (
   }
 
   const messengerArgs = [
+    owner,
     BASE_DEBRIDGE_GATE,
     DEBRIDGE_TRON_CHAIN_ID,
     tronMessenger,

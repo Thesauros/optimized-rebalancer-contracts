@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 library ConnectorCodec {
-    uint8 internal constant VERSION = 1;
+    uint8 internal constant VERSION = 2;
 
     enum MessageType {
         Invalid,
@@ -16,6 +16,7 @@ library ConnectorCodec {
 
     function encodeDeposit(
         bytes32 requestId,
+        uint256 minBaseAssets,
         uint256 minShares,
         uint64 deadline,
         bytes32 receiver
@@ -25,6 +26,7 @@ library ConnectorCodec {
                 VERSION,
                 uint8(MessageType.Deposit),
                 requestId,
+                minBaseAssets,
                 minShares,
                 deadline,
                 receiver
@@ -38,6 +40,7 @@ library ConnectorCodec {
         pure
         returns (
             bytes32 requestId,
+            uint256 minBaseAssets,
             uint256 minShares,
             uint64 deadline,
             bytes32 receiver
@@ -45,8 +48,18 @@ library ConnectorCodec {
     {
         uint8 version;
         uint8 rawType;
-        (version, rawType, requestId, minShares, deadline, receiver) = abi
-            .decode(payload, (uint8, uint8, bytes32, uint256, uint64, bytes32));
+        (
+            version,
+            rawType,
+            requestId,
+            minBaseAssets,
+            minShares,
+            deadline,
+            receiver
+        ) = abi.decode(
+            payload,
+            (uint8, uint8, bytes32, uint256, uint256, uint64, bytes32)
+        );
         _validate(version, rawType, MessageType.Deposit);
     }
 

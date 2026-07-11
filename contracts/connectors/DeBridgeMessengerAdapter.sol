@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {ICrossChainMessenger} from "./interfaces/ICrossChainMessenger.sol";
 import {IDeBridgeGate} from "./interfaces/IDeBridgeGate.sol";
 import {IDeBridgeCallProxy} from "./interfaces/IDeBridgeCallProxy.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IConnectorMessageReceiver {
     function receiveMessage(
@@ -13,8 +14,9 @@ interface IConnectorMessageReceiver {
     ) external;
 }
 
-contract DeBridgeMessengerAdapter is ICrossChainMessenger {
+contract DeBridgeMessengerAdapter is ICrossChainMessenger, Ownable {
     error AddressZero();
+    error AlreadyConfigured();
     error InvalidDestination();
     error InvalidMessageOrigin();
     error InvalidProtocolFee();
@@ -22,10 +24,17 @@ contract DeBridgeMessengerAdapter is ICrossChainMessenger {
     IDeBridgeGate public immutable deBridgeGate;
     IDeBridgeCallProxy public immutable callProxy;
     uint32 public immutable remoteChain;
-    bytes32 public immutable remoteAdapter;
+    bytes32 public remoteAdapter;
 
-    constructor(address gate_, uint32 remoteChain_, bytes32 remoteAdapter_) {
-        if (gate_ == address(0) || remoteAdapter_ == bytes32(0)) revert AddressZero();
+    event RemoteAdapterConfigured(bytes32 indexed remoteAdapter);
+
+    constructor(
+        address owner_,
+        address gate_,
+        uint32 remoteChain_,
+        bytes32 remoteAdapter_
+    ) Ownable(owner_) {
+        if (gate_ == address(0)) revert AddressZero();
         if (remoteChain_ == 0) revert InvalidDestination();
 
         IDeBridgeGate gate = IDeBridgeGate(gate_);
@@ -38,12 +47,20 @@ contract DeBridgeMessengerAdapter is ICrossChainMessenger {
         remoteAdapter = remoteAdapter_;
     }
 
+    function setRemoteAdapter(bytes32 remoteAdapter_) external onlyOwner {
+        if (remoteAdapter_ == bytes32(0)) revert AddressZero();
+        if (remoteAdapter != bytes32(0)) revert AlreadyConfigured();
+        remoteAdapter = remoteAdapter_;
+        emit RemoteAdapterConfigured(remoteAdapter_);
+    }
+
     function sendMessage(
         uint32 destinationChain,
         bytes32 receiver,
         bytes calldata payload,
         address
     ) external payable returns (bytes32 messageId) {
+        if (remoteAdapter == bytes32(0)) revert InvalidDestination();
         if (destinationChain != remoteChain || receiver == bytes32(0)) {
             revert InvalidDestination();
         }
@@ -65,6 +82,7 @@ contract DeBridgeMessengerAdapter is ICrossChainMessenger {
         bytes32 destinationApplication,
         bytes calldata payload
     ) external {
+        if (remoteAdapter == bytes32(0)) revert InvalidMessageOrigin();
         if (msg.sender != address(callProxy)) revert InvalidMessageOrigin();
         if (callProxy.submissionChainIdFrom() != remoteChain) {
             revert InvalidMessageOrigin();
@@ -96,4 +114,3 @@ contract DeBridgeMessengerAdapter is ICrossChainMessenger {
         return abi.encodePacked(_bytes32ToAddress(value));
     }
 }
-

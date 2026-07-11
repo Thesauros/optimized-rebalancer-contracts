@@ -29,6 +29,7 @@ contract EvmTronConnector is Ownable2Step, Pausable, ReentrancyGuard {
     struct DepositRecord {
         uint256 assets;
         uint256 shares;
+        uint256 minBaseAssets;
         uint256 minShares;
         uint64 deadline;
         bytes32 tronReceiver;
@@ -139,11 +140,14 @@ contract EvmTronConnector is Ownable2Step, Pausable, ReentrancyGuard {
 
         (
             bytes32 requestId,
+            uint256 minBaseAssets,
             uint256 minShares,
             uint64 deadline,
             bytes32 tronReceiver
         ) = ConnectorCodec.decodeDeposit(payload);
-        if (bridgeAmount == 0 || minShares == 0) revert InvalidAmount();
+        if (bridgeAmount == 0 || minBaseAssets == 0 || minShares == 0) {
+            revert InvalidAmount();
+        }
         if (deadline < block.timestamp) revert DeadlineExpired();
         if (tronReceiver == bytes32(0)) revert AddressZero();
         if (deposits[requestId].state != DepositState.None) revert InvalidState();
@@ -151,7 +155,7 @@ contract EvmTronConnector is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 balanceBefore = asset.balanceOf(address(this));
         asset.safeTransferFrom(msg.sender, address(this), bridgeAmount);
         uint256 received = asset.balanceOf(address(this)) - balanceBefore;
-        if (received == 0) revert InvalidAmount();
+        if (received < minBaseAssets) revert SlippageExceeded();
 
         asset.forceApprove(address(vault), received);
         shares = vault.deposit(received, address(this));
@@ -161,6 +165,7 @@ contract EvmTronConnector is Ownable2Step, Pausable, ReentrancyGuard {
         deposits[requestId] = DepositRecord({
             assets: received,
             shares: shares,
+            minBaseAssets: minBaseAssets,
             minShares: minShares,
             deadline: deadline,
             tronReceiver: tronReceiver,

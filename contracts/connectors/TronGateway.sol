@@ -32,6 +32,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
         address account;
         address receiver;
         uint256 assets;
+        uint256 minBaseAssets;
         uint256 shares;
         uint256 minShares;
         uint64 deadline;
@@ -51,6 +52,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
     }
 
     error AddressZero();
+    error AlreadyConfigured();
     error InvalidChain();
     error InvalidDecimals();
     error InvalidAmount();
@@ -68,7 +70,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
     IAssetBridge public immutable assetBridge;
     ICrossChainMessenger public immutable messenger;
     uint32 public immutable evmChain;
-    bytes32 public immutable evmConnector;
+    bytes32 public evmConnector;
 
     uint256 public nextNonce;
     mapping(bytes32 requestId => DepositRequest) public deposits;
@@ -79,11 +81,14 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
         address indexed account,
         address indexed receiver,
         uint256 assets,
+        uint256 minBaseAssets,
         uint256 minShares,
         bytes32 bridgeTransferId
     );
     event DepositFinalized(bytes32 indexed requestId, address indexed receiver, uint256 shares);
     event DepositRefunded(bytes32 indexed requestId, address indexed account, uint256 assets);
+    event DepositBridgeRetried(bytes32 indexed requestId, bytes32 indexed bridgeTransferId);
+    event EvmConnectorConfigured(bytes32 indexed evmConnector);
     event RedeemRequested(
         bytes32 indexed requestId,
         address indexed account,
@@ -113,8 +118,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
             usdt_ == address(0) ||
             payoutExecutor_ == address(0) ||
             assetBridge_ == address(0) ||
-            messenger_ == address(0) ||
-            evmConnector_ == bytes32(0)
+            messenger_ == address(0)
         ) revert AddressZero();
         if (evmChain_ == 0) revert InvalidChain();
         if (IERC20Metadata(usdt_).decimals() != 6) revert InvalidDecimals();
@@ -128,13 +132,22 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
         tUSDT = new TronTUSDT(address(this), 6);
     }
 
+    function setEvmConnector(bytes32 evmConnector_) external onlyOwner {
+        if (evmConnector_ == bytes32(0)) revert AddressZero();
+        if (evmConnector != bytes32(0)) revert AlreadyConfigured();
+        evmConnector = evmConnector_;
+        emit EvmConnectorConfigured(evmConnector_);
+    }
+
     function requestDeposit(
         uint256 assets,
+        uint256 minBaseAssets,
         uint256 minShares,
         uint64 deadline,
         address receiver
     ) external payable nonReentrant whenNotPaused returns (bytes32 requestId) {
-        if (assets == 0 || minShares == 0) revert InvalidAmount();
+        if (assets == 0 || minBaseAssets == 0 || minShares == 0) revert InvalidAmount();
+        if (evmConnector == bytes32(0)) revert InvalidState();
         if (receiver == address(0)) revert AddressZero();
         if (deadline <= block.timestamp) revert InvalidDeadline();
 
@@ -148,12 +161,14 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
         request.account = msg.sender;
         request.receiver = receiver;
         request.assets = received;
+        request.minBaseAssets = minBaseAssets;
         request.minShares = minShares;
         request.deadline = deadline;
         request.state = DepositState.BridgeSent;
 
         bytes memory payload = ConnectorCodec.encodeDeposit(
             requestId,
+            minBaseAssets,
             minShares,
             deadline,
             _addressToBytes32(receiver)
@@ -179,6 +194,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
             msg.sender,
             receiver,
             received,
+            minBaseAssets,
             minShares,
             request.bridgeTransferId
         );
@@ -190,6 +206,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 minTronAssets,
         address receiver
     ) external payable nonReentrant whenNotPaused returns (bytes32 requestId) {
+        if (evmConnector == bytes32(0)) revert InvalidState();
         if (shares == 0 || minVaultAssets == 0 || minTronAssets == 0) {
             revert InvalidAmount();
         }
@@ -304,6 +321,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
 
         (
             bytes32 requestId,
+            uint256 minBaseAssets,
             uint256 minShares,
             uint64 deadline,
             bytes32 encodedReceiver
@@ -313,6 +331,7 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
         if (request.state != DepositState.BridgeSent) revert InvalidState();
         if (
             minShares != request.minShares ||
+            minBaseAssets != request.minBaseAssets ||
             deadline != request.deadline ||
             encodedReceiver != _addressToBytes32(request.receiver)
         ) revert InvalidRequest();
@@ -326,6 +345,49 @@ contract TronGateway is Ownable2Step, Pausable, ReentrancyGuard {
         usdt.safeTransfer(request.account, received);
 
         emit DepositRefunded(requestId, request.account, received);
+    }
+
+    function retryDepositBridge(
+        bytes32 requestId
+    ) external payable onlyOwner nonReentrant returns (bytes32 transferId) {
+        DepositRequest storage request = deposits[requestId];
+        if (request.state != DepositState.BridgeSent) revert InvalidState();
+        uint256 balanceBefore = usdt.balanceOf(address(this));
+        if (balanceBefore < request.assets) revert InvalidAmount();
+
+        bytes memory payload = ConnectorCodec.encodeDeposit(
+            requestId,
+            request.minBaseAssets,
+            request.minShares,
+            request.deadline,
+            _addressToBytes32(request.receiver)
+        );
+        usdt.forceApprove(address(assetBridge), request.assets);
+        transferId = assetBridge.bridgeAsset{value: msg.value}(
+            address(usdt),
+            request.assets,
+            evmChain,
+            evmConnector,
+            payload,
+            request.account
+        );
+        usdt.forceApprove(address(assetBridge), 0);
+        if (usdt.balanceOf(address(this)) != balanceBefore - request.assets) {
+            revert BridgeDidNotPullAssets();
+        }
+
+        request.bridgeTransferId = transferId;
+        emit DepositBridgeRetried(requestId, transferId);
+    }
+
+    function refundCancelledDeposit(bytes32 requestId) external onlyOwner nonReentrant {
+        DepositRequest storage request = deposits[requestId];
+        if (request.state != DepositState.BridgeSent) revert InvalidState();
+        if (usdt.balanceOf(address(this)) < request.assets) revert InvalidAmount();
+
+        request.state = DepositState.Refunded;
+        usdt.safeTransfer(request.account, request.assets);
+        emit DepositRefunded(requestId, request.account, request.assets);
     }
 
     function pause() external onlyOwner {
