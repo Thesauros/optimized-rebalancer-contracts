@@ -1,6 +1,10 @@
 {
   "name": "thesauros-optimized-rebalancer",
-  "scripts": {},
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "forge test",
+    "deploy:base-tron-connector": "hardhat deploy --network base --tags base-tron-connector"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-foundry": "^1.2.1",
     "@nomicfoundation/hardhat-toolbox": "^6.1.2",

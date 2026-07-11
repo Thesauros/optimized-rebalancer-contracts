@@ -1,4 +1,6 @@
-export const BASE_URL = `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_PROJECT_ID}`;
+export const BASE_URL =
+  process.env.BASE_RPC_URL ||
+  `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_PROJECT_ID}`;
 
 export const networkConfig = {
   localhost: {
@@ -15,6 +17,5 @@ export const networkConfig = {
       ? [process.env.DEPLOYER_PRIVATE_KEY]
       : [],
     chainId: 8453,
-    gasPrice: 3000000, // 0.003 Gwei
   },
 };
