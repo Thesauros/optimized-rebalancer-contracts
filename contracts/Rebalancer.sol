@@ -418,7 +418,7 @@ contract Rebalancer is
         RebalancerStorage storage $ = _getRebalancerStorage();
         uint256 assetsLeft = assets;
         uint256 count = $._providers.length;
-        for (uint256 i; i < count; i++) {
+        for (uint256 i; i < count && assetsLeft > 0; i++) {
             IProvider provider = $._providers[i];
             uint256 assetsAtProvider = provider.getDepositBalance(
                 address(this),
@@ -431,12 +431,23 @@ contract Rebalancer is
                 ? assetsLeft
                 : assetsAtProvider;
 
-            _delegateActionToProvider(amount, "withdraw", provider);
-
-            assetsLeft -= amount;
-
-            if (assetsLeft == 0) break;
+            // THES2-1: isolate provider withdrawal — skip on failure,
+            // continue to next provider instead of reverting the entire tx.
+            uint256 balBefore = $._asset.balanceOf(address(this));
+            (bool success, ) = address(provider).delegatecall(
+                abi.encodeWithSignature(
+                    "withdraw(uint256,address)",
+                    amount,
+                    address(this)
+                )
+            );
+            if (success) {
+                uint256 received = $._asset.balanceOf(address(this)) - balBefore;
+                assetsLeft -= received;
+            }
         }
+
+        if (assetsLeft > 0) revert InsufficientLiquidity();
 
         $._lastTotalAssets -= assets;
         $._asset.safeTransfer(receiver, assets);
