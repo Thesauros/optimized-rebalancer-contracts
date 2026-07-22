@@ -136,7 +136,6 @@ contract MorphoProvider is IProvider {
         uint256 ratio;
         uint256 queueLength = _metaMorpho.withdrawQueueLength();
 
-        // THES2-3: use real supply assets as denominator instead of
         // totalAssets() which includes persistent lostAssets from bad debt.
         // This aligns the denominator with the numerator (expectedSupplyAssets).
         uint256 totalRealAssets;

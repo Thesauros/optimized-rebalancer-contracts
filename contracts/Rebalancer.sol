@@ -431,7 +431,6 @@ contract Rebalancer is
                 ? assetsLeft
                 : assetsAtProvider;
 
-            // THES2-1: isolate provider withdrawal — skip on failure,
             // continue to next provider instead of reverting the entire tx.
             uint256 balBefore = $._asset.balanceOf(address(this));
             (bool success, ) = address(provider).delegatecall(
