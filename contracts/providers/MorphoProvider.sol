@@ -136,7 +136,9 @@ contract MorphoProvider is IProvider {
         uint256 ratio;
         uint256 queueLength = _metaMorpho.withdrawQueueLength();
 
-        uint256 totalDeposits = _metaMorpho.totalAssets();
+        // totalAssets() which includes persistent lostAssets from bad debt.
+        // This aligns the denominator with the numerator (expectedSupplyAssets).
+        uint256 totalRealAssets;
 
         for (uint256 i; i < queueLength; i++) {
             Id idMarket = _metaMorpho.withdrawQueue(i);
@@ -152,10 +154,14 @@ contract MorphoProvider is IProvider {
                 address(_metaMorpho)
             );
             ratio += marketRate.wMulDown(assetsInMarket);
+            totalRealAssets += assetsInMarket;
         }
+
+        if (totalRealAssets == 0) return 0;
+
         // Scaled by 1e9 to return ray(1e27) per IProvider specs, Morpho Blue uses base 1e18 number.
         rate =
-            ratio.mulDivDown(1e18 - _metaMorpho.fee(), totalDeposits) *
+            ratio.mulDivDown(1e18 - _metaMorpho.fee(), totalRealAssets) *
             10 ** 9;
     }
 

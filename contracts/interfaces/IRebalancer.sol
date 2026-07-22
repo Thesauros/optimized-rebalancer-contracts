@@ -14,6 +14,7 @@ interface IRebalancer is IERC4626 {
     error InvalidCount();
     error ArrayMismatch();
     error InvalidProvider();
+    error InsufficientLiquidity();
 
     /**
      * @notice Emitted when the timelock contract is changed.
