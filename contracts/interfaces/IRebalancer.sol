@@ -22,6 +22,7 @@ interface IRebalancer is IERC4626 {
 
     /// @dev The provider is not listed.
     error InvalidProvider();
+    error InsufficientLiquidity();
 
     /// @dev Emitted when the listed providers are updated.
     /// @param providers The new listed providers.

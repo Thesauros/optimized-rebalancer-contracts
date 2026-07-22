@@ -2,19 +2,21 @@
 pragma solidity 0.8.33;
 
 import {IProvider} from "../../contracts/interfaces/IProvider.sol";
-import {RevertProvider} from "../../contracts/providers/RevertProvider.sol";
+import {MorphoProvider} from "../../contracts/providers/MorphoProvider.sol";
 import {ForkingBase} from "./ForkingBase.t.sol";
 
-contract RevertProviderTests is ForkingBase {
-    RevertProvider public revertProvider;
+contract SteakhousePrimeMorphoProviderTests is ForkingBase {
+    MorphoProvider public morphoProvider;
 
     function setUp() public override {
         super.setUp();
 
-        revertProvider = new RevertProvider();
+        morphoProvider = new MorphoProvider(
+            MORPHO_STEAKHOUSE_PRIME_VAULT_ADDRESS
+        );
 
         IProvider[] memory providers = new IProvider[](1);
-        providers[0] = revertProvider;
+        providers[0] = morphoProvider;
 
         vault = _deployVault();
         _initializeVault(vault, usdc, providers);
@@ -83,7 +85,7 @@ contract RevertProviderTests is ForkingBase {
     // =========================================
 
     function testDepositRate() public view {
-        assertGt(revertProvider.getDepositRate(vault), 0);
+        assertGt(morphoProvider.getDepositRate(vault), 0);
     }
 
     // =========================================
@@ -91,6 +93,6 @@ contract RevertProviderTests is ForkingBase {
     // =========================================
 
     function testIdentifier() public view {
-        assertEq(revertProvider.getIdentifier(), "Revert_Provider");
+        assertEq(morphoProvider.getIdentifier(), "Morpho_Provider");
     }
 }
