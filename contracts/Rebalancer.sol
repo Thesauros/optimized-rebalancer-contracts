@@ -7,17 +7,32 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {AccessManager} from "./access/AccessManager.sol";
 import {PausableActions} from "./utils/PausableActions.sol";
 import {IPausableActions} from "./interfaces/IPausableActions.sol";
 import {IProvider} from "./interfaces/IProvider.sol";
-import {IERC4626} from "./interfaces/IERC4626.sol";
 import {IRebalancer} from "./interfaces/IRebalancer.sol";
 import "./libraries/Constants.sol";
 
-/**
- * @title Rebalancer
- */
+/// @title Rebalancer
+/// @notice ERC-4626 and ERC-2612 compliant vault that allocates assets across external providers and supports rebalancing.
+///
+/// @dev The vault does not hold idle underlying; deposits are forwarded to the entry provider.
+/// @dev maxDeposit, maxMint, maxWithdraw, and maxRedeem always return zero.
+/// @dev totalSupply does not include accrued fee shares until fees are applied.
+/// @dev Initialization includes an initial deposit that is locked and treated as normal liquidity.
+///
+/// @dev Deposits and mints require a minimum asset amount.
+///
+/// @dev Fees are charged by minting shares to the treasury.
+/// @dev Fees accrue over time and are applied on vault interactions; periodic interaction is required.
+/// @dev The performance fee is yield-based; the management fee is time-based and may reduce share price.
+/// @dev Fee rates are expressed in WAD.
+///
+/// @dev Providers are timelock-controlled; other vault configs are admin-controlled.
+///
+/// @dev The vault relies on external providers remaining operational.
 contract Rebalancer is
     ERC20PermitUpgradeable,
     AccessManager,
@@ -54,6 +69,7 @@ contract Rebalancer is
     bytes32 private constant RebalancerStorageLocation =
         0x7e58afa6d55148d409feb524397452494284df87c6d0256f1c37551f5f960b00;
 
+    /// @dev Returns the ERC-7201 namespaced storage pointer.
     function _getRebalancerStorage()
         private
         pure
@@ -64,9 +80,7 @@ contract Rebalancer is
         }
     }
 
-    /**
-     * @dev Reverts if called by any account other than the timelock contract.
-     */
+    /// @dev Checks that the caller is the timelock.
     modifier onlyTimelock() {
         _onlyTimelock();
         _;
@@ -78,9 +92,17 @@ contract Rebalancer is
 
     receive() external payable {}
 
-    /**
-     * @dev Initializes the Rebalancer contract with the specified parameters.
-     */
+    /// @dev Initializes the Rebalancer with the specified parameters.
+    /// @param admin_ The address of the initial admin.
+    /// @param timelock_ The address of the initial timelock.
+    /// @param asset_ The address of the underlying asset.
+    /// @param name_ The name of the share token.
+    /// @param symbol_ The symbol of the share token.
+    /// @param providers_ The initial listed providers.
+    /// @param treasury_ The address of the initial treasury.
+    /// @param managementFee_ The initial management fee rate.
+    /// @param performanceFee_ The initial performance fee rate.
+    /// @param minAssets_ The initial minimum asset amount.
     function initialize(
         address admin_,
         address timelock_,
@@ -121,7 +143,7 @@ contract Rebalancer is
 
         $._lastTimestamp = block.timestamp.toUint64();
 
-        // requires a non-trivial initial deposit to mitigate inflation attacks.
+        // requires an initial deposit to mitigate inflation attacks.
         // the appropriate amount depends on the underlying asset’s decimals.
         _deposit(_msgSender(), address(this), minAssets_, minAssets_);
     }
@@ -130,110 +152,107 @@ contract Rebalancer is
                                 ERC4626
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Returns the number of decimals used to get number representation.
-     */
-    function decimals() public view override(ERC20Upgradeable) returns (uint8) {
+    /// @inheritdoc IERC20Metadata
+    function decimals()
+        public
+        view
+        override(ERC20Upgradeable, IERC20Metadata)
+        returns (uint8)
+    {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._underlyingDecimals;
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
-    function asset() public view override returns (address) {
+    /// @inheritdoc IERC4626
+    function asset() public view returns (address) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return address($._asset);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
-    function totalAssets() public view override returns (uint256) {
+    /// @inheritdoc IERC4626
+    function totalAssets() public view returns (uint256) {
         return _totalAssetsAtProviders();
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @notice Converts assets to shares.
+    /// @param assets The amount of assets.
+    /// @return shares The amount of shares.
     function convertToShares(
         uint256 assets
-    ) public view override returns (uint256 shares) {
+    ) public view returns (uint256 shares) {
         return _convertToShares(assets, Math.Rounding.Floor);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @notice Converts shares to assets.
+    /// @param shares The amount of shares.
+    /// @return assets The amount of assets.
     function convertToAssets(
         uint256 shares
-    ) public view override returns (uint256 assets) {
+    ) public view returns (uint256 assets) {
         return _convertToAssets(shares, Math.Rounding.Floor);
     }
 
     /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
-    function maxDeposit(address) external pure returns (uint256) {
+    function maxDeposit(address) public pure returns (uint256) {
         return 0;
     }
 
     /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
-    function maxMint(address) external pure returns (uint256) {
+    function maxMint(address) public pure returns (uint256) {
         return 0;
     }
 
     /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
-    function maxWithdraw(address) external pure returns (uint256) {
+    function maxWithdraw(address) public pure returns (uint256) {
         return 0;
     }
 
     /// @dev Unconventional underestimation: limits depend on external providers, so we return 0 to avoid over-promising.
-    function maxRedeem(address) external pure returns (uint256) {
+    function maxRedeem(address) public pure returns (uint256) {
         return 0;
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @notice Previews the amount of shares minted in a deposit.
+    /// @param assets The amount of assets to deposit.
+    /// @return The previewed amount of shares.
     function previewDeposit(
         uint256 assets
-    ) public view override returns (uint256) {
+    ) public view returns (uint256) {
         return _convertToShares(assets, Math.Rounding.Floor);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @notice Previews the amount of assets required for a mint.
+    /// @param shares The amount of shares to mint.
+    /// @return The previewed amount of assets.
     function previewMint(
         uint256 shares
-    ) public view override returns (uint256) {
+    ) public view returns (uint256) {
         return _convertToAssets(shares, Math.Rounding.Ceil);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @notice Previews the amount of shares burned in a withdraw.
+    /// @param assets The amount of assets to withdraw.
+    /// @return The previewed amount of shares.
     function previewWithdraw(
         uint256 assets
-    ) public view override returns (uint256) {
+    ) public view returns (uint256) {
         return _convertToShares(assets, Math.Rounding.Ceil);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @notice Previews the amount of assets received for a redeem.
+    /// @param shares The amount of shares to redeem.
+    /// @return The previewed amount of assets.
     function previewRedeem(
         uint256 shares
-    ) public view override returns (uint256) {
+    ) public view returns (uint256) {
         return _convertToAssets(shares, Math.Rounding.Floor);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @inheritdoc IERC4626
     function deposit(
         uint256 assets,
         address receiver
-    ) public override returns (uint256 shares) {
+    ) public returns (uint256 shares) {
         uint256 totalManagedAssets = _applyFees();
 
         shares = _convertToSharesWithTotals(
@@ -247,13 +266,11 @@ contract Rebalancer is
         _deposit(_msgSender(), receiver, assets, shares);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @inheritdoc IERC4626
     function mint(
         uint256 shares,
         address receiver
-    ) public override returns (uint256 assets) {
+    ) public returns (uint256 assets) {
         uint256 totalManagedAssets = _applyFees();
 
         assets = _convertToAssetsWithTotals(
@@ -267,14 +284,12 @@ contract Rebalancer is
         _deposit(_msgSender(), receiver, assets, shares);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @inheritdoc IERC4626
     function withdraw(
         uint256 assets,
         address receiver,
         address owner
-    ) public override returns (uint256 shares) {
+    ) public returns (uint256 shares) {
         uint256 totalManagedAssets = _applyFees();
 
         shares = _convertToSharesWithTotals(
@@ -288,14 +303,12 @@ contract Rebalancer is
         _withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
-    /**
-     * @inheritdoc IERC4626
-     */
+    /// @inheritdoc IERC4626
     function redeem(
         uint256 shares,
         address receiver,
         address owner
-    ) public override returns (uint256 assets) {
+    ) public returns (uint256 assets) {
         uint256 totalManagedAssets = _applyFees();
 
         assets = _convertToAssetsWithTotals(
@@ -309,7 +322,11 @@ contract Rebalancer is
         _withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
-    /// @dev Converts assets to shares equivalent, with support for rounding direction.
+    /// @dev Converts assets to shares with support for rounding direction.
+    /// @dev Includes accrued fee shares in total supply during conversion.
+    /// @param assets The amount of assets.
+    /// @param rounding The rounding direction.
+    /// @return shares The amount of shares.
     function _convertToShares(
         uint256 assets,
         Math.Rounding rounding
@@ -329,7 +346,11 @@ contract Rebalancer is
             );
     }
 
-    /// @dev Converts shares to assets equivalent, with support for rounding direction.
+    /// @dev Converts shares to assets with support for rounding direction.
+    /// @dev Includes accrued fee shares in total supply during conversion.
+    /// @param shares The amount of shares.
+    /// @param rounding The rounding direction.
+    /// @return assets The amount of assets.
     function _convertToAssets(
         uint256 shares,
         Math.Rounding rounding
@@ -349,8 +370,13 @@ contract Rebalancer is
             );
     }
 
-    /// @dev Converts assets to shares equivalent using provided total supply and total assets, with support for rounding direction.
-    /// @dev Will revert if assets > 0, totalSupply > 0 and totalAssets = 0. That corresponds to a case where any asset would represent an infinite amount of shares.
+    /// @dev Converts assets to shares using totals, with support for rounding direction.
+    /// @dev Reverts if assets > 0, totalSupply > 0 and totalManagedAssets = 0. That corresponds to a case where any asset would represent an infinite amount of shares.
+    /// @param assets The amount of assets.
+    /// @param totalSupply The total supply used for the conversion.
+    /// @param totalManagedAssets The total assets used for the conversion.
+    /// @param rounding The rounding direction.
+    /// @return shares The amount of shares.
     function _convertToSharesWithTotals(
         uint256 assets,
         uint256 totalSupply,
@@ -363,7 +389,12 @@ contract Rebalancer is
                 : assets.mulDiv(totalSupply, totalManagedAssets, rounding);
     }
 
-    /// @dev Converts shares to assets equivalent using provided total supply and total assets, with support for rounding direction.
+    /// @dev Converts shares to assets using totals, with support for rounding direction.
+    /// @param shares The amount of shares.
+    /// @param totalSupply The total supply used for the conversion.
+    /// @param totalManagedAssets The total assets used for the conversion.
+    /// @param rounding The rounding direction.
+    /// @return assets The amount of assets.
     function _convertToAssetsWithTotals(
         uint256 shares,
         uint256 totalSupply,
@@ -376,13 +407,11 @@ contract Rebalancer is
                 : shares.mulDiv(totalManagedAssets, totalSupply, rounding);
     }
 
-    /**
-     * @dev Executes a deposit at the active provider.
-     * @param caller The address that initiated the deposit.
-     * @param receiver The address to which shares are minted.
-     * @param assets The amount transferred during this deposit.
-     * @param shares The amount minted to receiver.
-     */
+    /// @dev Deposits assets via the entry provider and mints shares to the receiver.
+    /// @param caller The address initiating the action.
+    /// @param receiver The address receiving the shares.
+    /// @param assets The amount of assets.
+    /// @param shares The amount of shares.
     function _deposit(
         address caller,
         address receiver,
@@ -398,14 +427,12 @@ contract Rebalancer is
         emit Deposit(caller, receiver, assets, shares);
     }
 
-    /**
-     * @dev Executes a withdraw at the active provider.
-     * @param caller The address that initiated the withdrawal.
-     * @param receiver The address to which the assets will be transferred.
-     * @param owner The address whose shares will be burned during this withdrawal.
-     * @param assets The amount of assets being withdrawn from the vault.
-     * @param shares The amount of shares being burned during this withdrawal.
-     */
+    /// @dev Burns shares and withdraws assets from providers.
+    /// @param caller The address initiating the action.
+    /// @param receiver The address receiving the assets.
+    /// @param owner The owner of the shares being burned.
+    /// @param assets The amount of assets.
+    /// @param shares The amount of shares.
     function _withdraw(
         address caller,
         address receiver,
@@ -454,12 +481,10 @@ contract Rebalancer is
         emit Withdraw(caller, receiver, owner, assets, shares);
     }
 
-    /**
-     * @dev Runs checks for all deposit or mint actions in this vault.
-     * @param receiver The address receiving the deposit.
-     * @param assets The amount of assets being deposited.
-     * @param shares The amount of shares being minted for the receiver.
-     */
+    /// @dev Validates a deposit or mint.
+    /// @param receiver The address receiving the shares.
+    /// @param assets The amount of assets to deposit.
+    /// @param shares The amount of shares to mint.
     function _validateDeposit(
         address receiver,
         uint256 assets,
@@ -477,14 +502,12 @@ contract Rebalancer is
         }
     }
 
-    /**
-     * @dev Runs checks for all withdraw or redeem actions in this vault.
-     * @param assets The amount of assets being withdrawn.
-     * @param shares The amount of shares being burned during this withdrawal.
-     * @param caller The address that initiated the withdrawal.
-     * @param receiver The address to which the assets will be transferred.
-     * @param owner The address whose shares will be burned.
-     */
+    /// @dev Validates a withdraw or redeem.
+    /// @param assets The amount of assets to withdraw.
+    /// @param shares The amount of shares to burn.
+    /// @param caller The address initiating the action.
+    /// @param receiver The address receiving the assets.
+    /// @param owner The owner of the shares being burned.
     function _validateWithdraw(
         uint256 assets,
         uint256 shares,
@@ -555,12 +578,13 @@ contract Rebalancer is
                              FEE MANAGEMENT
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mints accrued fee shares and updates fee snapshots.
+    /// @inheritdoc IRebalancer
     function applyFees() external {
         _applyFees();
     }
 
-    /// @dev Internal function for fee application.
+    /// @dev Applies accrued fees.
+    /// @return totalManagedAssets The current total managed assets.
     function _applyFees() internal returns (uint256 totalManagedAssets) {
         totalManagedAssets = totalAssets();
 
@@ -591,9 +615,11 @@ contract Rebalancer is
         $._lastTimestamp = block.timestamp.toUint64();
     }
 
-    /// @dev Computes accrued fee shares.
-    /// @dev The management fee is not tied to yield (profits or losses) and may reduce share price.
-    /// @dev Both fees are rounded down, so treasury could receive less than expected.
+    /// @dev Calculates accrued fee shares.
+    /// @dev Both fees are rounded down, so the treasury may receive less than expected.
+    /// @param totalManagedAssets The current total managed assets.
+    /// @return performanceFeeShares The accrued performance fee shares.
+    /// @return managementFeeShares The accrued management fee shares.
     function _accruedFees(
         uint256 totalManagedAssets
     )
@@ -626,7 +652,7 @@ contract Rebalancer is
             )
             : 0;
 
-        // assumes the vault should be interacted with periodically; fees must remain < total assets
+        // assumes the vault should be interacted with periodically; fees must remain < total assets.
         uint256 totalAssetsWithoutFees = totalManagedAssets -
             managementFeeAssets -
             performanceFeeAssets;
@@ -657,46 +683,30 @@ contract Rebalancer is
         _unpause(action);
     }
 
-    /**
-     * @notice Sets the list of providers for this vault.
-     * @param providers An array of provider contracts.
-     */
+    /// @inheritdoc IRebalancer
     function setProviders(IProvider[] memory providers) external onlyTimelock {
         _setProviders(providers);
     }
 
-    /**
-     * @notice Sets the active provider for this vault.
-     * @param entryProvider The contract of the new entry provider.
-     *
-     */
+    /// @inheritdoc IRebalancer
     function setEntryProvider(
         IProvider entryProvider
     ) external onlyRole(ADMIN_ROLE) {
         _setEntryProvider(entryProvider);
     }
 
-    /**
-     * @notice Sets the address of the timelock contract.
-     * @param timelock The address of the new timelock contract.
-     */
+    /// @inheritdoc IRebalancer
     function setTimelock(address timelock) external onlyTimelock {
         _setTimelock(timelock);
     }
 
-    /**
-     * @notice Sets the treasury address for this vault.
-     * @param treasury The new treasury address.
-     */
+    /// @inheritdoc IRebalancer
     function setTreasury(address treasury) external onlyRole(ADMIN_ROLE) {
         _applyFees();
         _setTreasury(treasury);
     }
 
-    /**
-     * @notice Sets the management fee percentage for this vault.
-     * @param managementFee The new management fee percentage.
-     */
+    /// @inheritdoc IRebalancer
     function setManagementFee(
         uint96 managementFee
     ) external onlyRole(ADMIN_ROLE) {
@@ -704,10 +714,7 @@ contract Rebalancer is
         _setManagementFee(managementFee);
     }
 
-    /**
-     * @notice Sets the performance fee percentage for this vault.
-     * @param performanceFee The new performance fee percentage.
-     */
+    /// @inheritdoc IRebalancer
     function setPerformanceFee(
         uint96 performanceFee
     ) external onlyRole(ADMIN_ROLE) {
@@ -715,18 +722,13 @@ contract Rebalancer is
         _setPerformanceFee(performanceFee);
     }
 
-    /**
-     * @notice Sets the minimum amount required for deposit and mint actions.
-     * @param minAssets The new minimum amount.
-     */
+    /// @inheritdoc IRebalancer
     function setMinAssets(uint256 minAssets) external onlyRole(ADMIN_ROLE) {
         _setMinAssets(minAssets);
     }
 
-    /**
-     * @dev Internal function to set the providers for this vault.
-     * @param providers An array of provider contracts.
-     */
+    /// @dev Updates the listed providers.
+    /// @param providers The new listed providers.
     function _setProviders(IProvider[] memory providers) internal {
         RebalancerStorage storage $ = _getRebalancerStorage();
         for (uint256 i; i < providers.length; i++) {
@@ -743,23 +745,19 @@ contract Rebalancer is
         emit ProvidersUpdated(providers);
     }
 
-    /**
-     * @dev Internal function to set the active provider for this vault.
-     * @param entryProvider The contract of the new active provider.
-     */
+    /// @dev Updates the entry provider.
+    /// @param entryProvider The new entry provider.
     function _setEntryProvider(IProvider entryProvider) internal {
         if (!_validateProvider(address(entryProvider))) {
-            revert InvalidInput();
+            revert InvalidProvider();
         }
         RebalancerStorage storage $ = _getRebalancerStorage();
         $._entryProvider = entryProvider;
         emit EntryProviderUpdated(entryProvider);
     }
 
-    /**
-     * @dev Internal function to update the address of the timelock contract.
-     * @param timelock The address of the new timelock contract.
-     */
+    /// @dev Updates the timelock address.
+    /// @param timelock The new timelock address.
     function _setTimelock(address timelock) internal {
         if (timelock == address(0)) {
             revert AddressZero();
@@ -769,10 +767,8 @@ contract Rebalancer is
         emit TimelockUpdated(timelock);
     }
 
-    /**
-     * @dev Internal function to set the treasury address for this vault.
-     * @param treasury The new treasury address.
-     */
+    /// @dev Updates the treasury address.
+    /// @param treasury The new treasury address.
     function _setTreasury(address treasury) internal {
         if (treasury == address(0)) {
             revert AddressZero();
@@ -782,10 +778,8 @@ contract Rebalancer is
         emit TreasuryUpdated(treasury);
     }
 
-    /**
-     * @dev Internal function to set the management fee percentage for this vault.
-     * @param managementFee The new management fee percentage.
-     */
+    /// @dev Updates the management fee rate.
+    /// @param managementFee The new management fee rate.
     function _setManagementFee(uint96 managementFee) internal {
         if (managementFee > MAX_MANAGEMENT_FEE) {
             revert InvalidInput();
@@ -795,10 +789,8 @@ contract Rebalancer is
         emit ManagementFeeUpdated(managementFee);
     }
 
-    /**
-     * @dev Internal function to set the performance fee percentage for this vault.
-     * @param performanceFee The new performance fee percentage.
-     */
+    /// @dev Updates the performance fee rate.
+    /// @param performanceFee The new performance fee rate.
     function _setPerformanceFee(uint96 performanceFee) internal {
         if (performanceFee > MAX_PERFORMANCE_FEE) {
             revert InvalidInput();
@@ -808,10 +800,8 @@ contract Rebalancer is
         emit PerformanceFeeUpdated(performanceFee);
     }
 
-    /**
-     * @dev Internal function to set the minimum amount required for deposit and mint actions.
-     * @param minAssets The new minimum amount.
-     */
+    /// @dev Updates the minimum asset amount.
+    /// @param minAssets The new minimum asset amount.
     function _setMinAssets(uint256 minAssets) internal {
         RebalancerStorage storage $ = _getRebalancerStorage();
         $._minAssets = minAssets;
@@ -830,12 +820,10 @@ contract Rebalancer is
                            PROVIDER INTERNALS
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @dev Delegates an action to a provider.
-     * @param assets The amount of assets involved in the action.
-     * @param actionName The identifier of the method to call.
-     * @param provider The provider contract to which the action is delegated.
-     */
+    /// @dev Delegates an action to a provider.
+    /// @param assets The amount of assets.
+    /// @param actionName The name of the action.
+    /// @param provider The provider contract.
     function _delegateActionToProvider(
         uint256 assets,
         string memory actionName,
@@ -849,9 +837,8 @@ contract Rebalancer is
         address(provider).functionDelegateCall(data);
     }
 
-    /**
-     * @dev Returns the total assets of this vault across all listed providers.
-     */
+    /// @dev Returns the total managed assets across all providers.
+    /// @return total The sum of assets managed across all providers.
     function _totalAssetsAtProviders() internal view returns (uint256 total) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         uint256 assetsAtProvider;
@@ -865,10 +852,9 @@ contract Rebalancer is
         }
     }
 
-    /**
-     * @dev Returns true if the specified provider is in the list of providers.
-     * @param provider The address of the provider to validate.
-     */
+    /// @dev Returns whether a provider is listed.
+    /// @param provider The provider address.
+    /// @return valid True if the provider is listed, false otherwise.
     function _validateProvider(
         address provider
     ) internal view returns (bool valid) {
@@ -886,62 +872,66 @@ contract Rebalancer is
                                 GETTERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Returns accrued fee shares
-    function getAccruedFees() public view returns (uint256, uint256) {
+    /// @inheritdoc IRebalancer
+    function getAccruedFees()
+        external
+        view
+        returns (uint256 performanceFeeShares, uint256 managementFeeShares)
+    {
         uint256 totalManagedAssets = totalAssets();
         return _accruedFees(totalManagedAssets);
     }
 
-    /// @notice Returns the list of providers used by the vault.
-    function getProviders() public view returns (IProvider[] memory) {
+    /// @inheritdoc IRebalancer
+    function getProviders() external view returns (IProvider[] memory) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._providers;
     }
 
-    /// @notice Returns the entry provider
-    function getEntryProvider() public view returns (IProvider) {
+    /// @inheritdoc IRebalancer
+    function getEntryProvider() external view returns (IProvider) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._entryProvider;
     }
 
-    /// @notice Returns the timelock address
-    function getTimelock() public view returns (address) {
+    /// @inheritdoc IRebalancer
+    function getTimelock() external view returns (address) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._timelock;
     }
 
-    /// @notice Returns the treasury address
-    function getTreasury() public view returns (address) {
+    /// @inheritdoc IRebalancer
+    function getTreasury() external view returns (address) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._treasury;
     }
 
-    /// @notice Returns the management fee rate (scaled)
-    function getManagementFee() public view returns (uint96) {
+    /// @inheritdoc IRebalancer
+    function getManagementFee() external view returns (uint96) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._managementFee;
     }
 
-    /// @notice Returns the performance fee rate (scaled)
-    function getPerformanceFee() public view returns (uint96) {
+    /// @inheritdoc IRebalancer
+    function getPerformanceFee() external view returns (uint96) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._performanceFee;
     }
 
-    /// @notice Returns the last recorded total managed assets
-    function getLastTotalAssets() public view returns (uint256) {
+    /// @inheritdoc IRebalancer
+    function getLastTotalAssets() external view returns (uint256) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._lastTotalAssets;
     }
 
-    /// @notice Returns the last recorded timestamp
-    function getLastTimestamp() public view returns (uint64) {
+    /// @inheritdoc IRebalancer
+    function getLastTimestamp() external view returns (uint64) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._lastTimestamp;
     }
 
-    /// @notice Returns the minimum asset amount for deposit and mint actions
-    function getMinAssets() public view returns (uint256) {
+    /// @inheritdoc IRebalancer
+    function getMinAssets() external view returns (uint256) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._minAssets;
     }

@@ -35,7 +35,7 @@ contract CompoundV3ProviderTests is ForkingBase {
 
     function testConstructorRevertsIfProviderManagerIsAddressZero() public {
         vm.expectRevert(
-            CompoundV3Provider.CompoundV3Provider__AddressZero.selector
+            CompoundV3Provider.AddressZero.selector
         );
         new CompoundV3Provider(address(0));
     }

@@ -4,14 +4,13 @@ pragma solidity 0.8.33;
 import {IProviderManager} from "../interfaces/IProviderManager.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
-/**
- * @title ProviderManager
- */
+/// @title ProviderManager
+/// @notice Stores provider-specific configurations.
 contract ProviderManager is Ownable2Step, IProviderManager {
-    // identifier => asset address => yield token address
+    /// @dev identifier => asset address => yield token address
     mapping(string => mapping(address => address)) private _assetToYieldToken;
 
-    // identifier => asset1 address => asset2 address => market address
+    /// @dev identifier => assetOne => assetTwo => market.
     mapping(string => mapping(address => mapping(address => address)))
         private _assetsToMarket;
 
@@ -19,20 +18,16 @@ contract ProviderManager is Ownable2Step, IProviderManager {
 
     string[] private _providerIdentifiers;
 
-    /**
-     * @dev Initializes the ProviderManager contract with the specified parameters.
-     * @param owner_ The address of the initial owner of the contract.
-     */
+    /// @dev Initializes the ProviderManager with the specified parameters.
+    /// @param owner_ The address of the initial owner.
     constructor(address owner_) Ownable(owner_) {}
 
-    /**
-     * @inheritdoc IProviderManager
-     */
+    /// @inheritdoc IProviderManager
     function setYieldToken(
         string memory identifier,
         address asset,
         address yieldToken
-    ) public override onlyOwner {
+    ) external onlyOwner {
         if (!_identifierRegistered[identifier]) {
             _identifierRegistered[identifier] = true;
             _providerIdentifiers.push(identifier);
@@ -41,15 +36,13 @@ contract ProviderManager is Ownable2Step, IProviderManager {
         emit YieldTokenUpdated(identifier, asset, yieldToken);
     }
 
-    /**
-     * @inheritdoc IProviderManager
-     */
+    /// @inheritdoc IProviderManager
     function setMarket(
         string memory identifier,
         address assetOne,
         address assetTwo,
         address market
-    ) public override onlyOwner {
+    ) external onlyOwner {
         if (!_identifierRegistered[identifier]) {
             _identifierRegistered[identifier] = true;
             _providerIdentifiers.push(identifier);
@@ -58,31 +51,25 @@ contract ProviderManager is Ownable2Step, IProviderManager {
         emit MarketUpdated(identifier, assetOne, assetTwo, market);
     }
 
-    /**
-     * @inheritdoc IProviderManager
-     */
+    /// @inheritdoc IProviderManager
     function getYieldToken(
         string memory identifier,
         address asset
-    ) external view override returns (address) {
+    ) external view returns (address) {
         return _assetToYieldToken[identifier][asset];
     }
 
-    /**
-     * @inheritdoc IProviderManager
-     */
+    /// @inheritdoc IProviderManager
     function getMarket(
         string memory identifier,
         address assetOne,
         address assetTwo
-    ) external view override returns (address) {
+    ) external view returns (address) {
         return _assetsToMarket[identifier][assetOne][assetTwo];
     }
 
-    /**
-     * @notice Returns the list of all the provider identifiers.
-     */
-    function getIdentifiers() public view returns (string[] memory) {
+    /// @inheritdoc IProviderManager
+    function getIdentifiers() external view returns (string[] memory) {
         return _providerIdentifiers;
     }
 }
