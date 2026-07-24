@@ -27,6 +27,9 @@ contract ForkingBase is Test {
     address public constant MORPHO_GAUNTLET_CORE_VAULT_ADDRESS =
         0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12;
 
+    address public constant AAVE_V3_POOL_ADDRESSES_PROVIDER =
+        0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D;
+
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public treasury = makeAddr("treasury");

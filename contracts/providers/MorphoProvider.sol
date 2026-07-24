@@ -115,6 +115,27 @@ contract MorphoProvider is IProvider {
     }
 
     /**
+     * @dev Returns the sum of expected supply assets across all markets in the
+     *      withdraw queue. Unlike MetaMorpho.totalAssets(), this excludes
+     *      persistent lostAssets from realized bad debt (THES2-3).
+     */
+    function _totalRealAssets() internal view returns (uint256 total) {
+        IMorpho morpho = _getMorpho();
+        uint256 queueLength = _metaMorpho.withdrawQueueLength();
+
+        for (uint256 i; i < queueLength; i++) {
+            Id idMarket = _metaMorpho.withdrawQueue(i);
+            MarketParams memory marketParams = morpho.idToMarketParams(
+                idMarket
+            );
+            total += morpho.expectedSupplyAssets(
+                marketParams,
+                address(_metaMorpho)
+            );
+        }
+    }
+
+    /**
      * @inheritdoc IProvider
      */
     function getDepositBalance(
@@ -122,7 +143,11 @@ contract MorphoProvider is IProvider {
         IRebalancer
     ) external view override returns (uint256 balance) {
         uint256 shares = _metaMorpho.balanceOf(user);
-        balance = _metaMorpho.convertToAssets(shares);
+        uint256 totalShares = _metaMorpho.totalSupply();
+        if (totalShares == 0) return 0;
+
+        uint256 realAssets = _totalRealAssets();
+        balance = shares.mulDivDown(realAssets, totalShares);
     }
 
     /**
@@ -135,9 +160,6 @@ contract MorphoProvider is IProvider {
 
         uint256 ratio;
         uint256 queueLength = _metaMorpho.withdrawQueueLength();
-
-        // totalAssets() which includes persistent lostAssets from bad debt.
-        // This aligns the denominator with the numerator (expectedSupplyAssets).
         uint256 totalRealAssets;
 
         for (uint256 i; i < queueLength; i++) {
