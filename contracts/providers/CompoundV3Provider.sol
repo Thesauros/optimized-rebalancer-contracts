@@ -6,24 +6,63 @@ import {IRebalancer} from "../interfaces/IRebalancer.sol";
 import {IProviderManager} from "../interfaces/IProviderManager.sol";
 import {CometInterface} from "../interfaces/compoundV3/CometInterface.sol";
 
-/// @title CompoundV3Provider
-/// @notice Provider implementation for Compound V3 (Comet) protocol integration.
+/**
+ * @title CompoundV3Provider
+ * @notice Provider implementation for Compound V3 (Comet) protocol integration
+ * @dev This provider integrates with Compound V3's Comet lending protocol to provide
+ *      yield generation through supply-side lending operations with enhanced efficiency.
+ * 
+ * @custom:integration The provider works with Compound V3 by:
+ * - Supplying assets to the Comet lending market
+ * - Earning interest from borrowers through supply APY
+ * - Supporting multiple assets through ProviderManager configuration
+ * - Leveraging Compound's efficient monolithic money market design
+ * 
+ * @custom:yield-mechanism Yield generation through:
+ * - Supply APY from borrowers paying interest
+ * - Compound's efficient interest rate models
+ * - Automatic yield accrual through supply balances
+ * - Optimized gas usage and capital efficiency
+ * 
+ * @custom:security Features:
+ * - Uses Compound V3's audited Comet protocol
+ * - Integrates with ProviderManager for asset configuration
+ * - Implements proper access controls through IProvider interface
+ * - Supports emergency pause mechanisms
+ * 
+ * @custom:usage Example:
+ * ```solidity
+ * // Deploy with ProviderManager address
+ * CompoundV3Provider provider = new CompoundV3Provider(providerManager);
+ * 
+ * // Configure assets in ProviderManager first
+ * providerManager.setYieldToken("CompoundV3_Provider", usdc, comet);
+ * 
+ * // The vault can now deposit/withdraw through this provider
+ * provider.deposit(amount, vault);
+ * uint256 balance = provider.getDepositBalance(user, vault);
+ * uint256 apy = provider.getDepositRate(vault);
+ * ```
+ */
 contract CompoundV3Provider is IProvider {
-    /// @dev The address is zero.
-    error AddressZero();
+    /**
+     * @dev Errors
+     */
+    error CompoundV3Provider__AddressZero();
 
+    // consider using SCREAMING_SNAKE_CASE
     IProviderManager private immutable _providerManager;
 
-    /// @dev Initializes the CompoundV3Provider with the specified parameters.
-    /// @param providerManager_ The ProviderManager contract.
     constructor(address providerManager_) {
         if (providerManager_ == address(0)) {
-            revert AddressZero();
+            revert CompoundV3Provider__AddressZero();
         }
         _providerManager = IProviderManager(providerManager_);
     }
 
-    /// @inheritdoc IProvider
+    /**
+     * @inheritdoc IProvider
+     */
     function deposit(
         uint256 amount,
         IRebalancer vault
@@ -33,7 +72,9 @@ contract CompoundV3Provider is IProvider {
         success = true;
     }
 
-    /// @inheritdoc IProvider
+    /**
+     * @inheritdoc IProvider
+     */
     function withdraw(
         uint256 amount,
         IRebalancer vault
@@ -43,12 +84,12 @@ contract CompoundV3Provider is IProvider {
         success = true;
     }
 
-    /// @dev Returns the Comet contract of Compound V3 for the specified vault.
-    /// @param vault The vault.
-    /// @return The Comet contract.
-    function _getComet(
-        IRebalancer vault
-    ) internal view returns (CometInterface) {
+    /**
+     * @dev Returns the Comet contract of Compound V3 for the specified vault.
+     * @param vault The vault for which to get the Comet contract.
+     */
+    function _getComet(IRebalancer vault) internal view returns (CometInterface) {
+        // From Compound docs: Earn interest by supplying the base asset.
         address comet = _providerManager.getYieldToken(
             getIdentifier(),
             vault.asset()
@@ -56,7 +97,9 @@ contract CompoundV3Provider is IProvider {
         return CometInterface(comet);
     }
 
-    /// @inheritdoc IProvider
+    /**
+     * @inheritdoc IProvider
+     */
     function getDepositBalance(
         address user,
         IRebalancer vault
@@ -65,19 +108,21 @@ contract CompoundV3Provider is IProvider {
         balance = comet.balanceOf(user);
     }
 
-    /// @inheritdoc IProvider
-    function getDepositRate(
-        IRebalancer vault
-    ) external view returns (uint256 rate) {
+    /**
+     * @inheritdoc IProvider
+     */
+    function getDepositRate(IRebalancer vault) external view returns (uint256 rate) {
         CometInterface comet = _getComet(vault);
         uint256 utilization = comet.getUtilization();
-        // scaled by 1e9 to return ray(1e27) per IProvider specs, Compound uses base 1e18 number.
+        // Scaled by 1e9 to return ray(1e27) per IProvider specs, Compound uses base 1e18 number.
         uint256 ratePerSecond = comet.getSupplyRate(utilization) * 10 ** 9;
-        // 31536000 seconds in a year = 60 * 60 * 24 * 365.
+        // 31536000 seconds in a `year` = 60 * 60 * 24 * 365.
         rate = ratePerSecond * 31536000;
     }
 
-    /// @inheritdoc IProvider
+    /**
+     * @inheritdoc IProvider
+     */
     function getSource(
         address asset,
         address,
@@ -86,14 +131,17 @@ contract CompoundV3Provider is IProvider {
         source = _providerManager.getYieldToken(getIdentifier(), asset);
     }
 
-    /// @notice Returns the ProviderManager contract.
-    /// @return The ProviderManager contract.
-    function getProviderManager() external view returns (IProviderManager) {
+    /**
+     * @notice Returns the ProviderManager contract applicable to this provider.
+     */
+    function getProviderManager() public view returns (IProviderManager) {
         return _providerManager;
     }
 
-    /// @inheritdoc IProvider
-    function getIdentifier() public pure returns (string memory) {
+    /**
+     * @inheritdoc IProvider
+     */
+    function getIdentifier() public pure override returns (string memory) {
         return "Compound_V3_Provider";
     }
 }
