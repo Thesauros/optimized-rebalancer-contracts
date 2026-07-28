@@ -137,17 +137,47 @@ contract MorphoProvider is IProvider {
 
     /**
      * @inheritdoc IProvider
+     * @dev Computes the user's balance accounting for:
+     *      1. Pending management fee dilution — fee shares not yet minted are
+     *         estimated via lastTotalAssets()/fee() using the same formula as
+     *         MetaMorpho._accrueFee() and added to the denominator.
+     *      2. Unrealized bad debt (THES2-3) — when realAssets (sum of
+     *         expectedSupplyAssets) falls short of bookAssets (totalAssets()),
+     *         the lower figure is used as the asset base.
      */
     function getDepositBalance(
         address user,
         IRebalancer
     ) external view override returns (uint256 balance) {
         uint256 shares = _metaMorpho.balanceOf(user);
+        if (shares == 0) return 0;
+
         uint256 totalShares = _metaMorpho.totalSupply();
         if (totalShares == 0) return 0;
 
+        uint256 bookAssets = _metaMorpho.totalAssets();
+        if (bookAssets == 0) return 0;
+
         uint256 realAssets = _totalRealAssets();
-        balance = shares.mulDivDown(realAssets, totalShares);
+        uint256 effective = realAssets < bookAssets ? realAssets : bookAssets;
+
+        // Pending fee → fee shares (MetaMorpho._accrueFee formula)
+        uint256 lastTotal = _metaMorpho.lastTotalAssets();
+        uint256 feeShares;
+        if (bookAssets > lastTotal) {
+            uint256 feeAssets = (bookAssets - lastTotal).mulDivDown(
+                _metaMorpho.fee(),
+                1e18
+            );
+            if (bookAssets > feeAssets) {
+                feeShares = totalShares.mulDivUp(
+                    feeAssets,
+                    bookAssets - feeAssets
+                );
+            }
+        }
+
+        balance = shares.mulDivDown(effective, totalShares + feeShares);
     }
 
     /**
