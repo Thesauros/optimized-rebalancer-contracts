@@ -4,6 +4,10 @@ export const tokenAddresses = {
   USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
 };
 
+export const aaveAddresses = {
+  poolAddressesProvider: '0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D',
+};
+
 export const cometTokens = {
   cUSDC: '0xb125E6687d4313864e53df431d5425969c15Eb2F',
 };

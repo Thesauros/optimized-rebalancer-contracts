@@ -9,6 +9,7 @@ import {
   PERFORMANCE_FEE_PERCENT,
   TIMELOCK_DELAY,
   tokenAddresses,
+  aaveAddresses,
   cometPairs,
   morphoVaults,
 } from '../utils/constants';
@@ -76,7 +77,9 @@ const deployUsdcVault: DeployFunction = async function (
 
   for (const providerName of providersToDeploy) {
     const args =
-      providerName === 'CompoundV3Provider' ? [providerManager.address] : [];
+      providerName === 'CompoundV3Provider'
+        ? [providerManager.address]
+        : [aaveAddresses.poolAddressesProvider];
 
     const provider = await deploy(providerName, {
       from: deployer,

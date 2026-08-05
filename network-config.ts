@@ -1,4 +1,8 @@
-export const BASE_URL = `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_PROJECT_ID}`;
+// BASE_RPC_URL takes precedence: the Alchemy app baked into the fallback
+// URL can be inactive, and the env var lets us point at any healthy RPC.
+export const BASE_URL =
+  process.env.BASE_RPC_URL ??
+  `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_PROJECT_ID}`;
 
 export const networkConfig = {
   localhost: {
@@ -15,6 +19,8 @@ export const networkConfig = {
       ? [process.env.DEPLOYER_PRIVATE_KEY]
       : [],
     chainId: 8453,
-    gasPrice: 3000000, // 0.003 Gwei
+    // 0.003 Gwei used to clear, but Base base fee fluctuates above it;
+    // 'auto' lets hardhat pick EIP-1559 fees from the node.
+    gasPrice: 'auto',
   },
 };
