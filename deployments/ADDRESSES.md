@@ -12,7 +12,7 @@
 | SteakhousePrimeMorphoProvider | `0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1` |
 | Timelock | `0xb2b1A0c173549A498859822f20Da68be1bEA593D` |
 | USDCRebalancerImplementation | `0xd4aC8Bcec0790ADDa563dB1B35c072B485fE2708` |
-| USDCRebalancerProxy | `0x3C7739173cca612B6394EE57131458185A5beC44` |
+| vault(USDCRebalancerProxy) | `0x3C7739173cca612B6394EE57131458185A5beC44` |
 
 ## Arbitrum
 
@@ -26,7 +26,7 @@
 | SteakhousePrimeMorphoProvider | `0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484` |
 | Timelock | `0x694C38fb29fd14dECbBe11A15009aC7e728A686D` |
 | USDCRebalancerImplementation | `0xEd3296117dAAa46FE4Cf94036bb42EE86100F8c7` |
-| USDCRebalancerProxy | `0x4E5c0A4C11d713002D74bA43a458efc31bc76378` |
+| vault(USDCRebalancerProxy) | `0x4E5c0A4C11d713002D74bA43a458efc31bc76378` |
 
 ## Plasma
 
@@ -36,7 +36,7 @@
 | ProviderManager | `0x40F1fBf6a92155a6D321c09936234BFEb9Ec4760` |
 | Timelock | `0xE1Cfb1BDb3901dcEe9F21146c1F299c775d9B65C` |
 | USDCRebalancerImplementation | `0x4382190FDbf4befA016Ea412f34eb54593312aD5` |
-| USDCRebalancerProxy | `0x2Ed9B7fB6Bbe0920145B2a79c18C3f7cFCAE3C99` |
+| vault(USDCRebalancerProxy) | `0x2Ed9B7fB6Bbe0920145B2a79c18C3f7cFCAE3C99` |
 
 ## Monad
 
@@ -46,6 +46,6 @@
 | ProviderManager | `0x0c5cEd804488E4AbdE6B809164e72cc0F91896b5` |
 | Timelock | `0x30dC35B78a401Fd0227C229ADF6d0F5097358EF9` |
 | USDCRebalancerImplementation | `0x44eC9D49196749Cf647339350d381302af4a3d60` |
-| USDCRebalancerProxy | `0x40F1fBf6a92155a6D321c09936234BFEb9Ec4760` |
+| vault(USDCRebalancerProxy) | `0x40F1fBf6a92155a6D321c09936234BFEb9Ec4760` |
 
 Addresses are stored per contract in `deployments/<network>/<Contract>.json` (field `address`, plus ABI and constructor `args`).
