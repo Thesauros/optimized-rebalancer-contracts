@@ -3,6 +3,7 @@ import { ethers } from 'hardhat';
 export const BASE_CHAIN_ID = 8453n;
 export const ARBITRUM_CHAIN_ID = 42161n;
 export const PLASMA_CHAIN_ID = 9745n;
+export const MONAD_CHAIN_ID = 143n;
 
 export const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS;
 
@@ -88,6 +89,15 @@ export const chainConfigs: Record<number, ChainConfig> = {
     vaultName: 'Thesauros USDT0 Vault',
     vaultSymbol: 'tUSDT0',
     aavePoolAddressesProvider: '0x061D8e131F26512348ee5FA42e2DF1bA9d6505E9',
+    cometPairs: [],
+    morphoVaults: [],
+  },
+  // Monad (Aave-only strategy, USDC asset)
+  143: {
+    asset: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+    vaultName: 'Thesauros USDC Vault',
+    vaultSymbol: 'tUSDC',
+    aavePoolAddressesProvider: '0x34793Fb9935F7bB5E5aE920fb963F39063E7A615',
     cometPairs: [],
     morphoVaults: [],
   },

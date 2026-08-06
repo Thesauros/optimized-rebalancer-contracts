@@ -27,6 +27,15 @@ const config: HardhatUserConfig = {
           browserURL: 'https://plasmascan.to',
         },
       },
+      {
+        network: 'monad',
+        chainId: 143,
+        urls: {
+          // monadscan via the Etherscan V2 multichain endpoint
+          apiURL: 'https://api.etherscan.io/v2/api?chainid=143',
+          browserURL: 'https://monadscan.com',
+        },
+      },
     ],
   },
   namedAccounts: {

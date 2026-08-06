@@ -6,6 +6,7 @@ import {
   BASE_CHAIN_ID,
   ARBITRUM_CHAIN_ID,
   PLASMA_CHAIN_ID,
+  MONAD_CHAIN_ID,
   TREASURY_ADDRESS,
   MANAGEMENT_FEE_PERCENT,
   PERFORMANCE_FEE_PERCENT,
@@ -30,7 +31,8 @@ const deployUsdcVault: DeployFunction = async function (
   const isLive =
     chainId === BASE_CHAIN_ID ||
     chainId === ARBITRUM_CHAIN_ID ||
-    chainId === PLASMA_CHAIN_ID;
+    chainId === PLASMA_CHAIN_ID ||
+    chainId === MONAD_CHAIN_ID;
   const waitConfirmations = isLive ? 2 : 0;
 
   const name = chainConfig.vaultName;

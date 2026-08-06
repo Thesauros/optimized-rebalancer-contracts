@@ -15,6 +15,8 @@ export const ARBITRUM_URL =
 
 export const PLASMA_URL = process.env.PLASMA_RPC_URL ?? 'https://rpc.plasma.to';
 
+export const MONAD_URL = process.env.MONAD_RPC_URL ?? 'https://rpc.monad.xyz';
+
 export const networkConfig = {
   localhost: {
     chainId: 31337,
@@ -48,6 +50,14 @@ export const networkConfig = {
       ? [process.env.DEPLOYER_PRIVATE_KEY]
       : [],
     chainId: 9745,
+    gasPrice: 'auto' as const,
+  },
+  monad: {
+    url: MONAD_URL,
+    accounts: process.env.DEPLOYER_PRIVATE_KEY
+      ? [process.env.DEPLOYER_PRIVATE_KEY]
+      : [],
+    chainId: 143,
     gasPrice: 'auto' as const,
   },
 };
