@@ -36,3 +36,7 @@ script
 broadcast
 .qa-skill/
 /scripts
+.biz-dev-skill/
+.orchestrator-skill/
+.product-squad-skill/
+.security-engineer-skill/
