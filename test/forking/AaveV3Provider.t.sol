@@ -11,7 +11,7 @@ contract AaveV3ProviderTests is ForkingBase {
     function setUp() public override {
         super.setUp();
 
-        aaveV3Provider = new AaveV3Provider();
+        aaveV3Provider = new AaveV3Provider(AAVE_V3_POOL_ADDRESSES_PROVIDER);
 
         IProvider[] memory providers = new IProvider[](1);
         providers[0] = aaveV3Provider;
