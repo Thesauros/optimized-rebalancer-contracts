@@ -5,6 +5,7 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import {
   BASE_CHAIN_ID,
   ARBITRUM_CHAIN_ID,
+  PLASMA_CHAIN_ID,
   TREASURY_ADDRESS,
   MANAGEMENT_FEE_PERCENT,
   PERFORMANCE_FEE_PERCENT,
@@ -26,15 +27,23 @@ const deployUsdcVault: DeployFunction = async function (
   if (!chainConfig) {
     throw new Error(`Unsupported chain id: ${chainId}`);
   }
-  const isLive = chainId === BASE_CHAIN_ID || chainId === ARBITRUM_CHAIN_ID;
+  const isLive =
+    chainId === BASE_CHAIN_ID ||
+    chainId === ARBITRUM_CHAIN_ID ||
+    chainId === PLASMA_CHAIN_ID;
   const waitConfirmations = isLive ? 2 : 0;
 
-  const name = 'Thesauros USDC Vault';
-  const symbol = 'tUSDC';
+  const name = chainConfig.vaultName;
+  const symbol = chainConfig.vaultSymbol;
 
-  const usdcAddress = chainConfig.usdc;
+  const assetAddress = chainConfig.asset;
 
-  const minAssets = ethers.parseUnits('1', 6); // Be sure that you have the balance available in the deployer account
+  const assetInstance = await ethers.getContractAt('IERC20', assetAddress);
+  const assetMetadata = await ethers.getContractAt(
+    'IERC20Metadata',
+    assetAddress,
+  );
+  const minAssets = ethers.parseUnits('1', await assetMetadata.decimals()); // Be sure that you have the balance available in the deployer account
 
   const providers: string[] = [];
 
@@ -76,7 +85,10 @@ const deployUsdcVault: DeployFunction = async function (
   log('----------------------------------------------------');
   log('Deploying AaveV3 and CompoundV3 providers...');
 
-  const providersToDeploy = ['CompoundV3Provider', 'AaveV3Provider'];
+  const providersToDeploy = [
+    ...(chainConfig.cometPairs.length > 0 ? ['CompoundV3Provider'] : []),
+    'AaveV3Provider',
+  ];
 
   for (const providerName of providersToDeploy) {
     const args =
@@ -170,7 +182,7 @@ const deployUsdcVault: DeployFunction = async function (
   ).encodeFunctionData('initialize', [
     TREASURY_ADDRESS,
     timelock.address,
-    usdcAddress,
+    assetAddress,
     name,
     symbol,
     providers,
@@ -229,7 +241,7 @@ const deployUsdcVault: DeployFunction = async function (
       nonce: startNonce + 1,
     });
 
-    const usdcInstance = await ethers.getContractAt('IERC20', usdcAddress);
+    const usdcInstance = await ethers.getContractAt('IERC20', assetAddress);
     const tupArtifact =
       await hre.artifacts.readArtifact('TransparentUpgradeableProxy');
     const proxyFactory = new ethers.ContractFactory(
