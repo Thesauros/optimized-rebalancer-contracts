@@ -1,0 +1,42 @@
+name: Security Scan
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC — catches newly disclosed CVEs even with no code changes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slither:
+    name: Slither static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Run Slither
+        uses: crytic/slither-action@v0.4.0
+        with:
+          target: 'contracts'
+          fail-on: high
+
+  dependency-audit:
+    name: Dependency audit (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: npm audit (fails on high/critical advisories)
+        run: npm audit --audit-level=high
