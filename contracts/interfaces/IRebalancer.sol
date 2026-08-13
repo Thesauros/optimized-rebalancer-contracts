@@ -15,6 +15,9 @@ interface IRebalancer is IERC4626 {
     error ArrayMismatch();
     error InvalidProvider();
     error InsufficientLiquidity();
+    /// @notice Thrown by `setProviders`/`_setProviders` when the proposed new provider
+    /// list would drop the vault's current entry provider (see Finding 5).
+    error EntryProviderNotInProviders();
 
     /**
      * @notice Emitted when the timelock contract is changed.
@@ -36,6 +39,16 @@ interface IRebalancer is IERC4626 {
      * @param entryProvider The new entry provider.
      */
     event EntryProviderUpdated(IProvider entryProvider);
+
+    /**
+     * @notice Emitted when `_setProviders` fails to revoke this vault's stale ERC20
+     * approval for a provider that is being removed from the provider list (e.g. because
+     * the removed provider's `getSource()` itself reverts). The provider is still removed
+     * from the list; only the approval revocation for its `source` address failed.
+     *
+     * @param provider The provider whose stale approval could not be revoked.
+     */
+    event StaleApprovalRevokeFailed(address indexed provider);
 
     /**
      * @notice Emitted when the treasury address is changed.

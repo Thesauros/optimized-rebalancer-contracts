@@ -2,6 +2,7 @@
 pragma solidity 0.8.33;
 
 import {ERC20PermitUpgradeable, ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -22,6 +23,7 @@ contract Rebalancer is
     ERC20PermitUpgradeable,
     AccessManager,
     PausableActions,
+    ReentrancyGuardUpgradeable,
     IRebalancer
 {
     using Math for uint256;
@@ -48,11 +50,33 @@ contract Rebalancer is
         uint64 _lastTimestamp;
         // operational
         uint256 _minAssets;
+        // fees (added by initializeV2 — appended at the end so existing field offsets
+        // under this ERC-7201 namespaced struct are preserved for already-deployed proxies)
+        uint256 _highWaterMark;
     }
 
     // keccak256(abi.encode(uint256(keccak256("thesauros.storage.Rebalancer")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant RebalancerStorageLocation =
         0x7e58afa6d55148d409feb524397452494284df87c6d0256f1c37551f5f960b00;
+
+    /**
+     * @dev Gas stipend forwarded to `IProvider.getDepositBalance()` when called through
+     *      `_safeGetDepositBalance`, so a single broken/malicious provider cannot consume
+     *      unbounded gas or otherwise DoS `totalAssets()`/`_withdraw()`/`rebalance()` for
+     *      every other (healthy) provider in the list.
+     *
+     *      Sized from real measurements: `forge test --gas-report` against a Base-mainnet
+     *      fork (2026-08-13) across all integrated provider types shows
+     *      `AaveV3Provider.getDepositBalance` maxing at ~56,864 gas,
+     *      `CompoundV3Provider.getDepositBalance` at ~32,937 gas, and
+     *      `MorphoProvider.getDepositBalance` — which is NOT O(1); it loops over the
+     *      MetaMorpho withdraw queue via `_totalRealAssets()` — at up to ~1,109,765 gas
+     *      (the Steakhouse High Yield vault, the longest withdraw queue among the three
+     *      Morpho vaults profiled). This constant is set to ~2.7x that observed worst case,
+     *      leaving headroom for withdraw queues to grow before this becomes a limiting
+     *      factor again.
+     */
+    uint256 internal constant PROVIDER_VIEW_CALL_GAS = 3_000_000;
 
     function _getRebalancerStorage()
         private
@@ -106,6 +130,7 @@ contract Rebalancer is
         __AccessManager_init(admin_);
         __ERC20_init(name_, symbol_);
         __ERC20Permit_init(name_);
+        __ReentrancyGuard_init();
 
         RebalancerStorage storage $ = _getRebalancerStorage();
         $._asset = IERC20Metadata(asset_);
@@ -120,10 +145,44 @@ contract Rebalancer is
         _setMinAssets(minAssets_);
 
         $._lastTimestamp = block.timestamp.toUint64();
+        // a freshly-initialized vault's share price is exactly 1:1 (SCALE); starting the
+        // high-water mark here (rather than leaving it at the storage default of 0) means
+        // new deployments never depend on `initializeV2()` also being called before the
+        // first real `applyFees()` — see Finding 6.
+        $._highWaterMark = SCALE;
 
         // requires a non-trivial initial deposit to mitigate inflation attacks.
         // the appropriate amount depends on the underlying asset’s decimals.
         _deposit(_msgSender(), address(this), minAssets_, minAssets_);
+    }
+
+    /**
+     * @notice Migration entrypoint for vaults deployed under the pre-Finding-3/6
+     *         implementation. Bundles the two upgrades that must land together:
+     *         (1) initializing `ReentrancyGuardUpgradeable`'s own storage, and
+     *         (2) bootstrapping the performance-fee high-water mark.
+     *
+     * @dev Ordering is deliberate and load-bearing: this function sets `$._highWaterMark`
+     *      directly from the vault's CURRENT share price and never calls
+     *      `_applyFees()`/`applyFees()`. If the mark were left at its pre-migration default
+     *      (0), or if fees were applied before the mark is set, the very next real fee
+     *      accrual would treat the vault's entire pre-upgrade NAV as brand-new profit and
+     *      mint a one-time windfall performance fee to treasury. This function is intended
+     *      to be invoked atomically with the implementation upgrade itself (e.g. via
+     *      `ProxyAdmin.upgradeAndCall`), so no intervening call to `applyFees()` (or
+     *      `deposit`/`mint`/`withdraw`/`redeem`, which all call it first) can observe the
+     *      vault between "upgraded" and "migrated". Wiring this into an actual upgrade
+     *      transaction against a live proxy is a separate operational step for a human to
+     *      review and execute — this function only contains the migration logic itself.
+     */
+    function initializeV2() external reinitializer(2) {
+        __ReentrancyGuard_init();
+
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        uint256 supply = totalSupply();
+        $._highWaterMark = supply == 0
+            ? SCALE
+            : totalAssets().mulDiv(SCALE, supply, Math.Rounding.Floor);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -233,7 +292,7 @@ contract Rebalancer is
     function deposit(
         uint256 assets,
         address receiver
-    ) public override returns (uint256 shares) {
+    ) public override nonReentrant returns (uint256 shares) {
         uint256 totalManagedAssets = _applyFees();
 
         shares = _convertToSharesWithTotals(
@@ -253,7 +312,7 @@ contract Rebalancer is
     function mint(
         uint256 shares,
         address receiver
-    ) public override returns (uint256 assets) {
+    ) public override nonReentrant returns (uint256 assets) {
         uint256 totalManagedAssets = _applyFees();
 
         assets = _convertToAssetsWithTotals(
@@ -274,7 +333,7 @@ contract Rebalancer is
         uint256 assets,
         address receiver,
         address owner
-    ) public override returns (uint256 shares) {
+    ) public override nonReentrant returns (uint256 shares) {
         uint256 totalManagedAssets = _applyFees();
 
         shares = _convertToSharesWithTotals(
@@ -295,7 +354,7 @@ contract Rebalancer is
         uint256 shares,
         address receiver,
         address owner
-    ) public override returns (uint256 assets) {
+    ) public override nonReentrant returns (uint256 assets) {
         uint256 totalManagedAssets = _applyFees();
 
         assets = _convertToAssetsWithTotals(
@@ -390,8 +449,19 @@ contract Rebalancer is
         uint256 shares
     ) internal {
         RebalancerStorage storage $ = _getRebalancerStorage();
+        IProvider entryProvider = $._entryProvider;
+
+        // Cheap defense-in-depth (Finding 5): `_setProviders` already rejects a new
+        // provider list that would drop the current entry provider, but re-validating
+        // membership here as well means a future code path that mutates `$._providers` or
+        // `$._entryProvider` inconsistently can never silently route new deposits to a
+        // delisted provider.
+        if (!_validateProvider(address(entryProvider))) {
+            revert InvalidProvider();
+        }
+
         $._asset.safeTransferFrom(caller, address(this), assets);
-        _delegateActionToProvider(assets, "deposit", $._entryProvider);
+        _delegateActionToProvider(assets, "deposit", entryProvider);
         _mint(receiver, shares);
         $._lastTotalAssets += assets;
 
@@ -420,12 +490,14 @@ contract Rebalancer is
         uint256 count = $._providers.length;
         for (uint256 i; i < count && assetsLeft > 0; i++) {
             IProvider provider = $._providers[i];
-            uint256 assetsAtProvider = provider.getDepositBalance(
-                address(this),
-                this
+            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance(
+                provider
             );
 
-            if (assetsAtProvider == 0) continue;
+            // a provider whose view call fails is skipped exactly like one reporting a
+            // zero balance — its funds (if any) are simply not counted as available for
+            // this withdrawal, instead of reverting the whole loop for every provider.
+            if (!ok || assetsAtProvider == 0) continue;
 
             uint256 amount = (assetsAtProvider >= assetsLeft)
                 ? assetsLeft
@@ -512,7 +584,7 @@ contract Rebalancer is
         uint256[] memory amounts,
         IProvider[] memory sources,
         IProvider[] memory destinations
-    ) external onlyRole(EXECUTOR_ROLE) returns (bool) {
+    ) external onlyRole(EXECUTOR_ROLE) nonReentrant returns (bool) {
         uint256 count = amounts.length;
         if (count == 0) {
             revert InvalidCount();
@@ -533,7 +605,8 @@ contract Rebalancer is
                 revert InvalidProvider();
             }
 
-            uint256 assetsAtFrom = from.getDepositBalance(address(this), this);
+            (uint256 assetsAtFrom, bool ok) = _safeGetDepositBalance(from);
+            if (!ok) revert InvalidProvider();
 
             if (assets == type(uint256).max) {
                 assets = assetsAtFrom;
@@ -580,6 +653,25 @@ contract Rebalancer is
 
         $._lastTotalAssets = totalManagedAssets;
 
+        // Ratchet the high-water mark using the share price BEFORE any fee shares are
+        // minted below (i.e. from totalManagedAssets and the pre-mint totalSupply()).
+        // Minting new shares to treasury dilutes totalAssets()/totalSupply() without
+        // moving any assets out of the vault, so computing the price after minting would
+        // record an artificially-lowered mark and let the next recovery back up to the
+        // PRE-mint price be taxed again as if it were fresh profit. The mark only ever
+        // moves up (see Finding 6 / `_accruedFees`).
+        uint256 supplyBeforeMint = totalSupply();
+        if (supplyBeforeMint > 0) {
+            uint256 sharePrice = totalManagedAssets.mulDiv(
+                SCALE,
+                supplyBeforeMint,
+                Math.Rounding.Floor
+            );
+            if (sharePrice > $._highWaterMark) {
+                $._highWaterMark = sharePrice;
+            }
+        }
+
         address treasury = $._treasury;
         if (performanceFeeShares != 0) {
             _mint(treasury, performanceFeeShares);
@@ -593,7 +685,19 @@ contract Rebalancer is
 
     /// @dev Computes accrued fee shares.
     /// @dev The management fee is not tied to yield (profits or losses) and may reduce share price.
+    /// @dev The performance fee is charged only on the excess of the CURRENT share price over
+    ///      the all-time high-water mark (`$._highWaterMark`), not merely on growth since the
+    ///      last snapshot — this is what prevents charging a performance fee twice on the same
+    ///      value when the vault takes a loss and later merely recovers back toward (not above)
+    ///      its previous peak (see Finding 6).
     /// @dev Both fees are rounded down, so treasury could receive less than expected.
+    /// @dev `managementFeeAssets` and `performanceFeeAssets` are clamped SEQUENTIALLY against
+    ///      `totalManagedAssets` (management first, then performance against whatever remains)
+    ///      rather than independently, so their sum can never exceed `totalManagedAssets` and
+    ///      underflow the subtraction below — this is what actually closes the pathological
+    ///      ~20-year-`dt` revert-lock at the maximum management fee rate (see Finding 7).
+    ///      Clamping each independently against the full `totalManagedAssets` would not be
+    ///      sufficient: their sum could still exceed it.
     function _accruedFees(
         uint256 totalManagedAssets
     )
@@ -603,20 +707,35 @@ contract Rebalancer is
     {
         RebalancerStorage storage $ = _getRebalancerStorage();
 
-        uint256 lastTotalAssets = $._lastTotalAssets;
         uint96 managementFee = $._managementFee;
         uint96 performanceFee = $._performanceFee;
 
         uint256 dt = block.timestamp - $._lastTimestamp;
+        uint256 supply = totalSupply();
 
-        uint256 yield = totalManagedAssets > lastTotalAssets
-            ? totalManagedAssets - lastTotalAssets
-            : 0;
-
-        // may be rounded down to 0 if yield * fee < SCALE.
-        uint256 performanceFeeAssets = yield > 0 && performanceFee > 0
-            ? yield.mulDiv(performanceFee, SCALE, Math.Rounding.Floor)
-            : 0;
+        uint256 performanceFeeAssets;
+        if (performanceFee > 0 && supply > 0) {
+            uint256 sharePrice = totalManagedAssets.mulDiv(
+                SCALE,
+                supply,
+                Math.Rounding.Floor
+            );
+            uint256 highWaterMark = $._highWaterMark;
+            if (sharePrice > highWaterMark) {
+                // profit per share, converted back to an asset amount over the full supply
+                uint256 profitAssets = (sharePrice - highWaterMark).mulDiv(
+                    supply,
+                    SCALE,
+                    Math.Rounding.Floor
+                );
+                // may be rounded down to 0 if profitAssets * fee < SCALE.
+                performanceFeeAssets = profitAssets.mulDiv(
+                    performanceFee,
+                    SCALE,
+                    Math.Rounding.Floor
+                );
+            }
+        }
 
         uint256 managementFeeAssets = dt > 0 && managementFee > 0
             ? (totalManagedAssets * dt).mulDiv(
@@ -626,21 +745,39 @@ contract Rebalancer is
             )
             : 0;
 
+        // Sequential clamp (Finding 7): management fee is capped against the full pool
+        // first, then performance fee is capped against whatever remains. Clamping each
+        // independently against totalManagedAssets would still let managementFeeAssets +
+        // performanceFeeAssets exceed totalManagedAssets and underflow the subtraction
+        // below under pathological (e.g. ~20+ year) `dt` values at the maximum fee rate.
+        managementFeeAssets = managementFeeAssets > totalManagedAssets
+            ? totalManagedAssets
+            : managementFeeAssets;
+        performanceFeeAssets = performanceFeeAssets >
+            totalManagedAssets - managementFeeAssets
+            ? totalManagedAssets - managementFeeAssets
+            : performanceFeeAssets;
+
         // assumes the vault should be interacted with periodically; fees must remain < total assets
         uint256 totalAssetsWithoutFees = totalManagedAssets -
             managementFeeAssets -
             performanceFeeAssets;
 
-        performanceFeeShares = performanceFeeAssets.mulDiv(
-            totalSupply(),
-            totalAssetsWithoutFees,
-            Math.Rounding.Floor
-        );
-        managementFeeShares = managementFeeAssets.mulDiv(
-            totalSupply(),
-            totalAssetsWithoutFees,
-            Math.Rounding.Floor
-        );
+        // totalAssetsWithoutFees can only be 0 in the pathological all-fees-consumed-the-pool
+        // edge case above; Math.mulDiv reverts on a zero denominator, so both fee-share
+        // conversions are skipped (0 shares minted this period) rather than reverting.
+        if (totalAssetsWithoutFees > 0) {
+            performanceFeeShares = performanceFeeAssets.mulDiv(
+                supply,
+                totalAssetsWithoutFees,
+                Math.Rounding.Floor
+            );
+            managementFeeShares = managementFeeAssets.mulDiv(
+                supply,
+                totalAssetsWithoutFees,
+                Math.Rounding.Floor
+            );
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -726,9 +863,34 @@ contract Rebalancer is
     /**
      * @dev Internal function to set the providers for this vault.
      * @param providers An array of provider contracts.
+     * @dev Finding 5: reverts if `providers` would drop the CURRENT `$._entryProvider`,
+     *      which would otherwise silently misprice the vault (new deposits keep flowing to
+     *      a provider that is no longer tracked by `totalAssets()`/`_withdraw()`) and make
+     *      those new deposits unwithdrawable through the normal `_withdraw()` loop (which
+     *      only ever iterates `$._providers`). This check is skipped while
+     *      `$._entryProvider` is still `address(0)` — i.e. during `initialize()`'s very
+     *      first call to `_setProviders`, before `_setEntryProvider` has ever run — so
+     *      bootstrapping a brand-new vault is unaffected.
+     * @dev Finding 4: revokes this vault's approval for any provider that is leaving the
+     *      list (diffing old vs. new), so a removed provider's `source` address never keeps
+     *      a stale unlimited allowance. Each revocation is isolated in its own try/catch
+     *      (via `_revokeStaleApproval`) so a broken removed provider's own revert (e.g. in
+     *      `getSource`) cannot block its removal from the list; a failure only emits
+     *      `StaleApprovalRevokeFailed` for that provider instead.
      */
     function _setProviders(IProvider[] memory providers) internal {
         RebalancerStorage storage $ = _getRebalancerStorage();
+
+        address currentEntryProvider = address($._entryProvider);
+        if (
+            currentEntryProvider != address(0) &&
+            !_isProviderInList(currentEntryProvider, providers)
+        ) {
+            revert EntryProviderNotInProviders();
+        }
+
+        IProvider[] memory oldProviders = $._providers;
+
         for (uint256 i; i < providers.length; i++) {
             if (address(providers[i]) == address(0)) {
                 revert AddressZero();
@@ -738,9 +900,50 @@ contract Rebalancer is
                 type(uint256).max
             );
         }
+
+        for (uint256 i; i < oldProviders.length; i++) {
+            address oldProviderAddr = address(oldProviders[i]);
+            if (_isProviderInList(oldProviderAddr, providers)) continue;
+
+            try this._revokeStaleApproval(oldProviders[i]) {} catch {
+                emit StaleApprovalRevokeFailed(oldProviderAddr);
+            }
+        }
+
         $._providers = providers;
 
         emit ProvidersUpdated(providers);
+    }
+
+    /**
+     * @dev Revokes this vault's approval for a provider that `_setProviders` is removing
+     *      from the list. Declared `external` (rather than `internal`/`private`) solely so
+     *      that `_setProviders` can wrap the call in `try/catch` — Solidity only allows
+     *      try/catch around external calls / contract creation, and a broken removed
+     *      provider's `getSource()` (or the token's `approve`) reverting here must not
+     *      block the provider's removal. Restricted to self-calls: it must never be usable
+     *      by a third party to grief an ACTIVE provider's approval down to 0.
+     */
+    function _revokeStaleApproval(IProvider provider) external {
+        if (_msgSender() != address(this)) {
+            revert Unauthorized();
+        }
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        address source = provider.getSource(asset(), address(this), address(0));
+        $._asset.forceApprove(source, 0);
+    }
+
+    /// @dev Returns true if `provider` is present in the given in-memory `list`.
+    function _isProviderInList(
+        address provider,
+        IProvider[] memory list
+    ) private pure returns (bool found) {
+        uint256 count = list.length;
+        for (uint256 i; i < count; i++) {
+            if (address(list[i]) == provider) {
+                return true;
+            }
+        }
     }
 
     /**
@@ -851,17 +1054,47 @@ contract Rebalancer is
 
     /**
      * @dev Returns the total assets of this vault across all listed providers.
+     * @dev A provider whose `getDepositBalance` view call fails (reverts or runs out of
+     *      the bounded gas stipend) contributes 0 to the total instead of reverting this
+     *      whole aggregation for every other, healthy provider.
      */
     function _totalAssetsAtProviders() internal view returns (uint256 total) {
         RebalancerStorage storage $ = _getRebalancerStorage();
-        uint256 assetsAtProvider;
         uint256 count = $._providers.length;
         for (uint256 i; i < count; i++) {
-            assetsAtProvider = $._providers[i].getDepositBalance(
+            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance(
+                $._providers[i]
+            );
+            if (ok) {
+                total += assetsAtProvider;
+            }
+        }
+    }
+
+    /**
+     * @dev Calls `IProvider.getDepositBalance` under a bounded gas stipend
+     *      (`PROVIDER_VIEW_CALL_GAS`) and never reverts: a broken or adversarial provider
+     *      can only ever cause its own contribution to be treated as unknown/zero, never
+     *      block visibility into, or withdrawals from, every other provider.
+     * @dev `IProvider.getDepositBalance` is declared `external view`, so every call site is
+     *      already a `STATICCALL` under the hood — `try/catch` on the interface call below
+     *      is sufficient; no separate low-level-call wrapper is needed.
+     * @param provider The provider to query.
+     * @return balance The provider's reported deposit balance, or 0 if the call failed.
+     * @return ok True if the call succeeded, false if it reverted or ran out of gas.
+     */
+    function _safeGetDepositBalance(
+        IProvider provider
+    ) internal view returns (uint256 balance, bool ok) {
+        try
+            provider.getDepositBalance{gas: PROVIDER_VIEW_CALL_GAS}(
                 address(this),
                 this
-            );
-            total += assetsAtProvider;
+            )
+        returns (uint256 bal) {
+            return (bal, true);
+        } catch {
+            return (0, false);
         }
     }
 
@@ -885,6 +1118,34 @@ contract Rebalancer is
     /*//////////////////////////////////////////////////////////////
                                 GETTERS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns, for every listed provider, its address, its currently reported
+    /// deposit balance, and whether that provider's `getDepositBalance` view call
+    /// succeeded. A `false` entry in `oks` means that provider's contribution to
+    /// `totalAssets()`/withdrawals is currently being treated as 0 (see
+    /// `_safeGetDepositBalance`), which off-chain monitoring can use as a signal of a
+    /// degraded provider — `totalAssets()`/`_withdraw()` themselves are `view`/internal and
+    /// cannot emit an event to surface this on their own.
+    function getProviderBalances()
+        public
+        view
+        returns (
+            address[] memory providers,
+            uint256[] memory balances,
+            bool[] memory oks
+        )
+    {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        uint256 count = $._providers.length;
+        providers = new address[](count);
+        balances = new uint256[](count);
+        oks = new bool[](count);
+        for (uint256 i; i < count; i++) {
+            IProvider provider = $._providers[i];
+            providers[i] = address(provider);
+            (balances[i], oks[i]) = _safeGetDepositBalance(provider);
+        }
+    }
 
     /// @notice Returns accrued fee shares
     function getAccruedFees() public view returns (uint256, uint256) {
@@ -944,5 +1205,12 @@ contract Rebalancer is
     function getMinAssets() public view returns (uint256) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._minAssets;
+    }
+
+    /// @notice Returns the all-time performance-fee high-water mark (share price, scaled
+    /// by `SCALE`). Only ever ratchets upward, in `_applyFees()` — see Finding 6.
+    function getHighWaterMark() public view returns (uint256) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._highWaterMark;
     }
 }
