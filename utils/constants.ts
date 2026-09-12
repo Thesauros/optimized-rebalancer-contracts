@@ -1,5 +1,6 @@
 import { ethers } from 'hardhat';
 
+export const MAINNET_CHAIN_ID = 1n;
 export const BASE_CHAIN_ID = 8453n;
 export const ARBITRUM_CHAIN_ID = 42161n;
 export const PLASMA_CHAIN_ID = 9745n;
@@ -29,6 +30,33 @@ export interface ChainConfig {
 }
 
 export const chainConfigs: Record<number, ChainConfig> = {
+  // Ethereum
+  1: {
+    asset: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    vaultName: 'Thesauros USDC Vault',
+    vaultSymbol: 'tUSDC',
+    aavePoolAddressesProvider: '0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e',
+    cometPairs: [
+      {
+        asset: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        cToken: '0xc3d688B66703497DAA19211EEdff47f25384cdc3',
+      },
+    ],
+    morphoVaults: [
+      {
+        strategy: 'Steakhouse',
+        vaultAddress: '0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB',
+      },
+      {
+        strategy: 'GauntletPrime',
+        vaultAddress: '0xdd0f28e19C1780eb6396170735D45153D261490d',
+      },
+      {
+        strategy: 'Smokehouse',
+        vaultAddress: '0xBEeFFF209270748ddd194831b3fa287a5386f5bC',
+      },
+    ],
+  },
   // Base
   8453: {
     asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
