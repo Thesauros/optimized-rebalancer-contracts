@@ -48,4 +48,23 @@
 | USDCRebalancerImplementation | `0x44eC9D49196749Cf647339350d381302af4a3d60` |
 | vault(USDCRebalancerProxy) | `0x40F1fBf6a92155a6D321c09936234BFEb9Ec4760` |
 
+## Ethereum (legacy, do not use)
+
+Previous vault generation, still live on Ethereum mainnet and deliberately left
+untouched (decision 2026-09-12). Recorded so it is never confused with the
+current deployment.
+
+| Contract | Address |
+|---|---|
+| vault(Rebalancer, legacy) | `0x839E57080C18195D8D343a02c2f623b5916f7383` |
+
+State as of 2026-09-12: `Thesauros USDC Vault` / `tUSDC`, compiled with solc
+0.8.23 and missing the current getters (`getTimelock`, `getTreasury`,
+`getManagementFee`, `getPerformanceFee`, `getMinAssets`, `getEntryProvider` all
+revert). Seven Morpho providers, no Aave or Compound. ADMIN_ROLE belongs to the
+deployer EOA `0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D`, not to the treasury.
+`totalAssets` 9.188829 USDC against `totalSupply` 8.989841 tUSDC: the deployer
+holds 4.998819, the vault itself 1.0 (seed), and four unrelated addresses hold
+2.991022 combined.
+
 Addresses are stored per contract in `deployments/<network>/<Contract>.json` (field `address`, plus ABI and constructor `args`).

@@ -3,6 +3,7 @@ import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
 
 import {
+  MAINNET_CHAIN_ID,
   BASE_CHAIN_ID,
   ARBITRUM_CHAIN_ID,
   PLASMA_CHAIN_ID,
@@ -23,16 +24,29 @@ const deployUsdcVault: DeployFunction = async function (
   const { deploy, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const chainId = (await ethers.provider.getNetwork()).chainId;
+  // On a real network the node is authoritative. A forked dry run reports
+  // Hardhat's own chain id, so FORK_CHAIN_ID states which config to load there.
+  const chainId =
+    hre.network.name === 'hardhat' && process.env.FORK_CHAIN_ID
+      ? BigInt(process.env.FORK_CHAIN_ID)
+      : (await ethers.provider.getNetwork()).chainId;
   const chainConfig = chainConfigs[Number(chainId)];
   if (!chainConfig) {
     throw new Error(`Unsupported chain id: ${chainId}`);
   }
+  if (!TREASURY_ADDRESS) {
+    throw new Error('TREASURY_ADDRESS is not set');
+  }
+  // A forked run reaches a live chain id but must neither wait for
+  // confirmations that never come nor submit anything to a block explorer.
+  const dryRun = hre.network.name === 'hardhat' || process.env.DRY_RUN === '1';
   const isLive =
-    chainId === BASE_CHAIN_ID ||
-    chainId === ARBITRUM_CHAIN_ID ||
-    chainId === PLASMA_CHAIN_ID ||
-    chainId === MONAD_CHAIN_ID;
+    !dryRun &&
+    (chainId === MAINNET_CHAIN_ID ||
+      chainId === BASE_CHAIN_ID ||
+      chainId === ARBITRUM_CHAIN_ID ||
+      chainId === PLASMA_CHAIN_ID ||
+      chainId === MONAD_CHAIN_ID);
   const waitConfirmations = isLive ? 2 : 0;
 
   const name = chainConfig.vaultName;
@@ -196,14 +210,15 @@ const deployUsdcVault: DeployFunction = async function (
 
   /*
    * Sniping protection. On 2026-08-05 a third party initialized the Arbitrum
-   * proxy 2 seconds after creation (initialize sent after waiting for
-   * confirmations is snipeable). Constructor-time initialization is not an
-   * option: the init flow delegatecalls a provider which calls back
-   * vault.asset(), and the proxy has no code during its own constructor.
+   * proxy 2 seconds after creation. Constructor-time initialization is not an
+   * option on any chain: the init flow delegatecalls a provider which calls
+   * back vault.asset(), and the proxy has no code during its own constructor.
    *
-   * Countermeasure: send approve, proxy deployment and initialize as three
-   * back-to-back transactions with explicit nonces, no waiting in between.
-   * On FCFS chains nothing can be ordered between them.
+   * Ethereum mainnet is not first-come-first-served — the block builder picks
+   * the order — so back-to-back transactions with explicit nonces still leave a
+   * window there. On mainnet VaultFactory creates the proxy and calls
+   * initialize inside one transaction, which closes it. Every other network
+   * keeps the three-transaction pipeline it was originally deployed with.
    */
   const existingProxy = await hre.deployments
     .get('USDCRebalancerProxy')
@@ -235,6 +250,136 @@ const deployUsdcVault: DeployFunction = async function (
     }
     log('----------------------------------------------------');
     log(`Reusing initialized USDCRebalancerProxy at ${proxyAddress}`);
+  } else if (chainId === MAINNET_CHAIN_ID) {
+    log('----------------------------------------------------');
+    log('Deploying VaultFactory...');
+
+    const factory = await deploy('VaultFactory', {
+      from: deployer,
+      args: [],
+      log: true,
+      waitConfirmations: waitConfirmations,
+    });
+
+    log('----------------------------------------------------');
+    log(`VaultFactory at ${factory.address}`);
+
+    if (isLive) {
+      await verify(factory.address, []);
+    }
+
+    const factoryInstance = await ethers.getContractAt(
+      'VaultFactory',
+      factory.address,
+    );
+    const assetInstance = await ethers.getContractAt('IERC20', assetAddress);
+
+    // initialize pulls minAssets from its own msg.sender, which is the factory;
+    // the factory in turn pulls it from the deployer, so the seed has to be there.
+    const seedBalance = await assetInstance.balanceOf(deployer);
+    if (seedBalance < minAssets) {
+      throw new Error(
+        `Deployer ${deployer} holds ${seedBalance} of ${assetAddress}, needs ${minAssets} for the seed deposit`,
+      );
+    }
+    const approveTx = await assetInstance.approve(factory.address, minAssets);
+    await approveTx.wait(waitConfirmations);
+
+    // buffer over the estimate: this single tx carries the proxy creation, the
+    // seed transfer and the whole initialize flow, and a mid-flight revert here
+    // means redeploying the vault from scratch.
+    const gasEstimate = await factoryInstance.deployAndInitialize.estimateGas(
+      implementation.address,
+      TREASURY_ADDRESS,
+      deployer,
+      assetAddress,
+      minAssets,
+      initCalldata,
+    );
+
+    const deployTx = await factoryInstance.deployAndInitialize(
+      implementation.address,
+      TREASURY_ADDRESS,
+      deployer,
+      assetAddress,
+      minAssets,
+      initCalldata,
+      { gasLimit: (gasEstimate * 13n) / 10n },
+    );
+
+    log('----------------------------------------------------');
+    log(`Proxy deploy + initialize sent as one tx: ${deployTx.hash}`);
+
+    const receipt = await deployTx.wait(waitConfirmations);
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('deployAndInitialize tx failed');
+    }
+
+    const deployedEvent = receipt.logs
+      .map((entry) => {
+        try {
+          return factoryInstance.interface.parseLog(entry);
+        } catch {
+          return null;
+        }
+      })
+      .find((parsed) => parsed?.name === 'VaultDeployed');
+    if (!deployedEvent) {
+      throw new Error(
+        `VaultDeployed event missing from ${receipt.hash} — inspect the tx before retrying`,
+      );
+    }
+    proxyAddress = deployedEvent.args.vault;
+
+    // sanity: the vault must carry the parameters we encoded
+    const postInit = new ethers.Contract(
+      proxyAddress,
+      [
+        'function name() view returns (string)',
+        'function getTimelock() view returns (address)',
+      ],
+      ethers.provider,
+    );
+    const [postName, postTimelock] = await Promise.all([
+      postInit.name(),
+      postInit.getTimelock(),
+    ]);
+    if (
+      postName !== name ||
+      postTimelock.toLowerCase() !== timelock.address.toLowerCase()
+    ) {
+      throw new Error(
+        `Proxy ${proxyAddress} does not match the intended vault — not recording it`,
+      );
+    }
+
+    // persist a hardhat-deploy record so reruns/verifications work
+    const fs = await import('fs');
+    const path = await import('path');
+    const tupArtifact =
+      await hre.artifacts.readArtifact('TransparentUpgradeableProxy');
+    const recordPath = path.join(
+      hre.config.paths.deployments,
+      hre.network.name,
+      'USDCRebalancerProxy.json',
+    );
+    fs.writeFileSync(
+      recordPath,
+      JSON.stringify(
+        {
+          address: proxyAddress,
+          abi: tupArtifact.abi,
+          args: [implementation.address, TREASURY_ADDRESS, '0x'],
+          transactionHash: receipt.hash,
+          receipt,
+        },
+        null,
+        2,
+      ),
+    );
+
+    log('----------------------------------------------------');
+    log(`Proxy at ${proxyAddress} (deployed and initialized atomically)`);
   } else {
     const [deployerSigner] = await ethers.getSigners();
     const startNonce = await deployerSigner.getNonce();
