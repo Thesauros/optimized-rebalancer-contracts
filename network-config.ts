@@ -28,11 +28,6 @@ export const networkConfig = {
     chainId: 31337,
   },
   hardhat: {
-    // Hardhat keeps its own chain id when forking, so a dry run must state
-    // which chain it forks for the deploy script to find the right config.
-    chainId: process.env.FORK_CHAIN_ID
-      ? Number(process.env.FORK_CHAIN_ID)
-      : 31337,
     forking: {
       // FORK_RPC_URL lets a dry run fork any supported chain, e.g. Ethereum.
       url: process.env.FORK_RPC_URL ?? BASE_URL,
