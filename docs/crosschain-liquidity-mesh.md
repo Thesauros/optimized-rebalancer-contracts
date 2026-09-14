@@ -96,3 +96,24 @@ Next: bounded continuous yield accounting and reconciliation; remote custodian
 integration with existing lending providers; authenticated Stargate/LayerZero
 adapter for Base/Arbitrum; actual two-chain fork/testnet rehearsal; independent
 QA/security review and founder-approved canary policy before any live deployment.
+
+### Local verification, 2026-09-14
+
+- 48 offline tests passed: 26 Mesh integration tests, 7 adversarial token/context
+  tests, 12 existing Rebalancer regression tests and 3 existing invariants.
+- Conservation fuzz: 256 runs. Each existing vault invariant: 256 runs,
+  128,000 handler calls, zero reverts. Those invariants do not exercise Mesh;
+  Mesh has the separate integration and conservation tests.
+- `forge build`, Hardhat compile, TypeScript check and `git diff --check` pass.
+- `forge inspect MeshProvider storage-layout --json` reports empty storage.
+- Foundry's macOS proxy discovery crashes under sandbox restrictions; the final
+  local run succeeded through the approved unsandboxed test command.
+- Core Rebalancer/provider code is unchanged relative to `d9204f4`.
+
+During implementation, a concurrent process created commit `e287956`, including
+these source-side files plus its own `MeshCustodian`/`IMeshCustodian`. That
+custodian is not connected to the delayed transport tests and is not accepted
+by this milestone's evidence. Its provider calls currently use ordinary calls
+with a zero vault argument, whereas existing lending providers expect
+delegatecall in a valid asset-holder context. It also needs a fixed return-route
+policy. Do not interpret compilation as successful remote lending.

@@ -35,11 +35,7 @@ contract MeshProvider is IProvider {
         _;
     }
 
-    function deposit(uint256 amount, IRebalancer vault)
-        external
-        onlyVaultContext(vault)
-        returns (bool)
-    {
+    function deposit(uint256 amount, IRebalancer vault) external onlyVaultContext(vault) returns (bool) {
         uint256 beforeBalance = IERC20(_asset).balanceOf(address(node));
         IERC20(_asset).safeTransfer(address(node), amount);
         uint256 afterBalance = IERC20(_asset).balanceOf(address(node));
@@ -50,11 +46,7 @@ contract MeshProvider is IProvider {
 
     /// @dev Exact-or-revert: Rebalancer.rebalance ignores bool/actual withdrawal
     /// amounts. Its user-withdraw path can catch this revert and try the next provider.
-    function withdraw(uint256 amount, IRebalancer vault)
-        external
-        onlyVaultContext(vault)
-        returns (bool)
-    {
+    function withdraw(uint256 amount, IRebalancer vault) external onlyVaultContext(vault) returns (bool) {
         node.withdrawToVault(amount);
         return true;
     }

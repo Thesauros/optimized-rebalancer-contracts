@@ -36,7 +36,9 @@ contract MeshTest is RebalancerBase {
         asset.approve(address(bridge), type(uint256).max);
     }
 
-    function _peer() internal view returns (bytes32) { return bytes32(uint256(uint160(remote))); }
+    function _peer() internal view returns (bytes32) {
+        return bytes32(uint256(uint160(remote)));
+    }
 
     function _attach(Rebalancer v) internal {
         IProvider[] memory providers = new IProvider[](4);
@@ -68,8 +70,11 @@ contract MeshTest is RebalancerBase {
         assertEq(node.totalAssets(), node.totalLocalAssets() + node.totalRemoteAssets());
         assertGe(asset.balanceOf(address(node)), node.totalLocalAssets());
         assertEq(node.balanceOf(address(vault)), node.localAssets(address(vault)) + node.remoteAssets(address(vault)));
-        assertEq(vault.totalAssets(), sourceA.balanceOf(address(vault)) + sourceB.balanceOf(address(vault))
-            + sourceC.balanceOf(address(vault)) + node.balanceOf(address(vault)));
+        assertEq(
+            vault.totalAssets(),
+            sourceA.balanceOf(address(vault)) + sourceB.balanceOf(address(vault)) + sourceC.balanceOf(address(vault))
+                + node.balanceOf(address(vault))
+        );
     }
 
     function testDelayedRoundTripPreservesNAV() public {

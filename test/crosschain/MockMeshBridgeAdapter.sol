@@ -31,16 +31,38 @@ contract MockMeshBridgeAdapter is IMeshBridgeAdapter {
     bool public callbackSucceeded;
     uint256 public nativeFeeReceived;
 
-    function setFee(uint256 value) external { feeBps = value; }
-    function setFailSend(bool value) external { failSend = value; }
-    function setShortDebit(bool value) external { shortDebit = value; }
-    function setOverQuote(bool value) external { overQuote = value; }
-    function setBelowMinimum(bool value) external { belowMinimum = value; }
-    function setSendCallback(bytes calldata value) external { sendCallback = value; }
-    function setReturnCallback(bytes calldata value) external { returnCallback = value; }
+    function setFee(uint256 value) external {
+        feeBps = value;
+    }
+
+    function setFailSend(bool value) external {
+        failSend = value;
+    }
+
+    function setShortDebit(bool value) external {
+        shortDebit = value;
+    }
+
+    function setOverQuote(bool value) external {
+        overQuote = value;
+    }
+
+    function setBelowMinimum(bool value) external {
+        belowMinimum = value;
+    }
+
+    function setSendCallback(bytes calldata value) external {
+        sendCallback = value;
+    }
+
+    function setReturnCallback(bytes calldata value) external {
+        returnCallback = value;
+    }
 
     function send(bytes32 id, address asset, uint256 amount, uint256 chainId, bytes32 peer, uint256 minOut)
-        external payable returns (uint256 credited)
+        external
+        payable
+        returns (uint256 credited)
     {
         require(!failSend, "bridge unavailable");
         credited = amount - amount * feeBps / 10_000;

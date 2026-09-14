@@ -43,7 +43,11 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
         bool enabled;
     }
 
-    enum Status { None, Pending, Settled }
+    enum Status {
+        None,
+        Pending,
+        Settled
+    }
 
     struct Transfer {
         address vault;
@@ -78,7 +82,9 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
     event RouteConfigured(bytes32 indexed routeId, bool enabled, uint256 maxInFlight, uint16 maxFeeBps);
     event Deposited(address indexed vault, uint256 amount);
     event Withdrawn(address indexed vault, uint256 amount);
-    event BridgeOut(bytes32 indexed transferId, address indexed vault, bytes32 indexed routeId, uint256 sent, uint256 principal);
+    event BridgeOut(
+        bytes32 indexed transferId, address indexed vault, bytes32 indexed routeId, uint256 sent, uint256 principal
+    );
     event Returned(bytes32 indexed transferId, address indexed vault, uint256 bookValue, uint256 received);
     event WrittenDown(bytes32 indexed transferId, uint256 loss, bytes32 reason);
 
@@ -112,7 +118,9 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
     }
 
     function configureVault(address vault, bool enabled, uint16 minLocalBps, uint16 maxRemoteBps)
-        external onlyGovernance nonReentrant
+        external
+        onlyGovernance
+        nonReentrant
     {
         if (vault.code.length == 0 || minLocalBps > BPS || maxRemoteBps > BPS) revert InvalidConfiguration();
         if (IRebalancer(vault).asset() != asset) revert InvalidConfiguration();
@@ -121,19 +129,27 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
     }
 
     /// @notice Endpoints are permanent. Add a new route ID for a new adapter/peer.
-    function addRoute(bytes32 routeId, address adapter, uint256 chainId, bytes32 peer,
-        uint256 maxInFlight, uint16 maxFeeBps) external onlyGovernance nonReentrant
-    {
-        if (routeId == bytes32(0) || routes[routeId].adapter != address(0)
-            || adapter.code.length == 0 || chainId == 0 || chainId == block.chainid
-            || peer == bytes32(0) || maxInFlight == 0 || maxFeeBps >= BPS) revert InvalidConfiguration();
+    function addRoute(
+        bytes32 routeId,
+        address adapter,
+        uint256 chainId,
+        bytes32 peer,
+        uint256 maxInFlight,
+        uint16 maxFeeBps
+    ) external onlyGovernance nonReentrant {
+        if (
+            routeId == bytes32(0) || routes[routeId].adapter != address(0) || adapter.code.length == 0 || chainId == 0
+                || chainId == block.chainid || peer == bytes32(0) || maxInFlight == 0 || maxFeeBps >= BPS
+        ) revert InvalidConfiguration();
         routes[routeId] = Route(adapter, chainId, peer, maxInFlight, 0, maxFeeBps, true);
         emit RouteAdded(routeId, adapter, chainId, peer);
         emit RouteConfigured(routeId, true, maxInFlight, maxFeeBps);
     }
 
     function configureRoute(bytes32 routeId, bool enabled, uint256 maxInFlight, uint16 maxFeeBps)
-        external onlyGovernance nonReentrant
+        external
+        onlyGovernance
+        nonReentrant
     {
         Route storage route = routes[routeId];
         if (route.adapter == address(0) || maxInFlight == 0 || maxFeeBps >= BPS) revert InvalidConfiguration();
@@ -169,12 +185,26 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
         if (amount > localAssets[msg.sender]) revert InsufficientLiquidity();
         localAssets[msg.sender] -= amount;
         totalLocalAssets -= amount;
-        IERC20(asset).safeTransfer(msg.sender, amount);
+        IERC20 token = IERC20(asset);
+        uint256 beforeBalance = token.balanceOf(address(this));
+        uint256 beforeRecipient = token.balanceOf(msg.sender);
+        token.safeTransfer(msg.sender, amount);
+        uint256 afterBalance = token.balanceOf(address(this));
+        uint256 afterRecipient = token.balanceOf(msg.sender);
+        if (
+            afterBalance > beforeBalance || beforeBalance - afterBalance != amount || afterRecipient < beforeRecipient
+                || afterRecipient - beforeRecipient != amount
+        ) {
+            revert UnexpectedTokenAmount();
+        }
         emit Withdrawn(msg.sender, amount);
     }
 
     function bridgeOut(address vault, bytes32 routeId, uint256 amount, uint256 minAmountOut)
-        external payable nonReentrant returns (bytes32 transferId)
+        external
+        payable
+        nonReentrant
+        returns (bytes32 transferId)
     {
         if (msg.sender != executor) revert Unauthorized();
         if (paused) revert Paused();
@@ -198,7 +228,8 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
     }
 
     function _executeBridgeSend(Route storage route, bytes32 transferId, uint256 amount, uint256 minAmountOut)
-        internal returns (uint256 credited)
+        internal
+        returns (uint256 credited)
     {
         IERC20 token = IERC20(asset);
         uint256 beforeBalance = token.balanceOf(address(this));
@@ -213,8 +244,13 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
     }
 
     function _postBridgeAccount(
-        address vault, bytes32 routeId, Route storage route, VaultConfig memory config,
-        bytes32 transferId, uint256 amount, uint256 credited
+        address vault,
+        bytes32 routeId,
+        Route storage route,
+        VaultConfig memory config,
+        bytes32 transferId,
+        uint256 amount,
+        uint256 credited
     ) internal {
         uint256 fee = amount - credited;
         remoteAssets[vault] -= fee;
@@ -224,14 +260,17 @@ contract MeshNode is IMeshNode, ReentrancyGuard {
         route.inFlight += credited;
         pendingPrincipal[vault] += credited;
         uint256 nav = localAssets[vault] + remoteAssets[vault];
-        if (route.inFlight > route.maxInFlight
-            || localAssets[vault] < Math.mulDiv(nav, config.minLocalBps, BPS, Math.Rounding.Ceil)
-            || pendingPrincipal[vault] > Math.mulDiv(nav, config.maxRemoteBps, BPS)) revert LimitExceeded();
+        if (
+            route.inFlight > route.maxInFlight
+                || localAssets[vault] < Math.mulDiv(nav, config.minLocalBps, BPS, Math.Rounding.Ceil)
+                || pendingPrincipal[vault] > Math.mulDiv(nav, config.maxRemoteBps, BPS)
+        ) revert LimitExceeded();
         emit BridgeOut(transferId, vault, routeId, amount, credited);
     }
 
     function receiveReturn(bytes32 transferId, uint256 sourceChainId, bytes32 sourcePeer, uint256 amount)
-        external nonReentrant
+        external
+        nonReentrant
     {
         Transfer storage transfer = transfers[transferId];
         if (transfer.status != Status.Pending) revert InvalidTransfer();

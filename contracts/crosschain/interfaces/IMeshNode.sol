@@ -14,10 +14,5 @@ interface IMeshNode {
 
     /// @dev Only the transfer's adapter may call after authenticating the remote peer.
     /// Pulls `amount` from that adapter and closes the transfer, even on a short return.
-    function receiveReturn(
-        bytes32 transferId,
-        uint256 sourceChainId,
-        bytes32 sourcePeer,
-        uint256 amount
-    ) external;
+    function receiveReturn(bytes32 transferId, uint256 sourceChainId, bytes32 sourcePeer, uint256 amount) external;
 }
