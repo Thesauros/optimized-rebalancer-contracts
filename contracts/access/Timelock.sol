@@ -49,6 +49,7 @@ contract Timelock is Ownable2Step {
     error Timelock__StillLocked();
     error Timelock__Expired();
     error Timelock__ExecutionFailed();
+    error Timelock__AddressZero();
 
     /// @notice Mapping of transaction IDs to their queued status
     /// @dev Transaction ID is computed as keccak256(abi.encode(target, value, signature, data, timestamp))
@@ -227,6 +228,10 @@ contract Timelock is Ownable2Step {
         bytes memory data,
         uint256 timestamp
     ) public payable onlyOwner returns (bytes memory) {
+        if (target == address(0)) {
+            revert Timelock__AddressZero();
+        }
+
         bytes32 txId = keccak256(
             abi.encode(target, value, signature, data, timestamp)
         );
