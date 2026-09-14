@@ -1,7 +1,10 @@
 import { ethers } from 'hardhat';
 
+export const MAINNET_CHAIN_ID = 1n;
 export const BASE_CHAIN_ID = 8453n;
 export const ARBITRUM_CHAIN_ID = 42161n;
+export const PLASMA_CHAIN_ID = 9745n;
+export const MONAD_CHAIN_ID = 143n;
 
 export const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS;
 
@@ -18,16 +21,47 @@ export const ADMIN_ROLE = ethers.ZeroHash;
 export const EXECUTOR_ROLE = ethers.id('EXECUTOR_ROLE');
 
 export interface ChainConfig {
-  usdc: string;
+  asset: string;
+  vaultName: string;
+  vaultSymbol: string;
   aavePoolAddressesProvider: string;
   cometPairs: { asset: string; cToken: string }[];
   morphoVaults: { strategy: string; vaultAddress: string }[];
 }
 
 export const chainConfigs: Record<number, ChainConfig> = {
+  // Ethereum
+  1: {
+    asset: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    vaultName: 'Thesauros USDC Vault',
+    vaultSymbol: 'tUSDC',
+    aavePoolAddressesProvider: '0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e',
+    cometPairs: [
+      {
+        asset: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        cToken: '0xc3d688B66703497DAA19211EEdff47f25384cdc3',
+      },
+    ],
+    morphoVaults: [
+      {
+        strategy: 'Steakhouse',
+        vaultAddress: '0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB',
+      },
+      {
+        strategy: 'GauntletPrime',
+        vaultAddress: '0xdd0f28e19C1780eb6396170735D45153D261490d',
+      },
+      {
+        strategy: 'Smokehouse',
+        vaultAddress: '0xBEeFFF209270748ddd194831b3fa287a5386f5bC',
+      },
+    ],
+  },
   // Base
   8453: {
-    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    vaultName: 'Thesauros USDC Vault',
+    vaultSymbol: 'tUSDC',
     aavePoolAddressesProvider: '0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D',
     cometPairs: [
       {
@@ -52,7 +86,9 @@ export const chainConfigs: Record<number, ChainConfig> = {
   },
   // Arbitrum One
   42161: {
-    usdc: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+    asset: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+    vaultName: 'Thesauros USDC Vault',
+    vaultSymbol: 'tUSDC',
     aavePoolAddressesProvider: '0xa97684ead0e402dc232d5a977953df7ecbab3cdb',
     cometPairs: [
       {
@@ -74,5 +110,23 @@ export const chainConfigs: Record<number, ChainConfig> = {
         vaultAddress: '0x7e97fa6893871a2751b5fe961978dccb2c201e65',
       },
     ],
+  },
+  // Plasma (Aave-only strategy, USDT0 asset)
+  9745: {
+    asset: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb',
+    vaultName: 'Thesauros USDT0 Vault',
+    vaultSymbol: 'tUSDT0',
+    aavePoolAddressesProvider: '0x061D8e131F26512348ee5FA42e2DF1bA9d6505E9',
+    cometPairs: [],
+    morphoVaults: [],
+  },
+  // Monad (Aave-only strategy, USDC asset)
+  143: {
+    asset: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+    vaultName: 'Thesauros USDC Vault',
+    vaultSymbol: 'tUSDC',
+    aavePoolAddressesProvider: '0x34793Fb9935F7bB5E5aE920fb963F39063E7A615',
+    cometPairs: [],
+    morphoVaults: [],
   },
 };
