@@ -67,4 +67,33 @@ deployer EOA `0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D`, not to the treasury.
 holds 4.998819, the vault itself 1.0 (seed), and four unrelated addresses hold
 2.991022 combined.
 
+## Legacy Cross-Chain Experiment (Base + Arbitrum, do not use)
+
+Previous cross-chain vault generation, deployed to mainnet 2026-05-01 from
+`thesauros.io/contracts` branch `crosschain`. Never completed a full cycle
+(rehearsal status "Preflight Passed, Track A Pending"). SEC-018: accounting
+divergence 18.5x on Base (totalAssets 0.20 USDC vs actual balance 3.90 USDC).
+All roles held by single EOA. Deliberately left untouched (decision 2026-09-14).
+
+### Base
+
+| Contract | Address |
+|---|---|
+| CrossChainVault | `0x8AD87BB0FE973A48e5C027E1C27A708BBe78a8Ae` |
+| StargateBridgeAdapter | `0x6dD4a38b2Ad0482A5232c9030926dEB4845f7729` |
+| StrategyAllocator | `0x0dB5b3401f526E3dFE46dFCA2297745AA16D2884` |
+| ReportSettler | `0xA663142A0202A751f21B3122b7611d4B3E35d004` |
+| WithdrawalQueue | `0x17f223ae2BdE86dbC32574d12578e2A6F8380724` |
+| StrategyRegistry | `0xCaFaF5f72235B1F10C92d57Db512C802ec1D9ad2` |
+
+### Arbitrum
+
+| Contract | Address |
+|---|---|
+| RemoteStrategyAgent | `0xf04D182F9990040A395E65D0151A30dB6957a9Ed` |
+| AaveV3StrategyAdapter | `0xfAc846b296DA830A041217F32387763d31cE6998` |
+| StargateBridgeAdapter | `0xC1DDF8be4537875eC51e37BC560D991D1c809F81` |
+
+---
+
 Addresses are stored per contract in `deployments/<network>/<Contract>.json` (field `address`, plus ABI and constructor `args`).
