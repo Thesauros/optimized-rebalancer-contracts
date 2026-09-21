@@ -33,6 +33,7 @@
  *                      deployments/<network>/USDCRebalancerProxy.json.
  */
 import hre, { ethers } from 'hardhat';
+import type { Contract, InterfaceAbi } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -128,7 +129,7 @@ function slotToAddress(slot: string): string {
 
 /** Every zero-arg view whose value must survive the upgrade byte-for-byte. */
 async function snapshotVault(
-  vault: ethers.Contract,
+  vault: Contract,
   proxyAddress: string,
 ): Promise<Record<string, string>> {
   const [
@@ -208,7 +209,7 @@ function printSnapshot(label: string, snap: Record<string, string>) {
 
 /** Selectors that exist in the live ABI and must still exist afterwards. */
 function abiSignatures(abi: unknown[]): Set<string> {
-  const iface = new ethers.Interface(abi as ethers.InterfaceAbi);
+  const iface = new ethers.Interface(abi as InterfaceAbi);
   const out = new Set<string>();
   iface.forEachFunction((f) => out.add(f.format('full') as string));
   return out;
@@ -582,7 +583,7 @@ async function main() {
     throw new Error('DRY_RUN=0 requires DEPLOYER_PRIVATE_KEY');
   }
   const { deploy, log, get } = hre.deployments;
-  const named = await hre.deployments.getNamedAccounts();
+  const named = await hre.getNamedAccounts();
   const deployer = named.deployer ?? (await ethers.getSigners())[0].address;
 
   const existing = await get(implRecordName);
