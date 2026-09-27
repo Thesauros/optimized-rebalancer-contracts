@@ -20,6 +20,7 @@ export interface Manifest {
   network: string;
   chainId: string;
   role: 'hub' | 'spoke';
+  profile?: string;
   deployer: string;
   startBlock: number;
   phase: number;

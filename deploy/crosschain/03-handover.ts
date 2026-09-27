@@ -45,7 +45,7 @@ async function main() {
     if (!(await contract.hasRole(ADMIN_ROLE, ids.safe))) {
       await send(`${name}.grantRole(ADMIN, Safe)`, contract.grantRole(ADMIN_ROLE, ids.safe));
     }
-    if (await contract.hasRole(ADMIN_ROLE, me)) {
+    if (ids.safe.toLowerCase() !== me.toLowerCase() && (await contract.hasRole(ADMIN_ROLE, me))) {
       await send(`${name}.revokeRole(ADMIN, deployer)`, contract.revokeRole(ADMIN_ROLE, me));
     }
   }
@@ -59,7 +59,7 @@ async function main() {
     const pm = await ethers.getContractAt('ProviderManager', c.ProviderManager, signer);
     const owner = await pm.owner();
     const pending = await pm.pendingOwner();
-    if (owner.toLowerCase() === me.toLowerCase() && pending.toLowerCase() !== ids.safe.toLowerCase()) {
+    if (owner.toLowerCase() === me.toLowerCase() && ids.safe.toLowerCase() !== me.toLowerCase() && pending.toLowerCase() !== ids.safe.toLowerCase()) {
       await send('ProviderManager.transferOwnership(Safe)', pm.transferOwnership(ids.safe));
     }
     if (owner.toLowerCase() !== ids.safe.toLowerCase()) {

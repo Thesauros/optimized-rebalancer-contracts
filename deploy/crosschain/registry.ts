@@ -66,12 +66,35 @@ const CCTP_V2_MESSAGE_TRANSMITTER = '0x81D40F21F12A8F0E3252Bccb954D722d4c464B64'
 
 const USDC = (n: number) => BigInt(n) * 1_000_000n;
 
-const DEFAULT_ROUTE: RouteLimits = {
-  maxPerTransfer: USDC(250_000),
-  capacity: USDC(1_000_000),
-  refillPerSecond: USDC(1_000_000) / 86_400n,
-  maxFeeBps: 10,
+/**
+ * Deployment profile.
+ *  - "stand": small-money test stand. A single EOA may hold governance and all
+ *    operational roles (founder decision 2026-09-28: 0xafA9…8F9D until the stand
+ *    has been tested with 50-100 USD), and limits are sized for that amount.
+ *    Recorded in the manifest; the monitor raises a permanent warning; leave it
+ *    with 06-rotate-governance.ts and a production-profile 05 plan.
+ *  - "production": governance must be a contract (Safe), roles must be distinct
+ *    from the deployer, launch-size limits.
+ */
+export type Profile = 'stand' | 'production';
+export const PROFILE: Profile = (process.env.CROSSCHAIN_PROFILE as Profile) ?? 'production';
+if (PROFILE !== 'stand' && PROFILE !== 'production') throw new Error(`unknown CROSSCHAIN_PROFILE ${PROFILE}`);
+
+const ROUTE_BY_PROFILE: Record<Profile, RouteLimits> = {
+  stand: {
+    maxPerTransfer: USDC(100),
+    capacity: USDC(200),
+    refillPerSecond: USDC(200) / 86_400n,
+    maxFeeBps: 10,
+  },
+  production: {
+    maxPerTransfer: USDC(250_000),
+    capacity: USDC(1_000_000),
+    refillPerSecond: USDC(1_000_000) / 86_400n,
+    maxFeeBps: 10,
+  },
 };
+const DEFAULT_ROUTE: RouteLimits = ROUTE_BY_PROFILE[PROFILE];
 
 export const NETWORKS: Record<string, NetworkEntry> = {
   base: {
@@ -140,39 +163,63 @@ export const NETWORKS: Record<string, NetworkEntry> = {
   },
 };
 
-/** Hub-only protocol parameters (docs/epoch-benchmark.md §5). */
-export const HUB_PARAMS = {
-  vaultName: 'Thesauros Cross-Chain USDC',
-  vaultSymbol: 'tcUSDC',
-  /** Dead shares minted to the vault at initialization. */
-  seedAssets: USDC(1),
-  /** Seed for each strategy Rebalancer (its minAssets). */
-  strategySeedAssets: USDC(1),
-  accountant: {
-    minTickInterval: 5n * 60n,
-    maxSnapshotAge: 10n * 60n,
-    maxTickAge: 2n * 3600n,
-    maxTransit: 3600n,
-    maxSpread: 10n ** 16n, // 1%
-    depositClearingMaxDown: 10n ** 15n, // 0.1%
-    maxInFlightRatio: 25n * 10n ** 16n, // 25%
-    maxOverdueInFlight: 0n,
-  },
-  upBucket: { capacity: 5n * 10n ** 15n, refillPerSecond: (2n * 10n ** 17n) / 31_536_000n }, // 0.5%, 20% APR
-  downBucket: { capacity: 2n * 10n ** 15n, refillPerSecond: 10n ** 15n / 86_400n }, // 0.2%, 0.1%/day
-  epoch: { minDuration: 4n * 3600n, maxDuration: 6n * 3600n, minTicks: 1n, maxClearingDelay: 3600n },
-  limits: {
-    minDeposit: USDC(10),
-    maxEpochDeposits: USDC(5_000_000),
-    minimumBuffer: USDC(10_000),
-    minBufferRatio: 5n * 10n ** 16n, // 5% of bid NAV
-    maxInstantWithdrawal: USDC(10_000),
-    dailyInstantLimit: USDC(50_000),
-    instantFee: 10n ** 15n, // 0.1%
-    instantMaxTickAge: 2n * 3600n,
-  },
-  fees: { management: 0n, performance: 0n },
+/** Hub-only protocol parameters per profile (docs/crosschain-limits.md explains each). */
+const COMMON_ACCOUNTANT = {
+  minTickInterval: 5n * 60n,
+  maxSnapshotAge: 10n * 60n,
+  maxTickAge: 2n * 3600n,
+  maxTransit: 3600n,
+  maxSpread: 10n ** 16n, // 1%
+  depositClearingMaxDown: 10n ** 15n, // 0.1%
+  maxOverdueInFlight: 0n,
 };
+
+const HUB_BY_PROFILE = {
+  stand: {
+    vaultName: 'Thesauros Cross-Chain USDC (stand)',
+    vaultSymbol: 'tcUSDC-stand',
+    seedAssets: USDC(1),
+    strategySeedAssets: USDC(1),
+    accountant: { ...COMMON_ACCOUNTANT, maxInFlightRatio: 60n * 10n ** 16n }, // 60%: a test moves half the stand across
+    upBucket: { capacity: 5n * 10n ** 15n, refillPerSecond: (2n * 10n ** 17n) / 31_536_000n },
+    downBucket: { capacity: 2n * 10n ** 15n, refillPerSecond: 10n ** 15n / 86_400n },
+    epoch: { minDuration: 3600n, maxDuration: 2n * 3600n, minTicks: 1n, maxClearingDelay: 3600n },
+    limits: {
+      minDeposit: USDC(1),
+      maxEpochDeposits: USDC(500),
+      minimumBuffer: USDC(5),
+      minBufferRatio: 10n * 10n ** 16n, // 10%
+      maxInstantWithdrawal: USDC(25),
+      dailyInstantLimit: USDC(50),
+      instantFee: 10n ** 15n, // 0.1%
+      instantMaxTickAge: 2n * 3600n,
+    },
+    fees: { management: 0n, performance: 0n },
+  },
+  production: {
+    vaultName: 'Thesauros Cross-Chain USDC',
+    vaultSymbol: 'tcUSDC',
+    seedAssets: USDC(1),
+    strategySeedAssets: USDC(1),
+    accountant: { ...COMMON_ACCOUNTANT, maxInFlightRatio: 25n * 10n ** 16n }, // 25%
+    upBucket: { capacity: 5n * 10n ** 15n, refillPerSecond: (2n * 10n ** 17n) / 31_536_000n }, // 0.5%, 20% APR
+    downBucket: { capacity: 2n * 10n ** 15n, refillPerSecond: 10n ** 15n / 86_400n }, // 0.2%, 0.1%/day
+    epoch: { minDuration: 4n * 3600n, maxDuration: 6n * 3600n, minTicks: 1n, maxClearingDelay: 3600n },
+    limits: {
+      minDeposit: USDC(10),
+      maxEpochDeposits: USDC(5_000_000),
+      minimumBuffer: USDC(10_000),
+      minBufferRatio: 5n * 10n ** 16n, // 5% of bid NAV
+      maxInstantWithdrawal: USDC(10_000),
+      dailyInstantLimit: USDC(50_000),
+      instantFee: 10n ** 15n, // 0.1%
+      instantMaxTickAge: 2n * 3600n,
+    },
+    fees: { management: 0n, performance: 0n },
+  },
+};
+
+export const HUB_PARAMS = HUB_BY_PROFILE[PROFILE];
 
 /** Governance and operational identities; must be set in the environment. */
 export function identities() {
@@ -188,6 +235,7 @@ export function identities() {
     executor: need('CROSSCHAIN_EXECUTOR'),
     guardian: need('CROSSCHAIN_GUARDIAN'),
     timelockDelay: BigInt(process.env.CROSSCHAIN_TIMELOCK_DELAY ?? '86400'),
+    stand: PROFILE === 'stand',
   };
 }
 

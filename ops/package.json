@@ -1,7 +1,7 @@
 {
   "name": "thesauros-crosschain-ops",
   "private": true,
-  "description": "Off-chain services for the Thesauros cross-chain vault: NAV updater, epoch keeper, CCTP relayer, monitor",
+  "description": "Off-chain services for the Thesauros cross-chain vault: NAV updater, epoch keeper, CCTP relayer, monitor, indexer + API",
   "scripts": {
     "nav": "ts-node --transpile-only src/nav.ts",
     "keeper": "ts-node --transpile-only src/keeper.ts",
@@ -9,7 +9,8 @@
     "monitor": "ts-node --transpile-only src/monitor.ts",
     "verify-tick": "ts-node --transpile-only src/verify-tick.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --require ts-node/register/transpile-only --test test/*.test.ts"
+    "test": "node --require ts-node/register/transpile-only --test test/*.test.ts",
+    "indexer": "ts-node --transpile-only src/indexer.ts"
   },
   "dependencies": {
     "ethers": "^6.13.0"

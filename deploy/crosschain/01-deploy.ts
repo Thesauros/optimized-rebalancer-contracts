@@ -15,7 +15,7 @@
  * seed; spoke: strategy seed).
  */
 import { ethers } from 'hardhat';
-import { HUB_PARAMS, NETWORKS, identities } from './registry';
+import { HUB_PARAMS, NETWORKS, PROFILE, identities } from './registry';
 import { Manifest, banner, codehash, currentEntry, deployer, readManifest, send, writeManifest } from './lib';
 
 async function main() {
@@ -25,15 +25,20 @@ async function main() {
   const me = await signer.getAddress();
   banner(`Phase 1 deploy (${entry.role})`);
 
-  for (const [label, addr] of Object.entries({ safe: ids.safe, navUpdater: ids.navUpdater, executor: ids.executor, guardian: ids.guardian })) {
-    if (addr.toLowerCase() === me.toLowerCase()) throw new Error(`${label} must not be the deployer`);
+  if (ids.stand) {
+    console.log('  ! STAND profile: governance and roles may be a single EOA; stand-sized limits. Not for real TVL.');
+  } else {
+    for (const [label, addr] of Object.entries({ safe: ids.safe, navUpdater: ids.navUpdater, executor: ids.executor, guardian: ids.guardian })) {
+      if (addr.toLowerCase() === me.toLowerCase()) throw new Error(`${label} must not be the deployer`);
+    }
+    if ((await ethers.provider.getCode(ids.safe)) === '0x') throw new Error(`Safe ${ids.safe} has no code on ${key}`);
   }
-  if ((await ethers.provider.getCode(ids.safe)) === '0x') throw new Error(`Safe ${ids.safe} has no code on ${key}`);
 
   const m: Manifest = readManifest(key) ?? {
     network: key,
     chainId: entry.chainId.toString(),
     role: entry.role,
+    profile: PROFILE,
     deployer: me,
     startBlock: await ethers.provider.getBlockNumber(),
     phase: 0,
@@ -42,6 +47,7 @@ async function main() {
     txs: {},
   };
   if (m.deployer.toLowerCase() !== me.toLowerCase()) throw new Error(`manifest was started by ${m.deployer}`);
+  if ((m.profile ?? 'production') !== PROFILE) throw new Error(`manifest profile ${m.profile} != CROSSCHAIN_PROFILE ${PROFILE}`);
   const save = () => writeManifest(m);
 
   const usdc = await ethers.getContractAt('IERC20', entry.usdc, signer);

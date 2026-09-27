@@ -25,6 +25,8 @@ export interface Manifest {
   network: string;
   chainId: string;
   role: 'hub' | 'spoke';
+  /** 'stand' or 'production' (registry PROFILE at phase 1) */
+  profile?: string;
   deployer: string;
   startBlock: number;
   phase: number;

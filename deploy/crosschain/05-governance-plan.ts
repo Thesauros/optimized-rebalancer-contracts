@@ -16,7 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ethers } from 'hardhat';
-import { NETWORKS, identities, routeId } from './registry';
+import { HUB_PARAMS, NETWORKS, PROFILE, identities, routeId } from './registry';
 import { EXECUTOR_ROLE, GUARDIAN_ROLE, NAV_UPDATER_ROLE, banner, currentEntry, manifestRoot, peers, requireManifest } from './lib';
 
 interface Call {
@@ -118,6 +118,27 @@ async function main() {
       }
     }
     const vault = await ethers.getContractAt('EpochVault', c.EpochVault);
+
+    // protocol parameters of the selected profile (e.g. stand -> production limits)
+    const a = HUB_PARAMS.accountant;
+    const wantCfg = [a.minTickInterval, a.maxSnapshotAge, a.maxTickAge, a.maxTransit, a.maxSpread, a.depositClearingMaxDown, a.maxInFlightRatio, a.maxOverdueInFlight];
+    const haveCfg = await accountant.config();
+    if (wantCfg.some((v, i) => BigInt(haveCfg[i]) !== v)) tl(c.TickAccountant, 'setConfig((uint64,uint64,uint64,uint64,uint128,uint128,uint128,uint128))', [wantCfg], `accountant config -> ${PROFILE}`);
+    const [up, down] = await accountant.buckets();
+    const U = HUB_PARAMS.upBucket;
+    const D = HUB_PARAMS.downBucket;
+    if (BigInt(up.capacity) !== U.capacity || BigInt(up.refillPerSecond) !== U.refillPerSecond || BigInt(down.capacity) !== D.capacity || BigInt(down.refillPerSecond) !== D.refillPerSecond) {
+      tl(c.TickAccountant, 'setBuckets((uint128,uint128,uint128,uint64),(uint128,uint128,uint128,uint64))', [[U.capacity, U.refillPerSecond, 0, 0], [D.capacity, D.refillPerSecond, 0, 0]], `rate buckets -> ${PROFILE}`);
+    }
+    const e = HUB_PARAMS.epoch;
+    const wantEpoch = [e.minDuration, e.maxDuration, e.minTicks, e.maxClearingDelay];
+    const haveEpoch = await vault.epochConfig();
+    if (wantEpoch.some((v, i) => BigInt(haveEpoch[i]) !== v)) tl(c.EpochVault, 'setEpochConfig((uint64,uint64,uint64,uint64))', [wantEpoch], `epoch config -> ${PROFILE}`);
+    const l = HUB_PARAMS.limits;
+    const wantLimits = [l.minDeposit, l.maxEpochDeposits, l.minimumBuffer, l.minBufferRatio, l.maxInstantWithdrawal, l.dailyInstantLimit, l.instantFee, l.instantMaxTickAge];
+    const haveLimits = await vault.limits();
+    if (wantLimits.some((v, i) => BigInt(haveLimits[i]) !== v)) tl(c.EpochVault, 'setLimits((uint128,uint128,uint128,uint128,uint128,uint128,uint64,uint64))', [wantLimits], `vault limits -> ${PROFILE}`);
+
     for (const [ct, name, role, roleName, holder] of [
       [accountant, 'TickAccountant', NAV_UPDATER_ROLE, 'NAV_UPDATER', ids.navUpdater],
       [accountant, 'TickAccountant', GUARDIAN_ROLE, 'GUARDIAN', ids.guardian],

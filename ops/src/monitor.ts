@@ -179,6 +179,11 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
   }
 
   // Governance integrity and pending timelock actions
+  for (const c of chains) {
+    if (c.manifest.profile === 'stand') {
+      add(`governance.${c.key}.standMode`, 'warn', `${c.key} runs the STAND profile: one EOA holds governance and roles; limits are stand-sized. Rotate (06-rotate-governance) before real TVL.`);
+    }
+  }
   const ids = identities();
   const manifests = Object.fromEntries(chains.map((c) => [c.key, c.manifest]));
   for (const c of chains) {

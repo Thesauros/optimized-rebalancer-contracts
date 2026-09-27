@@ -11,9 +11,9 @@ the first mainnet deployment.
 
 | # | Item | Blocks launch? | Why it is needed | Suggested home |
 |---|---|---|---|---|
-| A1 | **Cross-chain allocation strategy** (the "brain"): decides how much sits on Base vs Arbitrum and in which provider, executes allocate / rebalance / bridgeOut, and plans recalls from spokes to fund redemptions | **Yes, for yield.** No, for safety: without it capital stays in the hub vault buffer and hub strategy | The existing `Thesauros-Rebalance-Engine/apps/rebalancer` drives single-chain `Rebalancer.rebalance`; it does not know `ChainAgent`, CCTP or cross-chain liquidity. The keeper's autofund covers hub-local recalls only | Extend Rebalance-Engine (it already has provider-rate data, Safe SDK and AWS Secrets Manager) with a `crosschain` module calling `ChainAgent` / `EpochVault.pushToAgent` |
-| A2 | **Indexer + API for the frontend**: user requests (pending / claimable / claimed), epochs, Tick history, NAV and rate series, in-flight transfers | Yes, for the UI | Every fact is an event (`DepositRequested`, `RedeemRequested`, `DepositsCleared`, `RedeemsCleared`, `EpochFunded`, `TickCommitted`, `BridgeOut`/`BridgeIn`), so an indexer is straightforward, but none exists | `Rebalance-Engine/apps/indexer` + `apps/api`, or `thesauros-vault-data-service` |
-| A3 | **Frontend flows**: request deposit, request redeem, claim, instant exit (with the fee and limits shown), epoch countdown, pending state | Yes, for users | The vault is asynchronous (ERC-7540-shaped); an ERC-4626 widget does not fit | landing / app repo |
+| A1 | **Cross-chain allocation strategy** (spec for the backend developer: `docs/tz-crosschain-allocator.md`) (the "brain"): decides how much sits on Base vs Arbitrum and in which provider, executes allocate / rebalance / bridgeOut, and plans recalls from spokes to fund redemptions | **Yes, for yield.** No, for safety: without it capital stays in the hub vault buffer and hub strategy | The existing `Thesauros-Rebalance-Engine/apps/rebalancer` drives single-chain `Rebalancer.rebalance`; it does not know `ChainAgent`, CCTP or cross-chain liquidity. The keeper's autofund covers hub-local recalls only | Extend Rebalance-Engine (it already has provider-rate data, Safe SDK and AWS Secrets Manager) with a `crosschain` module calling `ChainAgent` / `EpochVault.pushToAgent` |
+| A2 | ~~Indexer + API for the frontend~~ **Done**: `ops/src/indexer.ts` (rehearsed on forks) | — | — | — |
+| A3 | ~~Frontend flows~~ **Done**: `thesauros-app` branch `feat/crosschain-vault`, page `/crosschain` (builds; not yet exercised against a live deployment) | — | — | — |
 | A4 | **Key management for hot keys** (NAV updater, executor, keeper/relayer) | Yes | Hot keys in `.env` repeat SEC-002 | AWS Secrets Manager / KMS, as the Rebalance-Engine already uses |
 | A5 | **Hosting** for the four `ops` services and paid RPCs (a different provider for the monitor than for the NAV updater) | Yes | Liveness: no Ticks means no clearing and no instant exits | Railway, like the existing services |
 | A6 | Public snapshot archive (optional): JSON of every Tick for partners | No | The snapshot is already public as calldata; `ops/src/verify-tick.ts` reproduces any Tick | docs site / data service |
@@ -34,8 +34,8 @@ the first mainnet deployment.
 
 | # | Item |
 |---|---|
-| C1 | Timelock delay (default 24 h in the runbook; the contract minimum is 30 min) |
-| C2 | Distinct NAV updater, executor and guardian keys, and who holds the guardian |
-| C3 | Launch limits: epoch deposit cap, instant-exit per call and per day, route volume. Registry defaults are placeholders sized for a small launch |
-| C4 | Safe signer availability for `ratifyTick` and `unpause` (2-of-2 today: a single unavailable signer stalls recovery from a quarantine) |
-| C5 | Pause deposits of the legacy `CrossChainVault` on Base (SEC-018), independent of this deployment |
+| C1 | ~~Timelock delay~~ **Decided: 24 h** |
+| C2 | Distinct NAV updater, executor and guardian keys: **after the stand test** (stand uses `0xafA9…8F9D` for everything; rotation with `06-rotate-governance.ts`) |
+| C3 | Launch limits: explained with stand and production values in `docs/crosschain-limits.md` |
+| C4 | Safe signer availability: **stand uses the deployer EOA**; revisit the Safe threshold before rotation |
+| C5 | **Legacy `CrossChainVault` (SEC-018): open, and the key question changed.** The founder reports not having deployed it. On-chain (Blockscout, checked 2026-09-28) the contract `0x8AD87BB0…78a8Ae` was created by `0xafA9ed53…8F9D` (tx `0x7419a4a4…3c0c`), which also granted its roles and ran its operations on 2026-05-04..06. So whoever deployed it used the Thesauros deployer key. That key is in plaintext in `.env` files (SEC-002), and the stand profile gives it every role. Before the stand holds any money: establish who used the key in May 2026, or rotate to a fresh key for the stand |

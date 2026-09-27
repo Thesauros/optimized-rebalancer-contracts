@@ -8,6 +8,7 @@ Off-chain services for the cross-chain vault:
 | `npm run keeper` | Epoch keeper: close, clear, fund, (optionally) claim and recall |
 | `npm run relayer` | CCTP relayer: delivers transfers with Circle attestations |
 | `npm run monitor` | Monitor: checks, Telegram alerts, `/health`, `/metrics`, Tick re-derivation |
+| `npm run indexer` | Indexer + read API for the frontend (requests, epochs, NAV history, allocation) |
 | `npm run verify-tick -- <ids>` | Independent Tick verification for partners |
 
 Configuration, deployment and operations: `docs/crosschain-deployment.md`.

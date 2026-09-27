@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Full deployment + operations rehearsal on local forks of Base and Arbitrum.
 #
-#   BASE_RPC_URL=... ops/rehearsal/run.sh
+#   BASE_RPC_URL=... ops/rehearsal/run.sh                        # production profile, Safe governance
+#   BASE_RPC_URL=... REHEARSAL_PROFILE=stand ops/rehearsal/run.sh # stand: one EOA, small limits, then rotation
 #
 # Starts two anvil forks (chain ids preserved), runs the four deployment phases
 # on both with anvil keys and the real governance Safe (impersonated), then
@@ -33,11 +34,21 @@ KEYS=()
 for _ in 0 1 2 3 4 5 6; do KEYS+=("$(cast wallet new --json | node -e 'process.stdin.on("data",d=>console.log(JSON.parse(d)[0].private_key))')"); done
 addr() { cast wallet address --private-key "$1"; }
 
+PROFILE=${REHEARSAL_PROFILE:-production}
+export CROSSCHAIN_PROFILE=$PROFILE
+REAL_SAFE=0x3CDD947001afBa4C334D49125fd4bac3E4a3bfF1
 export REHEARSAL_DEPLOYER_KEY=${KEYS[0]}
-export CROSSCHAIN_SAFE=0x3CDD947001afBa4C334D49125fd4bac3E4a3bfF1
-export CROSSCHAIN_NAV_UPDATER=$(addr ${KEYS[1]})
-export CROSSCHAIN_EXECUTOR=$(addr ${KEYS[2]})
-export CROSSCHAIN_GUARDIAN=$(addr ${KEYS[3]})
+if [ "$PROFILE" = stand ]; then
+  # founder decision for the test stand: the deployer EOA holds governance and every role
+  D=$(addr ${KEYS[0]})
+  export CROSSCHAIN_SAFE=$D CROSSCHAIN_NAV_UPDATER=$D CROSSCHAIN_EXECUTOR=$D CROSSCHAIN_GUARDIAN=$D
+  KEYS[1]=${KEYS[0]}; KEYS[2]=${KEYS[0]}; KEYS[3]=${KEYS[0]}
+else
+  export CROSSCHAIN_SAFE=$REAL_SAFE
+  export CROSSCHAIN_NAV_UPDATER=$(addr ${KEYS[1]})
+  export CROSSCHAIN_EXECUTOR=$(addr ${KEYS[2]})
+  export CROSSCHAIN_GUARDIAN=$(addr ${KEYS[3]})
+fi
 export CROSSCHAIN_TIMELOCK_DELAY=1800
 export CROSSCHAIN_MANIFEST_DIR=/tmp/xc-rehearsal
 export RPC_BASE=http://127.0.0.1:8545
@@ -75,7 +86,7 @@ echo "== phase 3"; npx hardhat run deploy/crosschain/03-handover.ts --network ba
 npx hardhat run deploy/crosschain/03-handover.ts --network arbitrumLocal
 
 echo "== Safe accepts ProviderManager ownership (impersonated)"
-for rpc in $RPC_BASE $RPC_ARBITRUM; do
+for rpc in $( [ "$PROFILE" = stand ] || echo "$RPC_BASE $RPC_ARBITRUM" ); do
   net=$([ "$rpc" = "$RPC_BASE" ] && echo base || echo arbitrum)
   pm=$(node -e "console.log(require('/tmp/xc-rehearsal/$net/crosschain.json').contracts.ProviderManager)")
   cast rpc anvil_impersonateAccount $CROSSCHAIN_SAFE --rpc-url $rpc >/dev/null
@@ -106,3 +117,43 @@ done
 
 echo "== end-to-end cycle"
 npx ts-node --transpile-only ops/rehearsal/e2e.ts
+
+if [ "$PROFILE" = stand ]; then
+  echo "== rotation: stand EOA -> Safe + fresh operational keys (06)"
+  NEWK=(); for _ in 1 2 3; do NEWK+=("$(cast wallet new --json | node -e 'process.stdin.on("data",d=>console.log(JSON.parse(d)[0].private_key))')"); done
+  export NEW_SAFE=$REAL_SAFE NEW_NAV_UPDATER=$(addr ${NEWK[0]}) NEW_EXECUTOR=$(addr ${NEWK[1]}) NEW_GUARDIAN=$(addr ${NEWK[2]})
+  npx hardhat run deploy/crosschain/06-rotate-governance.ts --network baseLocal
+  npx hardhat run deploy/crosschain/06-rotate-governance.ts --network arbitrumLocal
+
+  echo "== treasury to the Safe through the Timelock (still owned by the EOA until the Safe accepts)"
+  TL=$(node -e "console.log(require('/tmp/xc-rehearsal/base/crosschain.json').contracts.Timelock)")
+  ACC=$(node -e "console.log(require('/tmp/xc-rehearsal/base/crosschain.json').contracts.TickAccountant)")
+  NOW=$(cast block latest --field timestamp --rpc-url $RPC_BASE)
+  ETA=$((NOW + 1800 + 60))
+  DATA=$(cast abi-encode "f(address)" $REAL_SAFE)
+  cast send $TL "queue(address,uint256,string,bytes,uint256)" $ACC 0 "setTreasury(address)" $DATA $ETA --private-key ${KEYS[0]} --rpc-url $RPC_BASE >/dev/null
+  cast rpc evm_increaseTime 1900 --rpc-url $RPC_BASE >/dev/null; cast rpc evm_mine --rpc-url $RPC_BASE >/dev/null
+  cast send $TL "execute(address,uint256,string,bytes,uint256)" $ACC 0 "setTreasury(address)" $DATA $ETA --private-key ${KEYS[0]} --rpc-url $RPC_BASE >/dev/null
+
+  echo "== Safe accepts Timelock and ProviderManager ownership (impersonated)"
+  for net in base arbitrum; do
+    rpc=$([ $net = base ] && echo $RPC_BASE || echo $RPC_ARBITRUM)
+    cast rpc anvil_impersonateAccount $REAL_SAFE --rpc-url $rpc >/dev/null
+    cast rpc anvil_setBalance $REAL_SAFE 0x8AC7230489E80000 --rpc-url $rpc >/dev/null
+    for c in Timelock ProviderManager; do
+      a=$(node -e "console.log(require('/tmp/xc-rehearsal/$net/crosschain.json').contracts.$c)")
+      cast send $a "acceptOwnership()" --from $REAL_SAFE --unlocked --rpc-url $rpc >/dev/null
+    done
+  done
+
+  echo "== phase 4 with the production identities (limits are still stand-sized)"
+  export CROSSCHAIN_SAFE=$REAL_SAFE CROSSCHAIN_NAV_UPDATER=$NEW_NAV_UPDATER CROSSCHAIN_EXECUTOR=$NEW_EXECUTOR CROSSCHAIN_GUARDIAN=$NEW_GUARDIAN
+  npx hardhat run deploy/crosschain/04-verify.ts --network baseLocal
+  npx hardhat run deploy/crosschain/04-verify.ts --network arbitrumLocal
+
+  echo "== phase 5 with the production profile: limits must show up as Timelock changes"
+  out=$(CROSSCHAIN_PROFILE=production npx hardhat run deploy/crosschain/05-governance-plan.ts --network baseLocal)
+  echo "$out"
+  echo "$out" | grep -q "vault limits -> production" || { echo "expected a limits change in the plan"; exit 1; }
+  echo "STAND ROTATION PASSED"
+fi

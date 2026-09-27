@@ -35,6 +35,41 @@ The rehearsal covered:
 * **Proxy ownership.** Every proxy is created with the Safe as ProxyAdmin owner
   and initialized in the same transaction, so there is no SEC-001 window.
 
+## 1a. Stand profile (test stand with 50–100 USD)
+
+Founder decision (2026-09-28): the first deployment is a test stand where the
+Thesauros deployer address `0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D` holds
+governance and every operational role until the stand has been tested.
+
+```bash
+export CROSSCHAIN_PROFILE=stand
+export CROSSCHAIN_SAFE=0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D
+export CROSSCHAIN_NAV_UPDATER=$CROSSCHAIN_SAFE CROSSCHAIN_EXECUTOR=$CROSSCHAIN_SAFE CROSSCHAIN_GUARDIAN=$CROSSCHAIN_SAFE
+export CROSSCHAIN_TIMELOCK_DELAY=86400
+# services: NAV_UPDATER_PRIVATE_KEY = EXECUTOR_PRIVATE_KEY = KEEPER_PRIVATE_KEY = RELAYER_PRIVATE_KEY = the deployer key
+```
+
+What the stand profile changes:
+
+* **Relaxed identity checks.** Phases 1–4 accept an EOA as governance and roles
+  that are the deployer itself.
+* **Limits.** They are sized for 50–100 USD (`docs/crosschain-limits.md`).
+* **Visibility.** The manifest records `profile: stand`, and the monitor keeps a
+  permanent warning until rotation.
+
+Leaving it:
+
+1. Run `06-rotate-governance.ts` with `NEW_SAFE`, `NEW_NAV_UPDATER`,
+   `NEW_EXECUTOR`, `NEW_GUARDIAN` on both chains.
+2. Queue the treasury change on the Timelock (the script prints it).
+3. The Safe calls `acceptOwnership` on the Timelock and on the ProviderManager.
+4. Run phase 4 with the new identities.
+5. Run phase 5 with `CROSSCHAIN_PROFILE=production` to raise the limits through
+   the Timelock.
+
+Rehearsed on forks (`REHEARSAL_PROFILE=stand ops/rehearsal/run.sh`), result
+`STAND ROTATION PASSED`.
+
 ## 2. Prerequisites
 
 ### Identities
@@ -111,6 +146,7 @@ exposes `/metrics` (Prometheus). `--once` runs a single pass.
 | Keeper | `npm run keeper` | `KEEPER_PRIVATE_KEY` (+ `EXECUTOR_PRIVATE_KEY` if `KEEPER_AUTOFUND=true`) | Closes epochs, clears both sides, funds, optionally claims for users and recalls hub-local liquidity |
 | Relayer | `npm run relayer` | `RELAYER_PRIVATE_KEY` | Delivers every CCTP transfer (Circle Iris attestation) to the destination agent |
 | Monitor | `npm run monitor` | none | 20+ check groups, Telegram alerts on change, independent Tick re-derivation |
+| Indexer + API | `npm run indexer` | none | Indexes vault, accountant and agent events into SQLite (a cache, rebuildable); serves `/v1/vault`, `/v1/users/:address`, `/v1/requests/:id`, `/v1/epochs`, `/v1/ticks`, `/v1/allocation`, `/v1/transfers` for the frontend (`INDEXER_DB`, `PORT_INDEXER`, `INDEXER_CORS_ORIGIN`) |
 
 **Common environment:** `RPC_BASE`, `RPC_ARBITRUM`, `CROSSCHAIN_SAFE`,
 `CROSSCHAIN_NAV_UPDATER`, `CROSSCHAIN_EXECUTOR`, `CROSSCHAIN_GUARDIAN` (the
@@ -191,6 +227,25 @@ Change the registry, then run
 writes Safe Transaction Builder batches: queue now, execute after the delay,
 plus direct ADMIN actions. The monitor shows queued transactions until they
 execute.
+
+## 5a. Frontend
+
+`thesauros-app`, branch `feat/crosschain-vault`, page `/crosschain`:
+
+* request deposit (with approve), request redeem, instant exit, claim and cancel;
+* the user's requests with statuses;
+* the epoch countdown;
+* capital per chain and provider;
+* the share-price history.
+
+Environment:
+
+```
+NEXT_PUBLIC_CROSSCHAIN_VAULT=<EpochVault proxy on Base, from deployments/base/crosschain.json>
+NEXT_PUBLIC_CROSSCHAIN_API_URL=<public URL of the ops indexer>
+```
+
+The menu item is disabled until both are set.
 
 ## 6. Adding a network
 

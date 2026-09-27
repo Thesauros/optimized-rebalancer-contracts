@@ -21,6 +21,7 @@ export interface CheckResult {
 
 export interface ManifestLike {
   network: string;
+  profile?: string;
   deployer: string;
   phase: number;
   contracts: Record<string, string>;
@@ -54,6 +55,14 @@ export async function checkDeployment(
   const check = (ok: boolean, label: string, detail = '') => out.push({ ok, label, detail });
 
   check(m.phase >= 3, 'manifest phase', `phase ${m.phase} (3 = handed over)`);
+  const stand = m.profile === 'stand';
+  // in the stand profile governance may deliberately be the deployer EOA itself
+  const deployerIsGovernance = stand && eq(ids.safe, m.deployer);
+  if (stand) check(true, 'profile', 'STAND: single-EOA governance allowed; rotate before real TVL (06-rotate-governance.ts)');
+  else {
+    const code = await provider.getCode(ids.safe);
+    check(code !== '0x', 'governance is a contract', code === '0x' ? `${ids.safe} has no code` : ids.safe);
+  }
 
   // proxies: ProxyAdmin owned by the Safe, implementation unchanged since deployment
   const proxies: [string, string][] = [
@@ -88,8 +97,9 @@ export async function checkDeployment(
   for (const [name, roles] of managed) {
     const ct = new Contract(c[name], ACCESS, provider);
     check(await ct.hasRole(ADMIN_ROLE, ids.safe), `${name} ADMIN = Safe`);
-    check(!(await ct.hasRole(ADMIN_ROLE, m.deployer)), `${name} deployer has no ADMIN`);
+    if (!deployerIsGovernance) check(!(await ct.hasRole(ADMIN_ROLE, m.deployer)), `${name} deployer has no ADMIN`);
     for (const r of [EXECUTOR_ROLE, GUARDIAN_ROLE, NAV_UPDATER_ROLE]) {
+      if (eq(roleHolder[r], m.deployer) && stand) continue; // designated holder in the stand profile
       if (await ct.hasRole(r, m.deployer)) check(false, `${name} deployer holds ${roleName[r]}`);
     }
     for (const r of roles) check(await ct.hasRole(r, roleHolder[r]), `${name} ${roleName[r]}`, roleHolder[r]);
