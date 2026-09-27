@@ -37,14 +37,14 @@ positions and a few in-flight entries.
 
 | Call | Median gas | Max gas | Frequency |
 |---|---|---|---|
-| `TickAccountant.commitTick` | 181,966 | 289,699 (with fee mint) | per Tick |
-| `EpochVault.closeEpoch` | 91,906 | 91,906 | per epoch |
-| `EpochVault.clearDeposits` | 212,181 | 212,181 | per epoch |
-| `EpochVault.clearRedeems` | 52,022 (empty) | 254,596 | per epoch |
-| `EpochVault.requestDeposit` | 200,878 | 242,695 | per user action (includes checkpoint write) |
-| `EpochVault.requestRedeem` | 142,796 | 142,796 | per user action |
-| `EpochVault.claim` | 54,561 | 90,681 | per user action |
-| `EpochVault.instantRedeem` | 112,621 | 168,743 | per user action |
+| `TickAccountant.commitTick` | 189,813 | 292,892 (with fee mint) | per Tick |
+| `EpochVault.closeEpoch` | 94,964 | 94,964 | per epoch |
+| `EpochVault.clearDeposits` | 216,565 | 216,565 | per epoch |
+| `EpochVault.clearRedeems` | 56,365 (empty) | 258,854 | per epoch |
+| `EpochVault.requestDeposit` | 204,050 | 245,858 | per user action (includes checkpoint write) |
+| `EpochVault.requestRedeem` | 145,949 | 145,949 | per user action |
+| `EpochVault.claim` | 60,132 | 94,097 | per user action |
+| `EpochVault.instantRedeem` | 117,000 | 173,113 | per user action |
 | `ChainAgent.bridgeOut` (mock adapter) | 376,314 | 376,314 | per bridge leg |
 | `ChainAgent.receiveBridge` (mock adapter) | 110,458 | 121,006 | per bridge leg |
 
@@ -56,8 +56,11 @@ in-flight entry is 7 words. On Base, calldata cost is dominated by the L1 data
 fee, not execution gas. A realistic snapshot (3 chains, about 10 positions, a
 few transfers) is about 3–4 KB.
 
-**Contract size.** `EpochVault` is 23,384 B of runtime code, leaving a 1,192 B
-margin under EIP-170. Any further feature there requires splitting the contract.
+**Contract size.** After the split into `EpochVault` and the linked
+`EpochVaultLogic` library, the vault is 16,456 B and the library 12,289 B, with
+margins of 8,120 B and 12,287 B under EIP-170. The figures above are after the
+split. The DELEGATECALL into the library adds about 3–5k gas per entry point
+compared with the monolithic version.
 
 ## 3. Unmeasured (needs mainnet or fork observation)
 

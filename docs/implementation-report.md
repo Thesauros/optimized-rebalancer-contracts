@@ -12,7 +12,7 @@
 
 | Kind | Path |
 |---|---|
-| Contracts (new) | `contracts/tick/NavSnapshot.sol`, `contracts/tick/TickAccountant.sol`, `contracts/tick/EpochVault.sol`, `contracts/tick/interfaces/{ITickAccountant,IEpochVault,IEpochVaultAccounting}.sol`, `contracts/crosschain/ChainAgent.sol`, `contracts/crosschain/interfaces/IBridgeAdapter.sol`, `contracts/crosschain/bridges/CctpV2Adapter.sol` |
+| Contracts (new) | `contracts/tick/NavSnapshot.sol`, `contracts/tick/TickAccountant.sol`, `contracts/tick/EpochVault.sol`, `contracts/tick/EpochVaultLogic.sol` (linked library), `contracts/tick/EpochVaultStorage.sol`, `contracts/tick/interfaces/{ITickAccountant,IEpochVault,IEpochVaultAccounting}.sol`, `contracts/crosschain/ChainAgent.sol`, `contracts/crosschain/interfaces/IBridgeAdapter.sol`, `contracts/crosschain/bridges/CctpV2Adapter.sol` |
 | Contracts (changed) | `contracts/Rebalancer.sol`, `contracts/interfaces/IRebalancer.sol` |
 | Tests (new) | `test/unit/RebalancerHardening.t.sol`, `test/tick/{TickFixture,TickAccountant.t,EpochVault.t,ChainAgent.t,AdversarialScenarios.t,CrossChainInvariants.t}.sol`, `test/tick/mocks/MockBridge.sol`, `test/forking/CctpV2Adapter.t.sol` |
 | Docs (new) | `docs/current-architecture.md`, `docs/tick-accounting-design.md`, `docs/cross-chain-threat-model.md`, `docs/nav-reproduction.md`, `docs/epoch-benchmark.md`, this file |
@@ -245,6 +245,12 @@ exposure, and a comparison of bridge options.
   gives **143 passed, 0 failed**. That count includes the 51 pre-existing tests,
   whose `Rebalancer` fork suites run against live Aave, Compound and Morpho on
   the hardened code, and needs the RPC variables from `.env`.
+* **Flaky pre-existing fork assertion:** `ForkingEthereum.testAtomicDeployAndInitialize`
+  checks `totalAssets ≈ seed ± 1` against live Compound. In one run it read 2
+  units off; minutes later the same code, and the pre-change code, passed. The
+  cause is rounding in the live Comet state at a particular block, not these
+  changes. The tolerance is too tight for a moving fork and should be pinned to
+  a block or widened; it was left unchanged here.
 * **Negative controls:** each key check was disabled in turn, and the suite
   caught every one:
   * the liabilities/shares binding;
@@ -261,33 +267,53 @@ exposure, and a comparison of bridge options.
 
 ## 19. Gas impact
 
-See `docs/epoch-benchmark.md` §2. Medians:
+See `docs/epoch-benchmark.md` §2.
+
+Medians after the split:
 
 | Call | Median gas |
 |---|---|
-| `commitTick` | 182k |
-| `requestDeposit` | 201k |
-| `requestRedeem` | 143k |
-| `claim` | 55k |
-| `closeEpoch` | 92k |
-| `clearDeposits` | 212k |
-| `clearRedeems` | 255k (max) |
-| `instantRedeem` | 113k |
+| `commitTick` | 190k |
+| `requestDeposit` | 204k |
+| `requestRedeem` | 146k |
+| `claim` | 60k |
+| `closeEpoch` | 95k |
+| `clearDeposits` | 217k |
+| `clearRedeems` | 259k (max) |
+| `instantRedeem` | 117k |
+
+The library call costs about 3–5k gas per entry point.
 
 Contract sizes:
 
-| Contract | Runtime size | Note |
-|---|---|---|
-| `EpochVault` | 23,384 B | 1,192 B margin; not split, see below |
-| `TickAccountant` | 18,960 B | |
-| `Rebalancer` | 18,305 B | was 16,477 B |
-| `ChainAgent` | 15,101 B | |
-| `CctpV2Adapter` | 4,252 B | |
+| Contract | Runtime size | Margin under EIP-170 | Note |
+|---|---|---|---|
+| `EpochVault` | 16,456 B | 8,120 B | was 23,384 B before the split |
+| `EpochVaultLogic` | 12,289 B | 12,287 B | linked library |
+| `TickAccountant` | 18,960 B | 5,616 B | |
+| `Rebalancer` | 18,432 B | 6,144 B | was 16,477 B on `dev` |
+| `ChainAgent` | 15,101 B | 9,475 B | |
+| `CctpV2Adapter` | 4,252 B | 20,324 B | |
 
-**On splitting `EpochVault`:** it is not needed today, because no pending
-feature targets it. The seam, if a future change needs the space, is to move
-instant exit plus buffer management into a module that the vault calls through
-a narrow, vault-only interface.
+**Split of `EpochVault`** (2026-09-28, done before any deployment, which is the
+cheapest time to do it):
+
+* **What moved.** Epoch lifecycle, clearing, funding, instant-exit limits,
+  buffer, configuration validation and checkpoints moved to the externally
+  linked library `EpochVaultLogic`.
+* **What stayed.** The vault keeps the share token, roles, pause domains and
+  every share mint, burn and transfer.
+* **Shared state.** The layout lives in `EpochVaultStorage`: the same ERC-7201
+  slot and field order.
+* **No new trust boundary.** The library runs under delegatecall, has no state
+  or roles of its own, and is reachable only through the vault's gated entry
+  points. Events are emitted from the vault's address.
+* **Behaviour preserved.** The external ABI is unchanged, and every existing
+  test, fuzz and invariant passed without modification.
+* **Deployment.** Deploy `EpochVaultLogic` once per chain and link it into the
+  `EpochVault` implementation (hardhat-deploy `libraries: { EpochVaultLogic }`).
+  The library address is part of the verified bytecode. An upgrade that changes
+  the logic deploys a new library together with a new implementation.
 
 ## 20. Upgrade and migration impact
 

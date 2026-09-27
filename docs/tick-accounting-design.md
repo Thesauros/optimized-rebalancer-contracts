@@ -63,6 +63,10 @@ is authoritative:
 7. **Spoke agents cannot read the hub accountant.** Their pauses and route
    disables are guardian actions. The hub agent reads the accountant's breakers
    automatically.
+8. **`EpochVault` is split** into the vault (token, roles, pauses, share
+   movements) and the linked library `EpochVaultLogic` (epochs, clearing,
+   funding, limits, buffer, checkpoints). They share the `EpochVaultStorage`
+   layout.
 
 
 Goal: the smallest architecture that makes this statement technically defensible:
