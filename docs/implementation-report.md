@@ -428,19 +428,40 @@ stateDiagram-v2
 
 ---
 
+## Deployment and operations (added 2026-09-28)
+
+* **Deployment:** phases in `deploy/crosschain/`, driven by the registry in
+  `deploy/crosschain/registry.ts`.
+  * `01-deploy`, `02-configure`, `03-handover`, `04-verify`;
+  * `05-governance-plan` for post-handover changes and new networks.
+  * Runbook: `docs/crosschain-deployment.md`.
+* **Services:** in `ops/` — NAV updater, epoch keeper, CCTP relayer, monitor
+  (20+ check groups, Telegram alerts, `/health` for the existing healthchecker,
+  Prometheus `/metrics`, independent Tick re-derivation), and a
+  `verify-tick` CLI for partners.
+* **Cross-language check:** the TypeScript snapshot encoding is pinned against
+  Solidity by a shared test vector (`test/tick/SnapshotVector.t.sol` ↔
+  `ops/test/snapshot.test.ts`).
+* **ABI drift:** `ops/test/abi.test.ts` compares the services' ABIs with the
+  compiled artifacts.
+* **Rehearsal** (`ops/rehearsal/run.sh`): on anvil forks of Base and Arbitrum,
+  with the real Safe impersonated where it must sign. It ran all phases:
+  * phase 4 passed 56/56 checks on Base and 32/32 on Arbitrum;
+  * phase 5 planned nothing to change;
+  * a full user cycle ran through the real services, including a real CCTP V2
+    burn and mint with a local attester;
+  * a Tick was re-derived identically;
+  * the monitor had no critical check.
+  Result: `REHEARSAL PASSED`.
+* **Contract change for deployability:** `CctpV2Adapter.governance` is now
+  transferable (`transferGovernance`), so the deployer configures remotes and
+  hands governance to the Timelock.
+
 ## Not done / next steps
 
-1. **Deployment scripts** for the new contracts, following the `VaultFactory`
-   atomic-init pattern with the ProxyAdmin owned by the Safe from deployment.
-2. **Production NAV builder** (TypeScript), including the multi-EVM
-   consistent-cut fixpoint. The Solidity reference exists only in the test
-   fixture.
-3. **Measurements** listed in `docs/epoch-benchmark.md` §3: CCTP latency,
-   historic flows, rate volatility, and the Base L1 data fee per commit.
-4. **End-to-end CCTP receive with a real attestation.** This needs a testnet
-   canary; the fork test mocks `receiveMessage`.
-5. **A three-chain fixture.** Current tests use two simulated chains in one EVM.
-6. **`Rebalancer` fee high-water mark** (sandbox Finding 6) and the decision
-   whether to roll the hardened `Rebalancer` onto the live vaults.
-7. **Pause the legacy `CrossChainVault` deposits on Base** (SEC-018; threat
-   model §3). This is an operational action outside this repository.
+See `docs/crosschain-open-items.md`. The launch blockers there are:
+
+1. the cross-chain allocation strategy (A1), for yield;
+2. an indexer/API and frontend flows (A2, A3);
+3. hot-key management and hosting (A4, A5);
+4. an external audit (B1).

@@ -61,6 +61,7 @@ contract CctpV2Adapter is IBridgeAdapter {
     error NativeFeeNotAccepted();
 
     event RemoteSet(uint64 indexed chainId, uint32 domain, address remoteAdapter);
+    event GovernanceTransferred(address indexed previous, address indexed next);
     event Sent(bytes32 indexed transferId, uint32 indexed destinationDomain, address dstAgent, uint256 amount, uint256 maxFee);
 
     struct Remote {
@@ -71,7 +72,8 @@ contract CctpV2Adapter is IBridgeAdapter {
 
     address public immutable override asset;
     address public immutable agent;
-    address public immutable governance;
+    /// @notice Configures remotes. The deployer during setup, then the Timelock.
+    address public governance;
     ITokenMessengerV2 public immutable tokenMessenger;
     IMessageTransmitterV2 public immutable messageTransmitter;
     uint32 public immutable minFinalityThreshold;
@@ -105,6 +107,14 @@ contract CctpV2Adapter is IBridgeAdapter {
     modifier onlyAgent() {
         if (msg.sender != agent) revert Unauthorized();
         _;
+    }
+
+    /// @notice Hands governance to a contract (the Timelock) after setup.
+    function transferGovernance(address next) external {
+        if (msg.sender != governance) revert Unauthorized();
+        if (next.code.length == 0) revert InvalidConfig();
+        emit GovernanceTransferred(governance, next);
+        governance = next;
     }
 
     /// @notice Registers the CCTP domain and peer adapter for a chain. Governance

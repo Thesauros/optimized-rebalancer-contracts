@@ -29,7 +29,7 @@ contract CctpV2AdapterForkTest is Test {
     bytes32 internal constant MESSAGE_SENT = keccak256("MessageSent(bytes)");
 
     address internal dstAgent = makeAddr("dstAgent");
-    address internal dstAdapterAddr = makeAddr("dstAdapter");
+    address internal dstAdapterAddr;
 
     function _fork(string memory envName, string memory fallbackUrl) internal returns (bool) {
         string memory url = vm.envOr(envName, fallbackUrl);
@@ -54,6 +54,9 @@ contract CctpV2AdapterForkTest is Test {
 
         // source side: this test contract plays the agent
         CctpV2Adapter src = new CctpV2Adapter(USDC_BASE, address(this), address(this), TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALIZED);
+        // the destination adapter, as it would be deployed on Arbitrum (agent = dstAgent)
+        CctpV2Adapter dst = new CctpV2Adapter(USDC_BASE, dstAgent, address(this), TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALIZED);
+        dstAdapterAddr = address(dst);
         src.setRemote(42161, DOMAIN_ARBITRUM, dstAdapterAddr);
 
         uint256 amount = 1_000e6;
@@ -82,9 +85,6 @@ contract CctpV2AdapterForkTest is Test {
 
         // destination side: pretend to be Arbitrum; agent = dstAgent
         vm.chainId(42161);
-        vm.etch(dstAdapterAddr, address(new CctpV2Adapter(USDC_BASE, dstAgent, address(this), TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALIZED)).code);
-        // etched code has immutables baked in; storage (remotes) is per address, set it there
-        CctpV2Adapter dst = CctpV2Adapter(dstAdapterAddr);
         dst.setRemote(8453, DOMAIN_BASE, address(src));
 
         vm.mockCall(MESSAGE_TRANSMITTER_V2, abi.encodeWithSelector(IMessageTransmitterV2.receiveMessage.selector), abi.encode(true));

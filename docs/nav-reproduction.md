@@ -36,7 +36,8 @@ checking it makes the rest of the procedure self-contained.
 configured set in strictly ascending chainId, verify the following:
 
 1. `blockNumber` is a canonical block and `blockHash` matches it.
-2. **Cut rule.** Start from the last block with `timestamp ≤ T` on each chain.
+2. **Cut rule.** The builder starts from the hub reference block and, on each
+   spoke, the last confirmed block with `timestamp ≤ T`.
 3. For every `BridgeIn(transferId)` emitted by a destination agent at or before
    its reference block, the matching `BridgeOut(transferId)` on the source agent
    must be at or before the source reference block. Where it is not, the source
@@ -44,11 +45,24 @@ configured set in strictly ascending chainId, verify the following:
 4. Repeat step 3 until nothing changes. The process only moves blocks forward and
    is bounded by the chain heads, so it terminates, and the result is unique for
    a given `T`.
-5. The chain references in the snapshot must equal this fixpoint.
+5. A verifier re-runs this fixpoint from the snapshot's own references. They must
+   already be a fixpoint, meaning no receipt inside the cut has its send outside
+   it.
 
-Reference blocks should be **finalized**: the Ethereum finalized checkpoint, and
-the L2 safe/finalized head. The hub reference block is also checked on-chain:
-it must be within 256 blocks of the commit and match `blockhash`.
+How the reference blocks are chosen, and what protects them:
+
+* **Hub reference.** It is `head − confirmations` (10 on Base). It **cannot** be
+  a finalized block: the on-chain `blockhash` binding needs it within 256 blocks
+  of the commit, which is about 8.5 minutes on Base, while Base finality lags
+  longer. The binding protects it instead: a reorg of that block makes the
+  commit revert.
+* **Spoke references.** Each is the last block at or before `T` that is at least
+  `confirmations` deep (20 on Arbitrum).
+* **Verification.** A verifier checks each block hash against the canonical
+  chain, then checks that the cut is consistent.
+
+`ops/src/snapshot.ts` implements exactly this; the monitor re-derives every
+accepted Tick with it.
 
 ### Step 3. The agent set
 
