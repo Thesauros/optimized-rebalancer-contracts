@@ -3,14 +3,18 @@
 * **Branch:** `feat/crosschain-tick-epoch`, cut from `dev` @ `f053106`.
 * **Date:** 2026-09-28.
 * **Status:** implemented and tested locally. **Not deployed, not externally
-  audited.** No existing contract, script or deployment record was modified.
+  audited.**
+* **Existing code changed:** `contracts/Rebalancer.sol` and
+  `contracts/interfaces/IRebalancer.sol` were hardened on 2026-09-28, storage
+  compatible (design §0 item 1). No script or deployment record was modified.
 
 ## Files
 
 | Kind | Path |
 |---|---|
 | Contracts (new) | `contracts/tick/NavSnapshot.sol`, `contracts/tick/TickAccountant.sol`, `contracts/tick/EpochVault.sol`, `contracts/tick/interfaces/{ITickAccountant,IEpochVault,IEpochVaultAccounting}.sol`, `contracts/crosschain/ChainAgent.sol`, `contracts/crosschain/interfaces/IBridgeAdapter.sol`, `contracts/crosschain/bridges/CctpV2Adapter.sol` |
-| Tests (new) | `test/tick/{TickFixture,TickAccountant.t,EpochVault.t,ChainAgent.t,AdversarialScenarios.t,CrossChainInvariants.t}.sol`, `test/tick/mocks/MockBridge.sol`, `test/forking/CctpV2Adapter.t.sol` |
+| Contracts (changed) | `contracts/Rebalancer.sol`, `contracts/interfaces/IRebalancer.sol` |
+| Tests (new) | `test/unit/RebalancerHardening.t.sol`, `test/tick/{TickFixture,TickAccountant.t,EpochVault.t,ChainAgent.t,AdversarialScenarios.t,CrossChainInvariants.t}.sol`, `test/tick/mocks/MockBridge.sol`, `test/forking/CctpV2Adapter.t.sol` |
 | Docs (new) | `docs/current-architecture.md`, `docs/tick-accounting-design.md`, `docs/cross-chain-threat-model.md`, `docs/nav-reproduction.md`, `docs/epoch-benchmark.md`, this file |
 
 ---
@@ -33,8 +37,8 @@ See `docs/current-architecture.md`. In short:
 **Hub-and-spoke**, with the hub on Base.
 
 * **Hub:** `EpochVault` (share token, queue, buffer) and `TickAccountant` (Ticks).
-* **Every chain:** one `ChainAgent`. It holds idle USDC plus shares of a fresh
-  `Rebalancer` instance, which is the unchanged current code acting as the
+* **Every chain:** one `ChainAgent`. It holds idle USDC plus shares of a
+  `Rebalancer` instance: the hardened code (design §0 item 1) acting as the
   strategy.
 * **Transport:** `CctpV2Adapter`.
 
@@ -177,6 +181,11 @@ The executor can do only the following:
 It has no recipient, chain or adapter parameter, and no arbitrary calls. No
 Merkle manager: design D11.
 
+Inside each strategy, the `Rebalancer` executor moves funds only between listed
+providers. Each provider is limited by its cap in bps of total assets, checked
+after every rebalance and every deposit, and every move uses the measured
+amount.
+
 ## 14. Circuit breakers
 
 * **Accountant:** quarantine (automatic), guardian `freeze` (ADMIN unfreezes),
@@ -229,18 +238,22 @@ exposure, and a comparison of bridge options.
 | `ChainAgent.t.sol` | 20 | Adversarial adapters: short-pull, forging, reentrant, duplicate, fee-charging |
 | `AdversarialScenarios.t.sol` | 7 | The scenarios of brief §32 |
 | `CrossChainInvariants.t.sol` | 6 invariants | 256 runs × 500 calls. The handler moves real tokens. Per run it averages about 90 Ticks, about 25 claims, about 15 clearings and about 20 bridge legs |
+| `RebalancerHardening.t.sol` | 12 | Caps and who may change them; measured rebalance with a short-paying market; a broken provider neither freezes NAV nor exits but blocks entries; approval revocation; entry provider protected; reentrancy |
 | `test/forking/CctpV2Adapter.t.sol` | 2 | Live CCTP V2: domains 0/3/6 match `localDomain()` on Ethereum/Arbitrum/Base; a real `depositForBurnWithHook` on a Base fork; our parser reads the real message; a tampered sender is rejected |
 
 * **Full run:** `forge test --no-match-path test/forking/NewVaultWithdraw.t.sol`
-  gives **131 passed, 0 failed**. That count includes the 51 pre-existing tests
-  and needs the RPC variables from `.env`.
+  gives **143 passed, 0 failed**. That count includes the 51 pre-existing tests,
+  whose `Rebalancer` fork suites run against live Aave, Compound and Morpho on
+  the hardened code, and needs the RPC variables from `.env`.
 * **Negative controls:** each key check was disabled in turn, and the suite
   caught every one:
   * the liabilities/shares binding;
   * the bucket limits;
   * `min(open, clear)`;
   * agent replay protection;
-  * the deposit-clearing down-flag.
+  * the deposit-clearing down-flag;
+  * `Rebalancer` provider caps;
+  * the measured rebalance amount.
 * **Slither** (new code only, informational and optimization detectors
   excluded) reports 31 results. None are actionable after one fix: native value
   is now rejected in `CctpV2Adapter.send`. The remaining `locked-ether` is the
@@ -261,13 +274,34 @@ See `docs/epoch-benchmark.md` §2. Medians:
 | `clearRedeems` | 255k (max) |
 | `instantRedeem` | 113k |
 
-Contract sizes: `EpochVault` 23,384 B (1,192 B margin), `TickAccountant` 18,960 B,
-`ChainAgent` 15,101 B, `CctpV2Adapter` 4,252 B.
+Contract sizes:
+
+| Contract | Runtime size | Note |
+|---|---|---|
+| `EpochVault` | 23,384 B | 1,192 B margin; not split, see below |
+| `TickAccountant` | 18,960 B | |
+| `Rebalancer` | 18,305 B | was 16,477 B |
+| `ChainAgent` | 15,101 B | |
+| `CctpV2Adapter` | 4,252 B | |
+
+**On splitting `EpochVault`:** it is not needed today, because no pending
+feature targets it. The seam, if a future change needs the space, is to move
+instant exit plus buffer management into a module that the vault calls through
+a narrow, vault-only interface.
 
 ## 20. Upgrade and migration impact
 
-* **Existing contracts:** none. No existing contract, deployment or script
-  changed.
+* **Existing contracts:** `Rebalancer` source changed, storage-compatible. One
+  mapping is appended to its ERC-7201 struct, and the OZ reentrancy guard uses
+  its own namespace and works uninitialized. **No live proxy is upgraded.** The
+  existing upgrade script refuses this diff by design.
+* **If this `Rebalancer` is later rolled onto the live vaults**, these are the
+  behaviour changes users would see:
+  * deposits are refused while any provider view fails;
+  * rebalance moves the measured amount;
+  * caps are available (all 0 = uncapped until set);
+  * removing a provider revokes its approval.
+  That needs its own review.
 * **New proxies:** `EpochVault`, `TickAccountant` and `ChainAgent` are
   Transparent-proxy upgradeable, with ERC-7201 namespaces
   `thesauros.storage.{EpochVault,TickAccountant,ChainAgent}`.
@@ -285,16 +319,15 @@ Contract sizes: `EpochVault` 23,384 B (1,192 B margin), `TickAccountant` 18,960 
 * The ProxyAdmin owner, for everything.
 * Circle attesters, for transport.
 * Aave, Compound and MetaMorpho, for market solvency.
-* The current `Rebalancer` code on the strategies, without the sandbox
-  Findings 1–8 hardening and without per-provider caps: deferred by the
-  "don't modify existing contracts" decision.
+* The `Rebalancer` fee logic still uses a rolling baseline, not a high-water
+  mark (sandbox Finding 6, not ported).
 
 ## 22. Components requiring external audit
 
 * `TickAccountant`, `EpochVault`, `ChainAgent`, `CctpV2Adapter`, `NavSnapshot`.
 * The snapshot specification (`docs/nav-reproduction.md`) together with the
   production NAV builder.
-* The use of the unchanged `Rebalancer` as a strategy behind an agent.
+* The `Rebalancer` hardening diff, and its use as a strategy behind an agent.
 
 ## 23. Architecture diagram
 
@@ -381,7 +414,7 @@ stateDiagram-v2
 4. **End-to-end CCTP receive with a real attestation.** This needs a testnet
    canary; the fork test mocks `receiveMessage`.
 5. **A three-chain fixture.** Current tests use two simulated chains in one EVM.
-6. **Hardened `Rebalancer` generation** (sandbox Findings 1–8 plus provider
-   caps), as a separate decision and audit.
+6. **`Rebalancer` fee high-water mark** (sandbox Finding 6) and the decision
+   whether to roll the hardened `Rebalancer` onto the live vaults.
 7. **Pause the legacy `CrossChainVault` deposits on Base** (SEC-018; threat
    model §3). This is an operational action outside this repository.

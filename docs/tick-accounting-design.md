@@ -10,17 +10,32 @@ threats are in `docs/cross-chain-threat-model.md`; the as-built report is
 | Question | Decision |
 |---|---|
 | Q1 hub chain | **Base** (8453) |
-| Q2 strategies | **New contracts only; existing contracts are not modified.** Strategies are fresh instances of the current `Rebalancer` code |
+| Q2 strategies | New cross-chain contracts. **Revised 2026-09-28: the existing `Rebalancer` may be changed** ("меняй старый"); it is hardened in a storage-compatible way and used as the strategy |
 | Q3 instant exit | **Enabled with limits** (per call, per day, fresh Tick, fee) |
 | Q4 snapshot | **Full snapshot in calldata**, arithmetic checked on-chain |
 
 Where the implementation differs from the proposal below, the implementation
 is authoritative:
 
-1. **No per-provider caps inside `Rebalancer`.** That needs a code change to an
-   existing contract, which Q2 rules out. Per-chain exposure is bounded by route
-   buckets and the in-flight breakers. Per-protocol exposure inside a strategy is
-   an off-chain monitoring item until a hardened `Rebalancer` generation exists.
+1. **`Rebalancer` hardened in place**, storage-compatible: one mapping is appended
+   to the ERC-7201 struct; the reentrancy guard lives in its own OZ namespace and
+   works uninitialized. The changes:
+   * `nonReentrant` on deposit, mint, withdraw, redeem and rebalance;
+   * provider balance views under a gas stipend, so a failing provider reads as 0
+     instead of freezing the vault. **Deposits are refused while any provider is
+     unhealthy**, because an incomplete NAV would over-mint;
+     `providersHealthy()` exposes the state;
+   * per-provider caps in bps of total assets, enforced after deposits and
+     rebalances; ADMIN may lower a cap, only the Timelock may raise or remove it;
+   * rebalance moves the measured amount released by the source;
+   * a removed provider's approval is revoked, and the entry provider cannot be
+     delisted.
+
+   The fee high-water mark (sandbox Finding 6) is **not** included, because it
+   changes fee semantics for live vaults. It remains a separate decision.
+   `scripts/upgrade-vault-implementation.ts` still refuses any source change
+   other than `Constants.sol`, so rolling this onto a live vault stays a
+   deliberate, separately reviewed step.
 2. **Hub binding uses per-block checkpoints.** `EpochVault` writes a checkpoint
    of (cash, pending deposits, liabilities, supply) at the end of every block
    that changes them. `commitTick` takes a checkpoint index and verifies it is
@@ -65,7 +80,7 @@ Goal: the smallest architecture that makes this statement technically defensible
 | # | Decision | Chosen | Main reason |
 |---|---|---|---|
 | D1 | Topology | **Hub-and-spoke**: one share token and one accountant on a hub chain; spokes hold positions only | One supply, one rate, one queue. Multi-entry share tokens multiply every problem below by N |
-| D2 | Strategy layer on each chain | **Reuse `Rebalancer`** (as built: fresh instances of the current code, §0) as the per-chain strategy; a thin `ChainAgent` holds its shares | The provider valuation code, EXECUTOR constraints and Hexens-audited adapters already exist and are reproducible via `eth_call` |
+| D2 | Strategy layer on each chain | **Reuse `Rebalancer`** (hardened in place, §0) as the per-chain strategy; a thin `ChainAgent` holds its shares | The provider valuation code, EXECUTOR constraints and Hexens-audited adapters already exist and are reproducible via `eth_call` |
 | D3 | User entry | **Asynchronous** request → epoch clearing → claim (ERC-7540-shaped), plus an optional capped instant exit | Synchronous deposit/redeem against a lagged NAV *is* the stale-NAV arbitrage |
 | D4 | Pricing | **Forward pricing** at a Tick observed *after* the epoch cutoff, with **dual rates** (bid for exits, offer for entries) | Forward pricing removes timing arbitrage; dual rates make "conservative" well-defined in both directions (§5) |
 | D5 | Withdrawal price | `min(bid at epoch open, bid at clearing Tick)` | Blocks "exit before a loss is booked"; yield earned while queued stays with holders who keep bearing risk |
@@ -74,7 +89,7 @@ Goal: the smallest architecture that makes this statement technically defensible
 | D8 | Rate limits | **Token buckets** per direction (capacity + refill), which cover per-tick, rolling and daily limits in O(1) state | Per-update bounds alone compound (BoringVault's accountant has only per-update bounds, verified) |
 | D9 | Out-of-bounds Tick | Stored as **Quarantined**: settles nothing, trips the circuit breaker, governance may ratify | Rejecting a real loss would keep paying exits at the pre-loss price, the worst failure |
 | D10 | Share lock | **Not added**. Shown redundant in §8 | Shares are minted only at clearing, at the offer price |
-| D11 | Rebalancer control | Same-chain: existing provider whitelist (per-provider caps deferred, §0). Cross-chain: fixed routes (adapter, chain, peer agent) + per-route volume buckets. **No Merkle manager** | The action space is tiny and enumerable; Merkle verification solves a generic action space Thesauros does not have |
+| D11 | Rebalancer control | Same-chain: existing provider whitelist plus per-provider caps (§0). Cross-chain: fixed routes (adapter, chain, peer agent) + per-route volume buckets. **No Merkle manager** | The action space is tiny and enumerable; Merkle verification solves a generic action space Thesauros does not have |
 | D12 | Bridge (first) | Circle **CCTP V2**, USDC only, Ethereum/Base/Arbitrum | Burn/mint (no pool/slippage), destination-caller restriction, `hookData` carries our transfer id |
 
 Out of V1: Plasma (USDT0, needs FX), Monad (CCTP availability not verified here),
@@ -99,7 +114,7 @@ spoke-side deposits, secondary-market share bridging, and reward-token recogniti
 
 | Component | Change | Why |
 |---|---|---|
-| `Rebalancer` | **Deferred by decision Q2 (§0 item 1); V1 uses the current code unchanged.** Proposed: a new generation built from `crosschain-sandbox` Findings 1–8 (reentrancy guard, bounded provider views, HWM, approval revocation), plus **per-provider exposure caps** checked after `rebalance`/`deposit`, plus **measured amounts** in the rebalance leg | Becomes the spoke/hub strategy. The live per-chain vaults are **not** upgraded by this initiative (§11) |
+| `Rebalancer` | **Done in place (§0 item 1), without the HWM.** Originally proposed: a new generation built from `crosschain-sandbox` Findings 1–8 (reentrancy guard, bounded provider views, HWM, approval revocation), plus **per-provider exposure caps** checked after `rebalance`/`deposit`, plus **measured amounts** in the rebalance leg | Becomes the spoke/hub strategy. The live per-chain vaults are **not** upgraded by this initiative (§11) |
 | `MeshNode` route model (sandbox) | Immutable route endpoints, `maxFeeBps`, measured balance deltas, single-settlement transfer ids, explicit write-down with reason → carried into `ChainAgent` | Proven shape. Its round-trip-to-same-node model is replaced by peer-to-peer legs |
 | `CCTPMeshBridgeAdapter` (sandbox) | Rewritten: V2 `depositForBurnWithHook`, `destinationCaller` = peer adapter, `hookData` = transfer id, **permissionless** delivery (no keeper-only relay) | The sandbox adapter uses the V1-compatible call and a trusted keeper, and cannot bind a transfer id to the mint |
 

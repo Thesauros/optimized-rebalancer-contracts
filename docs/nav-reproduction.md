@@ -81,9 +81,19 @@ this repository integrates:
 
 The strategy then sums the provider balances into `totalAssets()`. It converts
 the agent's shares at `totalAssets / (totalSupply + its own pending fee shares)`,
-rounding down (`Rebalancer.sol:333-350`). A partner may recompute that sum
+rounding down (`Rebalancer._convertToAssets`). A partner may recompute that sum
 provider by provider as a cross-check. The number that goes into the snapshot is
 the `convertToAssets` result itself.
+
+**Unhealthy strategy.** If `Rebalancer(strategy).providersHealthy()` is false at
+the reference block, one provider's balance view failed and `convertToAssets`
+under-states the position. Then:
+
+* `valueBid` is still the `convertToAssets` result, which is safe for exits;
+* `valueOffer` is `max(valueBid, the same position's valueOffer in the previous
+  accepted Tick)`.
+
+This keeps entries from being priced against an incomplete NAV.
 
 **Rewards** of any kind are recognized only after they have been swapped into
 the vault asset and are held as idle. The same rule applies on both sides (bid

@@ -15,6 +15,24 @@ interface IRebalancer is IERC4626 {
     error ArrayMismatch();
     error InvalidProvider();
     error InsufficientLiquidity();
+    error EntryProviderNotInProviders();
+    error ProviderCapExceeded(address provider);
+    error ProviderUnavailable();
+
+    /**
+     * @notice Emitted when a provider's exposure cap changes.
+     *
+     * @param provider The provider.
+     * @param capBps The new cap in bps of total assets (0 = uncapped).
+     */
+    event ProviderCapUpdated(address indexed provider, uint256 capBps);
+
+    /**
+     * @notice Emitted when revoking a removed provider's approval failed.
+     *
+     * @param provider The removed provider.
+     */
+    event StaleApprovalRevokeFailed(address indexed provider);
 
     /**
      * @notice Emitted when the timelock contract is changed.
