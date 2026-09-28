@@ -3,6 +3,7 @@ pragma solidity 0.8.33;
 
 import {TickFixture} from "./TickFixture.sol";
 import {ChainAgent} from "../../contracts/crosschain/ChainAgent.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {ITickAccountant} from "../../contracts/tick/interfaces/ITickAccountant.sol";
 import {IAccessManager} from "../../contracts/interfaces/IAccessManager.sol";
 import {ShortPullAdapter, ForgingAdapter, ReentrantAdapter} from "./mocks/MockBridge.sol";
@@ -183,7 +184,9 @@ contract ChainAgentTest is TickFixture {
         (, uint256 idx) = _bridgeHubToSpoke(10_000 * ONE, 10_000 * ONE);
         re.setReentry(abi.encode(idx));
         vm.chainId(SPOKE);
-        vm.expectRevert(); // ReentrancyGuardReentrantCall
+        // pinned: a bare expectRevert would also pass if the guard were removed
+        // and the recursion simply ran out of gas
+        vm.expectRevert(ReentrancyGuardUpgradeable.ReentrancyGuardReentrantCall.selector);
         spokeAgent.receiveBridge(address(re), abi.encode(idx));
         vm.chainId(HUB);
     }
@@ -213,18 +216,64 @@ contract ChainAgentTest is TickFixture {
         assertEq(hubAgent.getSent(id).writtenDown, 4_000 * ONE);
     }
 
+    /// @dev Invariant 14, both directions: the paused domain really blocks the
+    ///      risk-taking call, and the recalls that must stay open really stay open
+    ///      under both a domain pause and an accountant freeze.
     function testDeallocateNeverPaused() public {
         vm.prank(executor);
         hubAgent.allocate(100_000 * ONE);
         uint8 domain = hubAgent.DOMAIN_ALLOCATE();
         vm.prank(guardian);
         hubAgent.pause(domain);
+
+        vm.prank(executor);
+        vm.expectRevert(abi.encodeWithSelector(ChainAgent.DomainPaused.selector, domain));
+        hubAgent.allocate(50_000 * ONE);
+
         vm.prank(guardian);
         accountant.freeze();
         vm.prank(executor);
         hubAgent.deallocate(50_000 * ONE);
         vm.prank(executor);
         hubAgent.returnToVault(50_000 * ONE);
+    }
+
+    /// @dev Invariant 14 for the bridge domain. Pausing it stops outbound sends
+    ///      only: receiving an in-flight transfer must stay possible, because
+    ///      blocking it would strand the counterparty's money on arrival.
+    function testBridgeOutPauseBlocksSendsNotReceipts() public {
+        (bytes32 transferId, uint256 idx) = _bridgeHubToSpoke(10_000 * ONE, 10_000 * ONE);
+        uint8 domain = hubAgent.DOMAIN_BRIDGE_OUT();
+        vm.prank(guardian);
+        hubAgent.pause(domain);
+
+        vm.prank(executor);
+        vm.expectRevert(abi.encodeWithSelector(ChainAgent.DomainPaused.selector, domain));
+        hubAgent.bridgeOut(ROUTE_TO_SPOKE, 10_000 * ONE, 10_000 * ONE, keccak256("rebalance"));
+
+        vm.chainId(SPOKE);
+        spokeAgent.receiveBridge(address(spokeAdapter), abi.encode(idx));
+        vm.chainId(HUB);
+        assertEq(spokeAgent.getReceived(transferId).amount, uint128(10_000 * ONE), "delivery is not pausable");
+    }
+
+    /// @dev `deallocateShares` releases a variable amount, so the executor states
+    ///      a floor and the received amount is still measured, never assumed. This
+    ///      is the asymmetry `deallocate` already closed with an exactness check.
+    function testDeallocateSharesEnforcesFloor() public {
+        vm.prank(executor);
+        hubAgent.allocate(100_000 * ONE);
+        uint256 shares = hubAgent.strategyShares();
+        uint256 expected = hubStrategy.convertToAssets(shares);
+
+        vm.prank(executor);
+        vm.expectRevert(ChainAgent.SlippageExceeded.selector);
+        hubAgent.deallocateShares(shares, expected + 2);
+
+        vm.prank(executor);
+        uint256 received = hubAgent.deallocateShares(shares, expected);
+        assertApproxEqAbs(received, expected, 1, "measured against the strategy's own conversion");
+        assertEq(hubAgent.strategyShares(), 0, "the redeem really happened");
     }
 
     function testStrategyReplaceableOnlyWhenEmpty() public {

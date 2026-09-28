@@ -43,23 +43,75 @@ contract EpochVaultTest is TickFixture {
         assertApproxEqAbs(t.rateBid, WAD, 2, "pending cash neither dilutes nor accretes");
     }
 
-    function testCancelOnlyBeforeCutoff() public {
-        uint256 id = _requestDeposit(bob, 10_000 * ONE);
+    /**
+     * @dev Cancellation rules around the cutoff. A deposit stays cancellable
+     *      until its epoch is cleared, because pending deposits are excluded from
+     *      NAV, so the refund is NAV-neutral and cannot be used to leave at a
+     *      pre-loss price. A redemption is never cancellable past the cutoff:
+     *      its price is only fixed at clearing, so a late cancel would hand the
+     *      holder a free option on the epoch's yield at the remaining holders'
+     *      cost. Without the deposit half, a deposit caught in an epoch that
+     *      closed while the accountant was frozen has no exit at all.
+     */
+    function testCancelRulesAroundCutoff() public {
+        uint256 bobDeposit = _requestDeposit(bob, 10_000 * ONE);
+        uint256 carolDeposit = _requestDeposit(carol, 10_000 * ONE);
+        uint256 aliceRedeem = _requestRedeem(alice, 1_000 * ONE);
+        uint64 epochId = vault.currentEpoch();
+
         vm.prank(attacker);
         vm.expectRevert(IEpochVault.NotRequestOwner.selector);
-        vault.cancel(id);
-
-        uint256 id2 = _requestDeposit(carol, 10_000 * ONE);
-        vm.prank(carol);
-        vault.cancel(id2);
-        assertEq(usdc.balanceOf(carol), 10_000 * ONE, "refunded");
+        vault.cancel(bobDeposit);
 
         _advance(1 hours);
         _tick();
         vault.closeEpoch();
-        vm.prank(bob);
+
+        vm.prank(alice);
         vm.expectRevert(IEpochVault.RequestNotCancellable.selector);
+        vault.cancel(aliceRedeem);
+
+        (uint256 cash0, uint256 pending0,,,,) = vault.accounting();
+        vm.prank(bob);
+        vault.cancel(bobDeposit);
+        assertEq(usdc.balanceOf(bob), 10_000 * ONE, "deposit refunded past the cutoff");
+        (uint256 cash1, uint256 pending1,,,,) = vault.accounting();
+        assertEq(cash0 - cash1, 10_000 * ONE, "cash left with the refund");
+        assertEq(pending0 - pending1, 10_000 * ONE, "pending left with the refund");
+        assertEq(cash0 - pending0, cash1 - pending1, "NAV-neutral");
+        assertEq(vault.getEpoch(epochId).depositAssets, 10_000 * ONE, "epoch total shrank");
+
+        // clearing still runs on the reduced total, and the cleared deposit is
+        // now shares: it must be claimed, not cancelled
+        _advance(60);
+        _tick();
+        _advance(1);
+        vault.clearDeposits();
+        assertEq(vault.getEpoch(epochId).sharesMinted, (10_000 * ONE * WAD) / vault.getEpoch(epochId).rateOffer);
+        vm.prank(carol);
+        vm.expectRevert(IEpochVault.RequestNotCancellable.selector);
+        vault.cancel(carolDeposit);
+        vm.prank(carol);
+        assertGt(vault.claim(carolDeposit), 0, "cleared deposit is claimable");
+    }
+
+    /// @dev The same escape must work while settlement is impossible: an epoch
+    ///      that closed under a guardian freeze cannot be cleared, so the refund
+    ///      is the only way a depositor gets their assets back.
+    function testCancelAfterCutoffWhileFrozen() public {
+        uint256 id = _requestDeposit(bob, 10_000 * ONE);
+        _advance(1 hours);
+        _tick();
+        vault.closeEpoch();
+
+        vm.prank(guardian);
+        accountant.freeze();
+        vm.expectRevert(IEpochVault.TickNotUsable.selector);
+        vault.clearDeposits();
+
+        vm.prank(bob);
         vault.cancel(id);
+        assertEq(usdc.balanceOf(bob), 10_000 * ONE, "refunded while frozen");
     }
 
     function testClaimTwiceReverts() public {
@@ -303,6 +355,64 @@ contract EpochVaultTest is TickFixture {
         vault.unpause(d);
         vm.prank(admin);
         vault.unpause(d);
+    }
+
+    /**
+     * @dev Invariant 14, all six domains: each pause really blocks the operation
+     *      it names, asserted against a live queue rather than an empty one, so a
+     *      `NothingToClear` revert cannot masquerade as the pause.
+     */
+    function testEveryPauseDomainBlocksItsOwnOperation() public {
+        // read the domain ids up front: a view call inside `expectRevert`'s
+        // argument list would consume the prank that follows it
+        uint8 dDeposit = vault.DOMAIN_DEPOSIT_REQUEST();
+        uint8 dRedeem = vault.DOMAIN_REDEEM_REQUEST();
+        uint8 dDepositClear = vault.DOMAIN_DEPOSIT_CLEARING();
+        uint8 dRedeemClear = vault.DOMAIN_REDEEM_CLEARING();
+        uint8 dInstant = vault.DOMAIN_INSTANT_EXIT();
+        uint8 dAllocate = vault.DOMAIN_ALLOCATE();
+
+        uint256 depositId = _requestDeposit(bob, 10_000 * ONE);
+        _requestRedeem(alice, 1_000 * ONE);
+        _advance(1 hours);
+        _tick();
+        vault.closeEpoch();
+        _advance(60);
+        _tick();
+        _advance(1);
+
+        vm.startPrank(guardian);
+        for (uint8 d; d < 6; d++) vault.pause(d);
+        vm.stopPrank();
+
+        vm.prank(carol);
+        vm.expectRevert(abi.encodeWithSelector(IEpochVault.DomainPaused.selector, dDeposit));
+        vault.requestDeposit(10_000 * ONE, carol);
+
+        vm.prank(carol);
+        vm.expectRevert(abi.encodeWithSelector(IEpochVault.DomainPaused.selector, dRedeem));
+        vault.requestRedeem(1, carol, carol);
+
+        vm.expectRevert(abi.encodeWithSelector(IEpochVault.DomainPaused.selector, dDepositClear));
+        vault.clearDeposits();
+
+        vm.expectRevert(abi.encodeWithSelector(IEpochVault.DomainPaused.selector, dRedeemClear));
+        vault.clearRedeems();
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IEpochVault.DomainPaused.selector, dInstant));
+        vault.instantRedeem(1_000 * ONE, alice, alice, 0);
+
+        vm.prank(executor);
+        vm.expectRevert(abi.encodeWithSelector(IEpochVault.DomainPaused.selector, dAllocate));
+        vault.pushToAgent(ONE);
+
+        vm.startPrank(admin);
+        for (uint8 d; d < 6; d++) vault.unpause(d);
+        vm.stopPrank();
+        vault.clearDeposits();
+        vault.clearRedeems();
+        assertGt(vault.claim(depositId), 0, "the queue resumes exactly where it stopped");
     }
 
     /// @dev Invariant 14: pausing new risk leaves owed exits payable.

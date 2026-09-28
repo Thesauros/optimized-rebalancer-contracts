@@ -6,6 +6,25 @@ read from the code on `dev` unless a line says otherwise; line numbers refer to
 is `deployments/ADDRESSES.md` and `audit/scope-2026-09-fee-cap-25.md`, which record
 read-only on-chain observations of 2026-09-21.
 
+> **Scope note (added 2026-09-28).** This document is the Phase 0 record of `dev`
+> and is kept as written. Several of its "sandbox-only" and "not fixed on `dev`"
+> statements have since been implemented independently on
+> `feat/crosschain-tick-epoch`, in `contracts/Rebalancer.sol` and
+> `contracts/interfaces/IRebalancer.sol` — the only two pre-existing contract
+> files that branch modifies. Each affected line carries an inline
+> `Since this branch:` marker. Summary:
+>
+> | Statement below | Status on `feat/crosschain-tick-epoch` |
+> |---|---|
+> | No reentrancy guard (§2, §12.4) | Implemented: `nonReentrant` on `deposit`, `mint`, `withdraw`, `redeem` and `rebalance` |
+> | Provider views unbounded (§2/§5.3, §12.4) | Implemented: `getDepositBalance{gas: PROVIDER_VIEW_CALL_GAS}` with `PROVIDER_VIEW_CALL_GAS = 3_000_000` |
+> | Provider views not wrapped, so a broken provider freezes `totalAssets()` (§7) | Implemented: `_safeGetDepositBalance` returns `(0, false)` on failure; `providersHealthy()` exposes the state; entry paths refuse deposits while any provider is unhealthy, exits still pay |
+> | Removing a provider does not revoke its approval (§5, §12) | Implemented, best-effort: `try this.revokeStaleApproval(old)` and `StaleApprovalRevokeFailed` on failure. The entry provider also cannot be delisted (`EntryProviderNotInProviders`) |
+> | Rebalance uses the requested amount, not the measured one (§4.3, §12.3) | Implemented: the deposit leg uses the measured balance delta `received`, and `_enforceProviderCap(to)` runs after it |
+> | No exposure caps (§7, §12.7) | Implemented per provider: `setProviderCap`, in bps of `totalAssets()`, `0` = uncapped. `capBps` may only be lowered by ADMIN; raising or removing needs the Timelock |
+> | Performance fee uses a rolling baseline, not a HWM (§3, §12.5) | **Still true.** Sandbox Finding 6 was deliberately not ported, because it changes fee semantics for the live vaults |
+> | ProxyAdmin owned by an EOA, SEC-001 (§6) | **Still true for the live vaults.** The new cross-chain proxies are Safe-owned from deployment |
+
 ## 1. One-paragraph summary
 
 Thesauros today is a **set of independent single-chain vaults**. On each chain
@@ -54,6 +73,10 @@ Verified assumptions:
   revokes everything (`AccessManager.sol:52-65`).
 * **Reentrancy guard**: none on `dev`. It exists only on the unmerged
   `crosschain-sandbox` branch (Finding 3, commit `b84b14a`).
+  *Since this branch:* implemented in `contracts/Rebalancer.sol` —
+  `ReentrancyGuardUpgradeable` with `nonReentrant` on `deposit`, `mint`,
+  `withdraw`, `redeem` and `rebalance`. The guard uses its own OZ namespace and
+  works uninitialized, so the change is storage-compatible.
 
 ## 3. Share and accounting model
 
@@ -76,10 +99,18 @@ supply' = totalSupply + pending fee shares                            Rebalancer
   `Rebalancer.sol:564-592`). The management fee is `NAV · fee · dt / 365d`. The
   performance fee is charged on `NAV − _lastTotalAssets`. **This is a rolling
   baseline, not a high-water mark**: a loss followed by a recovery is charged
-  again (pinned by `test/unit/PerformanceFeeCap.t.sol:671-709`). A real HWM exists
+  again (pinned by
+  `test/unit/PerformanceFeeCap.t.sol:641-679`,
+  `testPerformanceFeeAtCapUsesRollingBaselineNotHighWaterMark`). A real HWM exists
   only on `crosschain-sandbox`. Every deposit, mint, withdraw and redeem settles
   fees first. Both fee rates are set by `ADMIN_ROLE` with no timelock. Both are 0
   on every live chain.
+  *Since this branch:* still true for `Rebalancer` — sandbox Finding 6 was
+  deliberately not ported, because it changes fee semantics for the live vaults.
+  A real high-water mark does exist on this branch, but in `TickAccountant`
+  (`_highWaterMark`, updated only on an accepted Tick, and not raised by
+  `ratifyTick`), which is where the cross-chain vault's own fees are charged.
+  The strategy `Rebalancer` instances are deployed with both fees at 0.
 
 ## 4. Flows
 
@@ -113,8 +144,15 @@ supply' = totalSupply + pending fee shares                            Rebalancer
   requested amount, not the measured one**. A provider that returns less makes
   the deposit either consume idle vault balance or revert. (The
   `crosschain-sandbox` design notes record the same observation.)
+  *Since this branch:* fixed. `rebalance` measures the balance delta released by
+  the source and deposits exactly that (`received`), reverts on `received == 0`,
+  and then runs `_enforceProviderCap(to)`. `amounts[i] == type(uint256).max`
+  means "move everything the source holds". It is also `nonReentrant`.
 * It does no NAV check before or after, and has no per-provider exposure cap, no
   amount limit and no rate limit.
+  *Since this branch:* a per-provider exposure cap exists
+  (`_enforceProviderCap`, `ProviderCapExceeded`). There is still no NAV check, no
+  per-call amount limit and no rate limit on `rebalance`.
 
 ## 5. Protocol integrations
 
@@ -125,6 +163,12 @@ guarding that is the `Timelock` delay on `setProviders` (`Rebalancer.sol:664-666
 `setProviders` also grants the new provider's `getSource` address an unlimited
 approval (`:736-739`). On `dev`, removing a provider does **not** revoke its
 approval (Finding 4, fixed only on the sandbox branch).
+*Since this branch:* implemented, best-effort. `_setProviders` keeps the entry
+provider listed (`EntryProviderNotInProviders`) and, for every removed provider,
+calls `try this.revokeStaleApproval(oldProviders[i])` — a self-call so a provider
+that reverts on `getSource` or `approve` cannot block its own removal — emitting
+`StaleApprovalRevokeFailed` if it fails. A removal therefore succeeds even when
+the allowance could not be cleared, and the stale unlimited approval survives.
 
 ### 5.1 Aave V3 (`AaveV3Provider.sol`)
 
@@ -155,9 +199,29 @@ The value is the vault's MetaMorpho shares priced conservatively
   denominator.
 * **Gas:** the loop over the withdraw queue is **O(queue length)**. The sandbox
   branch measured up to about 1.1M gas for one call.
+  *Since this branch:* the call is made under a stipend,
+  `getDepositBalance{gas: PROVIDER_VIEW_CALL_GAS}` with
+  `PROVIDER_VIEW_CALL_GAS = 3_000_000`, and never reverts: a provider that runs
+  out of gas reads as `(0, false)`. The loop is still O(queue length), but it can
+  no longer consume unbounded gas or freeze `totalAssets()`.
 
-Three instances are deployed per chain, each pointing at a different MetaMorpho
-vault (Steakhouse, Gauntlet, Smokehouse, and others).
+Deployed MetaMorpho instances per `deployments/ADDRESSES.md`: **three on Base,
+three on Arbitrum, three on Ethereum, and none on Plasma or Monad** — those two
+deploy an `AaveV3Provider` only, with no Morpho provider and no
+`CompoundV3Provider`. The three instances per chain are not the same three
+families:
+
+| Chain | Morpho provider deployments |
+|---|---|
+| Base | `GauntletCoreMorphoProvider`, `SteakhouseHighYieldMorphoProvider`, `SteakhousePrimeMorphoProvider` |
+| Arbitrum | `GauntletCoreMorphoProvider`, `SteakhouseHighYieldMorphoProvider`, `SteakhousePrimeMorphoProvider` |
+| Ethereum | `GauntletPrimeMorphoProvider`, `SmokehouseMorphoProvider`, `SteakhouseMorphoProvider` |
+| Plasma, Monad | none |
+
+So `Smokehouse` exists only on Ethereum, `SteakhouseHighYield`/`SteakhousePrime`
+only on Base and Arbitrum, and `Gauntlet` appears as `GauntletCore` on the L2s and
+`GauntletPrime` on Ethereum. One `MorphoProvider` *contract* serves all of them;
+each deployment is a separate instance pointing at one MetaMorpho vault.
 
 **LP strategies:** none exist in this repository.
 
@@ -202,11 +266,24 @@ protects against a key that can swap the implementation.
 * **Risk limits:** `minAssets` per deposit, the two fee caps and the Timelock
   delay bounds. There are **no exposure caps, TVL caps, rate limits or deposit
   caps**.
+  *Since this branch:* per-provider exposure caps exist (`setProviderCap`, in bps
+  of `totalAssets()`, enforced after every deposit into the entry provider and
+  after every rebalance). `capBps == 0` means uncapped and is the default; ADMIN
+  may only lower a cap, raising or removing one needs the Timelock. Still no TVL
+  cap, no rate limit and no deposit cap on `Rebalancer` itself — the cross-chain
+  vault's caps live in `EpochVault.Limits` instead.
 * **Emergency:** `pause(Deposit)` and `pause(Withdraw)` by `ADMIN_ROLE` only. There
   is no guardian role that can pause without also being able to unpause, and no
   pause on `rebalance`. The withdraw loop tolerates a reverting provider, so a
   single broken market does not freeze exits. It does freeze `totalAssets()`,
   though, because provider views are not wrapped (Finding 2, sandbox-only fix).
+  *Since this branch:* provider views are wrapped (`_safeGetDepositBalance`,
+  `PROVIDER_VIEW_CALL_GAS = 3_000_000`), so a broken market no longer freezes
+  `totalAssets()`; it reads as 0 and sets `providersHealthy()` false, which
+  refuses deposits while still paying exits. `Rebalancer` still has no guardian
+  role and still no pause on `rebalance`. A guardian role does exist on this
+  branch, but on the new contracts: `GUARDIAN_ROLE` on `EpochVault`,
+  `TickAccountant` and `ChainAgent`, where it can pause but not unpause.
 
 ## 8. Upgradeability
 
@@ -234,9 +311,17 @@ protects against a key that can swap the implementation.
   tests; it is used for deployment only.
 * **Missing on `dev`:** invariant and handler tests. They exist on
   `crosschain-sandbox` (`test/invariant/*`, Finding 8).
+  *Since this branch:* a handler-based invariant suite exists in-tree —
+  `test/tick/CrossChainInvariants.t.sol`, 6 invariants, 256 runs × 500 calls,
+  driving only public entry points with real token movement.
 * **CI** (`.github/workflows/security.yml`): Slither (`fail-on: high`) and
   `npm audit` only. **Tests do not run in CI.** Slither trips on a known
   `arbitrary-send-erc20` false positive in `VaultFactory.sol:65`.
+  *Since this branch:* still no tests in CI, and the High-impact set grows by
+  five results on new code (`EpochVaultLogic._pullExact`, and `reentrancy-balance`
+  on `ChainAgent.bridgeOut` / `deallocate` / `deallocateShares` /
+  `receiveBridge`). All are false positives and all are disclosed with their
+  reasoning in `docs/implementation-report.md` §18.
 * **Local baseline (2026-09-27):** `forge build` succeeds and
   `forge test --match-path test/unit/PerformanceFeeCap.t.sol` gives 17/17 passed.
 
@@ -256,6 +341,15 @@ protects against a key that can swap the implementation.
 | `crosschain-sandbox` (this repo) | Findings 1–8 hardening of `Rebalancer` (reentrancy, bounded provider views, HWM, approval revocation, entry-provider check), invariant suite, `VaultDeployer` | Unmerged. Reviewed internally, not externally audited | Should be the base of any new `Rebalancer` generation |
 | `crosschain-sandbox` (this repo) | `MeshNode`, `MeshProvider`, `MeshCustodian`, `CCTPMeshBridgeAdapter`, `CCTPRelayReceiver` | Unmerged. A "mainnet stand" deploy script exists | Route model and measured-delta accounting are reusable; see the design doc §9 |
 | `thesauros.io/contracts`, branch `crosschain` | Legacy `CrossChainVault` + `ReportSettler` + `WithdrawalQueue` + Stargate/LZ | **Live on Base mainnet, accounting diverged (SEC-018)** | Negative example; root cause below |
+
+*Since this branch:* the sandbox was **not** merged and was not used as the base.
+`feat/crosschain-tick-epoch` re-implemented the relevant `Rebalancer` hardening
+directly on top of `dev` (reentrancy guard, bounded and wrapped provider views,
+approval revocation, entry-provider check, per-provider caps, measured rebalance),
+storage-compatibly and without the fee HWM. The sandbox remains the source of the
+route model and measured-delta accounting ideas that `ChainAgent` follows (§9 of
+the design doc), and its invariant suite is the shape `test/tick/CrossChainInvariants.t.sol`
+takes. See §13.
 
 **SEC-018 root cause**, established during this Phase 0 from the legacy code plus
 read-only Base RPC and explorer data:
@@ -279,11 +373,84 @@ See the threat model, §3.
 2. Deposits and withdrawals are instant at live NAV. Once any part of NAV is
    lagged, that is exactly the stale-NAV arbitrage surface the brief is about.
 3. The rebalance leg uses requested amounts, not measured ones (§4.3).
+   *Since this branch: fixed* — the deposit leg uses the measured delta.
 4. There is no reentrancy guard, and provider views are unbounded (both fixed
    only on the sandbox branch).
-5. Performance fees use a rolling baseline, not a HWM.
+   *Since this branch: both fixed*, independently of the sandbox — `nonReentrant`
+   on every state-changing entry point, and `PROVIDER_VIEW_CALL_GAS = 3_000_000`
+   with a `(0, false)` fallback in `_safeGetDepositBalance`.
+5. Performance fees use a rolling baseline, not a HWM. *Still true for
+   `Rebalancer`*; the new `TickAccountant` has a real HWM.
 6. Fee changes and ProviderManager changes are not timelocked. The ProxyAdmin is
-   owned by an EOA (SEC-001).
+   owned by an EOA (SEC-001). *Still true.* On this branch `TickAccountant.setFees`
+   **is** `onlyTimelock`, but `Rebalancer.setManagementFee` /
+   `setPerformanceFee` remain `ADMIN_ROLE` with no delay, and the cross-chain
+   strategies are `Rebalancer` instances.
 7. There is no guardian role (pausing and unpausing need the same key), no
    rebalance pause, and no exposure or TVL caps.
-8. CI runs no tests.
+   *Since this branch: partly fixed* — per-provider exposure caps exist, and a
+   guardian role exists on `EpochVault`, `TickAccountant` and `ChainAgent` (pause
+   without unpause). `Rebalancer` itself still has no guardian and no rebalance
+   pause, and there is still no TVL cap.
+8. CI runs no tests. *Still true.* CI is Slither (`fail-on: high`) and `npm audit`
+   only; see `docs/implementation-report.md` §18 for the High-impact results this
+   branch adds.
+
+## 13. What `feat/crosschain-tick-epoch` adds, and what it reuses
+
+This section is the only one in this document that is not scoped to `dev`.
+
+### 13.1 Reused byte-identical
+
+`git diff --name-status dev..HEAD -- contracts/` shows exactly two modified files
+(`Rebalancer.sol`, `interfaces/IRebalancer.sol`); everything else under
+`contracts/` on that branch is new. So the following are **unchanged source**,
+carried over as-is:
+
+| Component | Source vs `dev` | Deployed instance on the cross-chain chains |
+|---|---|---|
+| `AccessManager` | byte-identical | inherited by every new contract |
+| `Timelock` | byte-identical | a fresh instance per chain, Safe-owned, 24 h delay |
+| `PausableActions` | byte-identical | used by the strategy `Rebalancer`s |
+| `AaveV3Provider`, `CompoundV3Provider`, `MorphoProvider` | byte-identical | see 13.3 |
+| `ProviderManager` | byte-identical | a fresh instance per chain, for Comet only |
+| `VaultFactory` | byte-identical | a fresh instance per chain, for atomic proxy deploy |
+| `ProxyImports` | byte-identical | artifact only |
+| `Constants` | byte-identical | `SCALE`, `MAX_MANAGEMENT_FEE` 5%, `MAX_PERFORMANCE_FEE` 25% |
+| `Rebalancer` | **modified** (hardened, storage-compatible) | new per-chain strategy instances; the live public vaults are not upgraded |
+
+### 13.2 Added
+
+`contracts/tick/{NavSnapshot,TickAccountant,EpochVault,EpochVaultLogic,EpochVaultStorage}.sol`
+and their interfaces; `contracts/crosschain/ChainAgent.sol`,
+`interfaces/IBridgeAdapter.sol`, `bridges/CctpV2Adapter.sol`;
+`deploy/crosschain/*`; `ops/*`; `test/tick/*`, `test/unit/RebalancerHardening.t.sol`,
+`test/forking/CctpV2Adapter.t.sol`.
+
+### 13.3 The reuse that is not visible in the source tree
+
+The new per-chain strategy `Rebalancer`s are wired to the **already-deployed**
+Base and Arbitrum Aave and Morpho provider contracts. `deploy/crosschain/registry.ts`
+lists them under `strategy.reusedProviders`, and `01-deploy.ts` passes those
+addresses straight into the strategy's provider list rather than deploying new
+adapters:
+
+| Chain | Reused, already deployed | Deployed fresh by phase 1 |
+|---|---|---|
+| Base (hub) | `AaveV3Provider` `0xDDAA…317c`, `GauntletCoreMorphoProvider` `0x51B8…1b8b`, `SteakhouseHighYieldMorphoProvider` `0x9c35…C61c`, `SteakhousePrimeMorphoProvider` `0xDDf2…95b1` | `ProviderManager` + `CompoundV3Provider` for Comet `0xb125…Eb2F`, `Timelock`, `VaultFactory`, the strategy `Rebalancer`, `ChainAgent`, `CctpV2Adapter`, and — hub only — `TickAccountant` and `EpochVault` (+ `EpochVaultLogic`) |
+| Arbitrum (spoke) | `AaveV3Provider` `0xA345…13A5`, `GauntletCoreMorphoProvider` `0xeB98…40d7`, `SteakhouseHighYieldMorphoProvider` `0x6240…8B99`, `SteakhousePrimeMorphoProvider` `0x0D9F…3484` | `ProviderManager` + `CompoundV3Provider` for Comet `0x9c4e…F58bf`, `Timelock`, `VaultFactory`, the strategy `Rebalancer`, `ChainAgent`, `CctpV2Adapter` |
+
+Addresses match `deployments/ADDRESSES.md` for Base and Arbitrum. Details worth
+stating:
+
+* `01-deploy.ts` splices the fresh `CompoundV3Provider` in at index 1, so the
+  first reused provider (Aave) stays the entry provider — every deposit lands
+  there, which is why it must remain uncapped (§7 marker).
+* These provider adapters are shared with the live public vaults, so a change to
+  one would affect both. They are stateless immutable configurations, which is
+  what makes reusing them safe.
+* A fresh `ProviderManager` is deployed rather than reusing the live one, because
+  the live one's owner is an EOA with no timelock (§5.2). The new one is created
+  with the deployer as owner for setup and its ownership is offered to the Safe
+  in phase 3 (`03-handover.ts`, two-step `Ownable2Step`). It only ever holds the
+  Comet mapping for the new strategies.

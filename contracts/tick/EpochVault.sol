@@ -157,7 +157,13 @@ contract EpochVault is
         return EpochVaultStorage.layout().recordRedeem(owner, receiver, shares);
     }
 
-    /// @notice Cancels a request while its epoch is still open.
+    /**
+     * @notice Cancels a request. Always possible while the epoch is open; after
+     *         the cutoff only a deposit whose epoch has not been cleared yet,
+     *         because refunding pending deposits is NAV-neutral. Callable by the
+     *         request owner only, and never pausable: it is the user's exit from
+     *         a queue that cannot currently be cleared.
+     */
     function cancel(uint256 requestId) external nonReentrant {
         (address owner, uint256 sharesToReturn) = EpochVaultStorage.layout().cancel(
             _msgSender(),

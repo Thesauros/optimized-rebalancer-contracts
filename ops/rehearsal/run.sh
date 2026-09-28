@@ -51,6 +51,10 @@ else
 fi
 export CROSSCHAIN_TIMELOCK_DELAY=1800
 export CROSSCHAIN_MANIFEST_DIR=/tmp/xc-rehearsal
+# both caches must live in the throwaway directory: their defaults are relative to
+# the cwd, and state written against a fork must never be picked up by a real run
+export TRANSFER_INDEX_FILE=/tmp/xc-rehearsal/transfer-index.json
+export INDEXER_DB=/tmp/xc-rehearsal/indexer.sqlite
 export RPC_BASE=http://127.0.0.1:8545
 export RPC_ARBITRUM=http://127.0.0.1:8546
 export NAV_UPDATER_PRIVATE_KEY=${KEYS[1]}

@@ -85,6 +85,7 @@ interface ITickAccountant {
     event FrozenSet(bool frozen, address indexed by);
     event ConfigUpdated(Config config);
     event BucketsUpdated(Bucket up, Bucket down);
+    event MaxChainExposureUpdated(uint128 ratio);
     event ChainsUpdated(uint64[] chainIds);
     event AgentUpdated(uint64 indexed chainId, address indexed agent, bool allowed);
     event FeesUpdated(uint96 managementFee, uint96 performanceFee);
@@ -110,4 +111,8 @@ interface ITickAccountant {
     function config() external view returns (Config memory);
 
     function bridgeSendsAllowed() external view returns (bool);
+
+    /// @notice `bridgeSendsAllowed`, narrowed to one destination chain so that a
+    ///         chain above its exposure cap stops receiving but can still send.
+    function chainSendAllowed(uint64 dstChainId) external view returns (bool);
 }

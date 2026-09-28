@@ -124,6 +124,15 @@ async function main() {
     const wantCfg = [a.minTickInterval, a.maxSnapshotAge, a.maxTickAge, a.maxTransit, a.maxSpread, a.depositClearingMaxDown, a.maxInFlightRatio, a.maxOverdueInFlight];
     const haveCfg = await accountant.config();
     if (wantCfg.some((v, i) => BigInt(haveCfg[i]) !== v)) tl(c.TickAccountant, 'setConfig((uint64,uint64,uint64,uint64,uint128,uint128,uint128,uint128))', [wantCfg], `accountant config -> ${PROFILE}`);
+    // kept out of Config: see the note on COMMON_ACCOUNTANT.maxChainExposure
+    if (BigInt(await accountant.maxChainExposure()) !== a.maxChainExposure) {
+      tl(
+        c.TickAccountant,
+        'setMaxChainExposure(uint128)',
+        [a.maxChainExposure],
+        `max chain exposure -> ${a.maxChainExposure === 0n ? 'disabled' : `${(Number(a.maxChainExposure) / 1e16).toFixed(2)}% of gross assets per chain`}`,
+      );
+    }
     const [up, down] = await accountant.buckets();
     const U = HUB_PARAMS.upBucket;
     const D = HUB_PARAMS.downBucket;

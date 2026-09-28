@@ -185,6 +185,11 @@ async function main() {
     if ((await accountant.vault()) === ethers.ZeroAddress) {
       await send('TickAccountant.setVault', accountant.setVault(m.contracts.EpochVault));
     }
+    // not part of Config, so it is set separately; the deployer is the timelock
+    // until phase 3, after which changes go through 05-governance-plan.ts
+    if (BigInt(await accountant.maxChainExposure()) !== a.maxChainExposure) {
+      await send('TickAccountant.setMaxChainExposure', accountant.setMaxChainExposure(a.maxChainExposure));
+    }
   }
 
   // agent + transport

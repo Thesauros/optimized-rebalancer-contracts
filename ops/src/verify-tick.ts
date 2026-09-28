@@ -10,7 +10,7 @@
 import { Contract } from 'ethers';
 import { TICK_ACCOUNTANT } from './abi';
 import { hubOf, loadChains } from './config';
-import { TransferIndex, verifyTick } from './snapshot';
+import { openTransferIndex, verifyTick } from './snapshot';
 
 async function main() {
   const chains = loadChains();
@@ -18,7 +18,7 @@ async function main() {
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
   const ids = process.argv.slice(2).filter((a) => /^\d+$/.test(a)).map(BigInt);
   if (ids.length === 0) ids.push(BigInt(await accountant.lastAcceptedTickId()));
-  const index = new TransferIndex();
+  const index = await openTransferIndex(chains);
   let failed = 0;
   for (const id of ids) {
     const r = await verifyTick(chains, index, id);

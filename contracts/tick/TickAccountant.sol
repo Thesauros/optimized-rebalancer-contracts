@@ -38,6 +38,10 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
     uint8 public constant FLAG_DOWN_BEYOND_DEPOSIT_LIMIT = 1 << 0;
     uint8 public constant FLAG_OVERDUE_IN_FLIGHT = 1 << 1;
     uint8 public constant FLAG_IN_FLIGHT_LIMIT = 1 << 2;
+    /// @dev Set when at least one chain is above `maxChainExposure`. Unlike the
+    ///      other flags it does not gate settlement: it only stops the hub agent
+    ///      from sending more capital into the chains that are already over.
+    uint8 public constant FLAG_CHAIN_EXPOSURE = 1 << 3;
 
     /// @custom:storage-location erc7201:thesauros.storage.TickAccountant
     struct TickAccountantStorage {
@@ -60,6 +64,9 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
         mapping(uint64 chainId => bool) _isChain;
         mapping(uint64 chainId => mapping(address agent => bool)) _isAgent;
         mapping(uint64 tickId => Tick) _ticks;
+        // appended fields: keep the order above stable
+        uint128 _maxChainExposure;
+        mapping(uint64 chainId => bool) _overExposed;
     }
 
     // keccak256(abi.encode(uint256(keccak256("thesauros.storage.TickAccountant")) - 1)) & ~bytes32(uint256(0xff))
@@ -160,11 +167,16 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
         c.grossBid = c.totals.navBid.mulDiv(WAD, s.totalShares);
         c.grossOffer = c.totals.navOffer.mulDiv(WAD, s.totalShares);
         c.prevRate = $._ticks[$._lastAcceptedTickId].rateBid;
-        c.flags = _riskFlags($._config, c.totals, c.grossBid, c.prevRate);
+        c.flags =
+            _riskFlags($._config, c.totals, c.grossBid, c.prevRate) |
+            _markChainExposure($, s, c.totals.navBid);
         c.navHash = s.hash();
 
-        bool inBounds = _consumeBuckets($, c.grossBid, c.prevRate) &&
-            c.grossOffer <= c.grossBid.mulDiv(WAD + $._config.maxSpread, WAD);
+        // the spread bound is tested first: `_consumeBuckets` spends rate
+        // capacity, and capacity must not be spent on a Tick that is rejected
+        bool inBounds = c.grossOffer <=
+            c.grossBid.mulDiv(WAD + $._config.maxSpread, WAD) &&
+            _consumeBuckets($, c.grossBid, c.prevRate);
 
         $._lastTickId = s.tickId;
         $._lastCommitBlock = uint64(block.number);
@@ -217,6 +229,10 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
         }
 
         for (uint256 i; i < s.positions.length; i++) {
+            // a chain can be dropped from the set while its agents stay marked,
+            // so membership is checked explicitly: an unlisted chain would be
+            // counted in `totals` but be invisible to `chainBids`
+            if (!$._isChain[s.positions[i].chainId]) revert UnknownChain();
             if (!$._isAgent[s.positions[i].chainId][s.positions[i].holder]) {
                 revert UnknownAgent();
             }
@@ -288,6 +304,36 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
         }
         if (t.inFlight > t.navBid.mulDiv(cfg.maxInFlightRatio, WAD)) {
             flags |= FLAG_IN_FLIGHT_LIMIT;
+        }
+    }
+
+    /**
+     * @dev Re-derives per-chain concentration from this Tick's own positions and
+     *      returns `FLAG_CHAIN_EXPOSURE` when any chain is over the cap. The cap
+     *      is measured against gross bid assets, not NAV: NAV nets off pending
+     *      deposits and liabilities, so a large deposit epoch would inflate every
+     *      chain's apparent share past 100% and latch the flag on for a reason
+     *      that has nothing to do with concentration. In-flight value belongs to
+     *      no chain, so it sits in the denominator only, which makes the shares
+     *      sum to slightly under 100% — the conservative direction.
+     *      Because the cap gates sends *into* a chain, a chain that is over can
+     *      always be brought back down by sending capital out of it; settlement is
+     *      never affected. A cap of zero disables the check and clears every mark.
+     */
+    function _markChainExposure(
+        TickAccountantStorage storage $,
+        NavSnapshot.Snapshot calldata s,
+        uint256 navBid
+    ) internal returns (uint8 flags) {
+        uint256 cap = uint256($._maxChainExposure);
+        uint256[] memory bids = s.chainBids(uint64(block.chainid));
+        // gross bid assets = navBid + the deductions NAV was netted by
+        uint256 gross = navBid + s.pendingDeposits + s.liabilities;
+        uint256 limit = gross.mulDiv(cap, WAD);
+        for (uint256 i; i < s.chains.length; i++) {
+            bool over = cap != 0 && bids[i] > limit;
+            $._overExposed[s.chains[i].chainId] = over;
+            if (over) flags |= FLAG_CHAIN_EXPOSURE;
         }
     }
 
@@ -463,6 +509,23 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
         _setBuckets(up_, down_);
     }
 
+    /**
+     * @notice Caps one chain's share of gross bid assets, as a 1e18 fraction.
+     *         Zero, the default, disables the check.
+     * @dev Kept out of `Config` on purpose: the cap is a concentration policy
+     *      that changes with the chain set, and a separate setter leaves every
+     *      existing `Config` caller untouched. It takes effect on the next
+     *      committed Tick. Setting it below the current allocation blocks sends
+     *      into the chains that are already over until capital is moved out, so
+     *      raise it before adding a chain and lower it only with an allocation
+     *      plan.
+     */
+    function setMaxChainExposure(uint128 ratio) external onlyTimelock {
+        if (ratio > WAD) revert InvalidConfig();
+        _getStorage()._maxChainExposure = ratio;
+        emit MaxChainExposureUpdated(ratio);
+    }
+
     function setChains(uint64[] calldata chainIds_) external onlyTimelock {
         _setChains(chainIds_);
     }
@@ -583,13 +646,37 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
     /// @notice False while frozen, stale, or the latest accepted Tick carries an
     ///         in-flight breaker flag. Read by the hub ChainAgent before sends.
     function bridgeSendsAllowed() external view returns (bool) {
+        return _bridgeSendsAllowed(_getStorage());
+    }
+
+    /// @notice `bridgeSendsAllowed` narrowed to one destination: also false while
+    ///         that chain is above `maxChainExposure`, so capital can still flow
+    ///         out of an over-concentrated chain but not further into it.
+    function chainSendAllowed(uint64 dstChainId) external view returns (bool) {
         TickAccountantStorage storage $ = _getStorage();
+        return _bridgeSendsAllowed($) && !$._overExposed[dstChainId];
+    }
+
+    function _bridgeSendsAllowed(
+        TickAccountantStorage storage $
+    ) internal view returns (bool) {
         Tick storage tick = $._ticks[$._lastAcceptedTickId];
         return
             !$._frozen &&
             !$._quarantined &&
             block.timestamp - tick.committedAt <= $._config.maxTickAge &&
             tick.flags & (FLAG_OVERDUE_IN_FLIGHT | FLAG_IN_FLIGHT_LIMIT) == 0;
+    }
+
+    /// @notice One chain's maximum share of gross bid assets, as a 1e18 fraction.
+    ///         Zero, the default, disables the check.
+    function maxChainExposure() external view returns (uint128) {
+        return _getStorage()._maxChainExposure;
+    }
+
+    /// @notice Whether the latest committed Tick put this chain over the cap.
+    function isChainOverExposed(uint64 chainId) external view returns (bool) {
+        return _getStorage()._overExposed[chainId];
     }
 
     function buckets() external view returns (Bucket memory up, Bucket memory down) {

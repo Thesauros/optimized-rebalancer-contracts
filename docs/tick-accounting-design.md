@@ -52,7 +52,10 @@ is authoritative:
      in-bounds Tick or by `ratifyTick`.
    * A guardian `freeze()` is cleared only by ADMIN `unfreeze()`.
    * Risk metrics (in-flight, overdue) set **flags** on an accepted Tick rather
-     than quarantining it. Flags block deposit clearing and hub bridge sends.
+     than quarantining it. Flags block deposit clearing and hub bridge sends —
+     not uniformly: the down-move and overdue flags block deposit clearing and
+     sends, the in-flight flag blocks sends only, and `FLAG_CHAIN_EXPOSURE`
+     blocks sends *into* the marked chain only (§7).
 5. **Deposits and redemptions clear independently** (two cursors). A Tick that
    is unusable for deposits (down-move or overdue flag) still clears
    redemptions. The deposits carry to the next usable Tick. An empty side clears
@@ -212,7 +215,7 @@ rule to uncertainty instead of to market spreads.
 | Cleared, unpaid withdrawals | **liability**: subtracted | subtracted |
 | In-flight transfer, age ≤ `maxTransit` | `minReceive` recorded at send | `amountSent` |
 | In-flight transfer, age > `maxTransit` (overdue) | `minReceive`; trips breaker `OVERDUE_IN_FLIGHT` if above threshold | `amountSent` |
-| In-flight transfer written down by governance | `amountSent − writtenDown` | same |
+| In-flight transfer written down by governance | `min(minReceive, amountSent − writtenDown)` | `amountSent − writtenDown` |
 | Reward tokens (COMP, Morpho rewards) | 0 until swapped into the asset and held | 0 |
 | Unclaimed/accrued fees | computed on-chain at commit (§4.5), not in the snapshot | — |
 
@@ -290,37 +293,64 @@ navHash = keccak256(abi.encode(snapshot));
    * `referenceTime ≤ block.timestamp`.
    * `block.timestamp − referenceTime ≤ maxSnapshotAge`.
    * `block.timestamp ≥ lastCommit + minTickInterval`.
-3. **Encoding.** Ordering is strict and chains are the configured set, exactly
-   once each.
-4. **Hub binding.** Checked on-chain against the contract's own state.
-   * The hub `ChainRef.blockNumber < block.number`.
-   * If it is within 256 blocks, its `blockHash == blockhash(n)`.
-   * `blockNumber ≥ vault.lastAccountingChangeBlock()`. This makes the next four
-     equal to the vault's current values:
-   * `hubCash`, `pendingDeposits`, `liabilities` and `totalShares` equal the vault's
-     current values. **The updater cannot under-report liabilities or shares.**
-     If a vault state change lands between snapshot and commit, the commit
-     reverts and is retried.
-5. **Arithmetic.**
-   * `navBid = Σ valueBid(positions) + Σ (minReceive or amountSent − writtenDown)(inFlight) + hubCash − pendingDeposits − liabilities`.
-   * `navOffer` is the same with offer values.
-   * Require `navOffer ≥ navBid` and `totalShares > 0`.
+3. **Encoding** (`NavSnapshot.validateEncoding`). `version == 1`; every array is
+   strictly ordered, which also rejects duplicates; each position has a known
+   `kind` and `valueOffer ≥ valueBid`; each in-flight entry has
+   `minReceive ≤ amountSent` and `writtenDown ≤ amountSent`.
+4. **Membership** (`_validateMembership`). The snapshot's chain list equals the
+   configured set, in the same order. Every position's `chainId` is in the
+   configured set (`UnknownChain`) *and* its `holder` is a registered agent of
+   that chain (`UnknownAgent`). The chain check is explicit because a chain can be
+   dropped from the set while its agents stay marked, and such a position would be
+   counted by `totals()` while being invisible to `chainBids()`. Both endpoints of
+   every in-flight transfer must also be configured chains.
+5. **Hub binding** (`_validateHubBinding`). Checked on-chain against the
+   contract's own state and the vault's checkpoints.
+   * The snapshot lists the hub chain; its `ChainRef.blockNumber < block.number`.
+   * `block.number − hubBlock ≤ 256` (the EVM `blockhash` window) and
+     `blockhash(hubBlock) == ChainRef.blockHash`.
+   * `hubBlock ≥ _lastCommitBlock`, the block of the previous commit, so fee
+     shares minted then are included.
+   * The caller supplies `hubCheckpointIndex`; the checkpoint at that index must
+     be the one in force at `hubBlock` (its block ≤ `hubBlock`, and the next
+     checkpoint's block > `hubBlock`), and `hubCash`, `pendingDeposits`,
+     `liabilities` and `totalShares` must equal that checkpoint. **The updater
+     cannot under-report liabilities or shares.** If a vault state change lands
+     between snapshot and commit, the commit reverts `HubStateMismatch` and is
+     retried.
+6. **Arithmetic** (`NavSnapshot.totals`). 
+   * `navBid = Σ valueBid(positions) + Σ min(minReceive, amountSent − writtenDown)(inFlight) + hubCash − pendingDeposits − liabilities`.
+   * `navOffer` is the same with offer values and `amountSent − writtenDown` for
+     in-flight.
+   * `navOffer ≥ navBid` is implied by step 3's per-entry checks.
+   * Reverts `ZeroShares` if `totalShares == 0` or `navBid == 0`.
    * `grossBid = navBid · 1e18 / totalShares` and
      `grossOffer = navOffer · 1e18 / totalShares`, both floored.
-6. **Corridor** (§6.1) on `grossBid` against the previous accepted net bid rate,
-   and a spread bound `grossOffer ≤ grossBid · (1 + maxSpread)`.
-7. **Risk metrics.** In-flight total and overdue in-flight, derived from the
-   snapshot, are checked against limits (breaker triggers, §7).
-8. **If step 6 fails:** store the Tick as **Quarantined**, trip the breaker,
-   emit, and stop. Nothing settles on it. Step 7 only sets flags on an accepted
-   Tick (§0 item 4).
-9. **If they all pass:**
+7. **Risk metrics, computed before the bounds test.** `_riskFlags` derives
+   `FLAG_DOWN_BEYOND_DEPOSIT_LIMIT`, `FLAG_OVERDUE_IN_FLIGHT` and
+   `FLAG_IN_FLIGHT_LIMIT` from the snapshot; `_markChainExposure` derives
+   `FLAG_CHAIN_EXPOSURE` and refreshes `overExposed[chainId]` from
+   `NavSnapshot.chainBids` (§7). They are flags on the stored Tick, never a
+   quarantine (§0 item 4).
+8. **In bounds — two independent conditions, tested in this order.**
+   * the spread bound `grossOffer ≤ grossBid · (1 + maxSpread)`; then
+   * the corridor (§6.1) on `grossBid` against the previous accepted net bid rate,
+     which spends bucket capacity via `_consumeBuckets`.
+   The spread bound is first on purpose: `_consumeBuckets` consumes rate capacity,
+   and a Tick that is going to be rejected must not drain the bucket
+   (`testSpreadRejectionSpendsNoBucket`). `_lastTickId` and `_lastCommitBlock`
+   advance whether or not the Tick is in bounds.
+9. **If step 8 fails:** store the Tick as **Quarantined** with its flags, set
+   `_quarantined`, emit, and return. Nothing settles on it.
+10. **If it passes:**
    * **Fees on-chain.** The management fee is `navBid · mFee · dt / 365d`. The
      performance fee is `pFee · (rate − HWM) · supply` above the HWM, measured on
      *bid*, so fees are never charged on unrecognized value.
    * Mint fee shares, then compute net
-     `rateBid = navBid · 1e18 / (supply + feeShares)` and the same for `rateOffer`.
-   * Store the Tick as **Accepted** and update the HWM.
+     `rateBid = grossBid · (navBid − fee) / navBid` and the same for `rateOffer`.
+   * Store the Tick as **Accepted**, advance `_lastAcceptedTickId`, raise the HWM
+     if `rateBid` exceeds it, and clear `_quarantined`. A guardian `_frozen` is
+     cleared only by ADMIN `unfreeze`.
 
 Stored per Tick (append-only, never rewritten):
 
@@ -328,7 +358,10 @@ Stored per Tick (append-only, never rewritten):
 struct Tick {
     uint64  referenceTime;
     uint64  committedAt;
+    uint64  hubBlock;      // the bound hub reference block
     uint8   status;        // Accepted | Quarantined | Ratified
+    uint8   flags;         // FLAG_DOWN_BEYOND_DEPOSIT_LIMIT | FLAG_OVERDUE_IN_FLIGHT
+                           // | FLAG_IN_FLIGHT_LIMIT | FLAG_CHAIN_EXPOSURE
     uint128 rateBid;       // net of fees
     uint128 rateOffer;     // net of fees
     uint128 navBid;
@@ -365,7 +398,20 @@ Every queued request is priced at a Tick whose `referenceTime` is **after the
 epoch cutoff**. At request time nobody, including the updater, can know that
 price. This is the mutual-fund forward-pricing rule, introduced to end exactly
 the stale-NAV trading this brief describes. Requests after the cutoff roll to
-the next epoch; cancellation is allowed only before the cutoff.
+the next epoch.
+
+**Cancellation.** A request is cancellable by its owner while its epoch is open.
+After the cutoff, only a **Deposit** whose epoch still has
+`depositsCleared == false` may be cancelled; a Redeem is never cancellable past
+the cutoff. The asymmetry is the pricing rule, not convenience: pending deposits
+are excluded from NAV (`navBid = assets + hubCash − pendingDeposits −
+liabilities`), so refunding one moves no price and cannot be used to leave at a
+pre-loss rate, while a redemption's price is fixed only at clearing, so a late
+cancel would hand the holder a free option on the epoch's yield at the remaining
+holders' cost. The motivation is a real trap: a deposit caught in an epoch that
+closed while the accountant was frozen or quarantined previously had **no exit at
+all**, because clearing needs a usable Tick and cancellation needed an open
+epoch.
 
 ### 5.3 Withdrawal price (D5)
 
@@ -423,9 +469,27 @@ these must hold:
 
 This is backward pricing, so it is **the one path open to stale-state
 exploitation**. A holder who observes an on-chain loss before it is booked can
-exit at the old bid. Exposure is bounded by `dailyInstantLimit × loss fraction`,
-and the guardian pauses it on incident. By founder decision (§0) it launches
-enabled, with limits; initial values are in `docs/epoch-benchmark.md` §5.
+exit at the old bid. A pending `commitTick` is public calldata, so its rate is
+known before it lands: exiting just ahead of a Tick that books a loss avoids that
+loss and costs only `instantFee`. The front-run therefore pays exactly when the
+loss can exceed the fee, and the largest loss one **accepted** Tick can book is
+the down bucket's capacity (a larger move quarantines and settles nothing). That
+gives the calibration rule
+
+```
+instantFee ≥ downBucket.capacity
+```
+
+Deployed: `instantFee = 0.25%` against `downBucket.capacity = 0.2%`. With the
+rule satisfied, the net exposure of the whole path is
+`dailyInstantLimit × (loss − instantFee) ≤ 0` for any loss one accepted Tick can
+carry, so the residual is confined to moves that quarantine — where nothing
+settles until governance acts. The rule is asserted at module load in
+`deploy/crosschain/registry.ts`, checked at deploy and continuously by the
+monitor, and demonstrated in both configurations by
+`AdversarialScenarios.t.sol::testInstantFeeMustCoverTheDownBucket`. The guardian
+pauses `DOMAIN_INSTANT_EXIT` on incident. By founder decision (§0) it launches
+enabled, with limits; values in `docs/epoch-benchmark.md` §5.
 
 ### 5.6 Positive and negative deltas
 
@@ -441,7 +505,13 @@ enabled, with limits; initial values are in `docs/epoch-benchmark.md` §5.
 * **Unobservable loss at `T`** (an exploit that happens after `T`, before
   clearing) is the irreducible residual. **No accounting design removes it.**
   Exposure is bounded by:
-  1. the clearing lag: clearing must run within `maxClearingDelay` of `T`;
+  1. the clearing lag. `_usableTick` requires **both**
+     `now − tick.committedAt ≤ maxTickAge` **and**
+     `now − tick.referenceTime ≤ maxClearingDelay`, so the window in which an
+     unobserved loss can be paid for at the pre-loss rate is at most
+     `maxClearingDelay` after `T`. Deployed: `maxClearingDelay = maxTickAge +
+     maxSnapshotAge + 15 min = 2 h + 8 min + 15 min = 2 h 23 min`, derived in
+     `registry.ts` (the 15 min is build and inclusion slack for the NAV service);
   2. batch size, since withdrawals are paid only from liquidity;
   3. guardian pause of `Clearing`;
   4. Morpho's `min(real, book)` and CCTP's burn/mint (no pool) removing the two
@@ -487,17 +557,28 @@ anomalous Tick**:
   accepted Tick after cutoff) and instant exits wait.
 * **Breaker.** It trips `QUARANTINE`, which pauses deposit clearing, withdrawal
   clearing, instant exits, outbound bridge sends and allocations to strategies.
-  Requests, cancels before cutoff, claims of already-funded withdrawals, and
-  recalls of capital towards the hub stay open.
+  Requests, cancels (including the post-cutoff deposit cancel of §5.2), claims of
+  already-funded withdrawals, and recalls of capital towards the hub stay open.
 * **Resolution** is one of:
   * a later honest Tick that falls inside the buckets computed from the last
     **accepted** Tick; or
-  * `ratifyTick(id)` by `ADMIN_ROLE` (Safe). This makes the Tick settle-able and
-    resets the buckets from it. It is an audited, evented decision for real
-    large losses or recoveries.
+  * `ratifyTick(id)` by `ADMIN_ROLE` (Safe), no Timelock. It sets the latest
+    Tick's status to `Ratified`, makes it the latest accepted Tick, clears the
+    quarantine and emits `TickRatified`. It charges no fee on the ratified Tick
+    and does not raise the high-water mark. **It does not touch the buckets:**
+    neither level, capacity, refill rate nor `updatedAt` is read or written there.
+    That is deliberate. A ratification is governance asserting that an
+    out-of-corridor rate is the real one; if it also refilled or reset the
+    buckets, one ratification would hand back the rate capacity the anomalous
+    move just consumed, and a sequence of large moves could each be ratified into
+    a fresh full bucket — turning the rolling bound of §6.1 into a per-Tick bound
+    again. Leaving the buckets alone means the corridor still has to refill by
+    time after a ratification, so the bound over any window is unchanged.
+    It is an evented decision for real large losses or recoveries.
 * **Safety versus liveness.** A compromised updater can force quarantine
-  repeatedly. That is a liveness failure, not a safety failure. The guardian
-  revokes the updater and ADMIN rotates it.
+  repeatedly. That is a liveness failure, not a safety failure. The guardian can
+  only `freeze()`; revoking `NAV_UPDATER_ROLE` needs `ADMIN_ROLE`
+  (`AccessManager.revokeRole`), so rotation is a Safe action.
 
 ---
 
@@ -505,18 +586,24 @@ anomalous Tick**:
 
 | Trigger | Detected by | Effect |
 |---|---|---|
-| Tick outside buckets or spread | `commitTick` | Quarantine (§6.2) |
+| Tick outside buckets or spread | `commitTick` | Quarantine (§6.2). This is the only trigger that quarantines |
 | Stale: `now − latestAccepted.committedAt > maxTickAge` | any settle path | Clearing and instant exits revert; requests still accepted (they are forward-priced, so safe) |
-| Overdue in-flight above `maxOverdueInFlight` | `commitTick` | Pause outbound bridge sends and deposit clearing |
-| In-flight above `maxInFlightBps` of navBid | `commitTick` | Pause outbound bridge sends |
-| Per-chain or per-protocol exposure above cap | `commitTick` (from snapshot) + `Rebalancer` caps | Pause bridge sends into that chain / reject the allocation |
-| Guardian call | `GUARDIAN_ROLE` | Pause any domain; unpausing needs `ADMIN_ROLE` |
+| `overdueInFlight > maxOverdueInFlight`, where overdue means age > `maxTransit` at the reference time | `commitTick` → `_riskFlags` | Sets `FLAG_OVERDUE_IN_FLIGHT` **on the accepted Tick**. Nothing is paused and the Tick still settles redemptions. The flag then blocks deposit clearing (`DEPOSIT_BLOCKING_FLAGS`) and hub sends (`_bridgeSendsAllowed`). Two thresholds are involved: `maxTransit` decides what counts as overdue, `maxOverdueInFlight` decides how much of it is tolerated — deployed at 0, so a single overdue unit trips it |
+| `inFlight > navBid · maxInFlightRatio / 1e18` | `commitTick` → `_riskFlags` | Sets `FLAG_IN_FLIGHT_LIMIT` on the accepted Tick. Blocks hub sends only; it is **not** in `DEPOSIT_BLOCKING_FLAGS`, so deposit clearing continues |
+| `chainBids[i] > grossBidAssets · maxChainExposure / 1e18` | `commitTick` → `_markChainExposure`, from `NavSnapshot.chainBids` | Sets `FLAG_CHAIN_EXPOSURE` and `overExposed[chainId]`. The denominator is **gross** bid assets (`navBid + pendingDeposits + liabilities`), not NAV: netting off pending deposits and liabilities would inflate every chain's apparent share past 100% during a large deposit or redemption epoch and latch the flag for a reason unrelated to concentration. `chainSendAllowed(dst)` — what the hub `ChainAgent.bridgeOut` calls — is `bridgeSendsAllowed() && !overExposed[dst]`, so it blocks sends **into** an over-cap chain only. It never blocks sends out of that chain, never blocks settlement, and is not in `DEPOSIT_BLOCKING_FLAGS`. In-flight value is excluded from `chainBids` (it belongs to no chain and is bounded by `maxInFlightRatio`) but sits in the denominator, so the shares sum to slightly under 100% — the conservative direction. Hub accounted cash counts as hub exposure. `maxChainExposure = 0` disables it, which is the deployed value |
+| Per-protocol exposure above `capBps` | `Rebalancer` after every deposit and rebalance | Rejects the allocation. `capBps == 0` means uncapped, which is the default and what the entry provider ships at |
+| Guardian call | `GUARDIAN_ROLE` | Pause any domain; unpausing needs `ADMIN_ROLE`. On the accountant the guardian's only action is `freeze()` |
 
-Pause domains: `DepositRequest`, `WithdrawRequest`, `DepositClearing`,
-`WithdrawClearing`, `InstantExit`, `Allocate`, `BridgeOut`. **Never pausable by the
-breaker:** claims of funded withdrawals, cancel-before-cutoff, recalls to the hub,
-and receipt of in-flight funds. Exits already owed must stay payable. This is
-granular per the brief; there is no single global pause.
+Pause domains: six on `EpochVault` (`DOMAIN_DEPOSIT_REQUEST`,
+`DOMAIN_REDEEM_REQUEST`, `DOMAIN_DEPOSIT_CLEARING`, `DOMAIN_REDEEM_CLEARING`,
+`DOMAIN_INSTANT_EXIT`, `DOMAIN_ALLOCATE`, which also gates `pushToAgent`) and two
+on `ChainAgent` (`DOMAIN_ALLOCATE`, `DOMAIN_BRIDGE_OUT`). **Never pausable by the
+breaker:** claims of funded withdrawals, `cancel`, recalls to the hub, and
+receipt of in-flight funds (`receiveBridge` has no domain). Exits already owed
+must stay payable. This is granular per the brief; there is no single global
+pause. Note that "no pause domain" is not "cannot be blocked": `deallocate` and
+`deallocateShares` call into the strategy, whose own `Actions.Withdraw` pause is
+`ADMIN_ROLE` with no Timelock (threat model T27).
 
 ---
 
@@ -527,9 +614,10 @@ granular per the brief; there is no single global pause.
 ```mermaid
 stateDiagram-v2
   [*] --> Open: epoch K opens (stores openRateBid)
-  Open --> Open: requestDeposit / requestRedeem / cancel
+  Open --> Open: requestDeposit / requestRedeem / cancel (either kind)
   Open --> Closed: closeEpoch() when<br/>(elapsed ≥ minDuration ∧ acceptedTicks ≥ minTicks)<br/>∨ elapsed ≥ maxDuration
-  Closed --> Cleared: clearEpoch(K) with first Accepted Tick<br/>referenceTime ≥ cutoff, fresh, no breaker
+  Closed --> Closed: cancel(deposit) while depositsCleared == false<br/>→ refund, NAV-neutral (a Redeem can no longer be cancelled)
+  Closed --> Cleared: clearDeposits() / clearRedeems() with the latest<br/>Accepted Tick: referenceTime ≥ cutoff, fresh, within maxClearingDelay,<br/>no freeze, and no DEPOSIT_BLOCKING_FLAGS for the deposit side
   Cleared --> Funded: free cash ≥ owed (FIFO by epoch)
   Funded --> [*]: users claim shares / assets
   Closed --> Closed: Tick quarantined or stale → wait
@@ -585,6 +673,19 @@ CLEARED, QUEUED, LIQUID and CLAIMABLE are **derived** from the epoch state
 (Cleared/Funded), not stored per request. COMPLETED is stored as Claimed. EXPIRED
 is not used: claims never expire, because an owed exit must stay payable.
 
+CANCELLED is reachable from REQUESTED in exactly two situations, decided in
+`EpochVaultLogic.cancel`; only the request owner may call it:
+
+| Request epoch | Deposit | Redeem |
+|---|---|---|
+| Still the current epoch (open) | Cancellable | Cancellable |
+| Closed, `depositsCleared == false` | **Cancellable** — refund of pending deposits is NAV-neutral | Not cancellable |
+| Closed, `depositsCleared == true` | Not cancellable (already priced; `claim` pays) | Not cancellable |
+| Claimed | Not cancellable | Not cancellable |
+
+There is no pause domain on `cancel`, so it also works while the accountant is
+frozen or quarantined — which is the case it exists for (§5.2).
+
 ### 8.5 Share lock: redundant (D10)
 
 The claim to prove is that no path mints shares at a price below `R`.
@@ -613,9 +714,14 @@ The executor can do exactly this, and nothing else:
 | Function | Constraint |
 |---|---|
 | `allocate(amount)` | Deposits idle into **the** configured local `Rebalancer` (timelocked address). The recipient is the agent itself |
-| `deallocate(amount)` | Withdraws from that `Rebalancer` to the agent. **Always allowed**, even under breaker |
-| `bridgeOut(routeId, amount, minReceive, rebalanceId)` | The route is `(adapter, dstChainId, dstAgent)`, fixed by the Timelock. There is `amount ≤ route.maxPerTransfer`, and a per-route daily bucket. `minReceive ≥ amount · (1 − route.maxFeeBps)`. The debit is **measured**: the token balance delta must equal `amount` |
+| `deallocate(amount)` | Withdraws that exact asset amount from the `Rebalancer` to the agent; the received amount is measured and must equal `amount`. **Always allowed**, even under breaker |
+| `deallocateShares(shares, minAssets)` | Redeems `shares` of the strategy, which releases a variable amount, so the executor states a floor. The received amount is still measured, and below `minAssets` it reverts `SlippageExceeded`. This closes the asymmetry with `deallocate`, which enforces exactness |
+| `bridgeOut(routeId, amount, minReceive, rebalanceId)` | The route is `(adapter, dstChainId, dstAgent)`, fixed by the Timelock. There is `amount ≤ route.maxPerTransfer`, and a per-route daily bucket. `minReceive ≥ amount · (1 − route.maxFeeBps)`. On the hub it also requires `accountant.chainSendAllowed(dstChainId)`. The debit is **measured**: the token balance delta must equal `amount` |
 | `returnToVault(amount)` (hub agent only) | The recipient is hard-wired to `EpochVault` |
+
+`deallocate` and `deallocateShares` have no agent pause domain, but they call
+into the strategy, whose `Actions.Withdraw` pause is `ADMIN_ROLE` with no
+Timelock: ADMIN can therefore block recalls instantly (threat model T27).
 
 Receipt, `receiveBridge(adapter, payload)`:
 
@@ -688,11 +794,11 @@ per adapter, in `docs/cross-chain-threat-model.md` §5:
 | Role | Holder (target) | Allowed | Prohibited | Worst case if compromised |
 |---|---|---|---|---|
 | Governance (`Timelock`) | Safe-owned Timelock | Routes, peers, strategy addresses, buckets, limits, fees, epoch params | anything instant | Everything, after the delay; monitoring must watch the queue |
-| `ADMIN_ROLE` | Safe | Role grants, unpause, `ratifyTick`, `writeDown` | Config changes that the Timelock owns | Ratify a bad Tick → mis-settle one epoch |
+| `ADMIN_ROLE` | Safe | Role grants and revocations (there are no role admins), unpause, `ratifyTick`, `writeDown`, and on each strategy `Rebalancer`: `pause(Withdraw)`, `setManagementFee` ≤ 5% and `setPerformanceFee` ≤ 25% — all instant, no Timelock | Config changes that the Timelock owns | Ratify a bad Tick → mis-settle one epoch at an unbounded rate; pause strategy withdrawals → block every recall and every queued redemption (threat model T27–T29) |
 | `NAV_UPDATER_ROLE` | Dedicated key/service | `commitTick` | Everything else | Rate moves within buckets per window, or forced quarantine (DoS) |
 | `EXECUTOR_ROLE` | Rebalancer bot | allocate / deallocate / bridgeOut within limits, vault↔agent within buffer | Choose recipients, adapters or chains; exceed buckets | Misallocation; bridge volume up to bucket capacity along fixed routes |
 | `GUARDIAN_ROLE` | Ops multisig/EOA | Pause any domain | Unpause | Liveness: pauses the vault |
-| (none) | anyone | `closeEpoch`, `clearEpoch`, `fund`, `claim`, `receiveBridge` | — | — |
+| (none) | anyone | `closeEpoch`, `clearDeposits`, `clearRedeems`, `fund`, `claim`, `cancel` (by the request owner), `receiveBridge` | — | — |
 
 **Hard prerequisite.** SEC-001 (ProxyAdmin owned by an EOA) must be closed for
 every new proxy **before** any TVL. Otherwise the ProxyAdmin key bounds every
@@ -718,14 +824,18 @@ guarantee in this table.
 
 ## 12. Open questions for the founder
 
-| # | Question | Recommendation |
-|---|---|---|
-| Q1 | Hub chain: Ethereum or Arbitrum? | Ethereum for partners and custody. Arbitrum if user gas and today's TVL matter more. Tick cost is fine on either (≈ 24 commits/day) |
-| Q2 | Strategy on spokes: dedicated `Rebalancer` instances or the existing public vaults? | Dedicated instances (hardened generation). The public ones carry SEC-001 and have no provider caps |
-| Q3 | Instant exit at launch? | Disabled (limits = 0) until monitoring and the guardian are live |
-| Q4 | Snapshot in calldata (on-chain arithmetic) or hash-only? | Calldata; measure the gas in Phase 1 |
-| Q5 | Initial epoch parameters | Placeholder: Tick every 1 h, `maxDuration` 6 h, `minTicks` 1. To be replaced by `docs/epoch-benchmark.md` with measured CCTP latency and clearing gas (§14) |
-| Q6 | Legacy `CrossChainVault` on Base still accepts deposits at a ~24× wrong price | Pause deposits there (deployer key); see threat model §3 |
+**All but Q6 are resolved.** The decisions are recorded in §0 and are what the
+code implements; the recommendations below are kept as the Phase 0 record, and
+where the decision went the other way that is stated explicitly.
+
+| # | Question | Phase 0 recommendation | Status |
+|---|---|---|---|
+| Q1 | Hub chain: Ethereum or Arbitrum? | Ethereum for partners and custody. Arbitrum if user gas and today's TVL matter more. Tick cost is fine on either (≈ 24 commits/day) | **Resolved (§0): Base (8453)** — a third option, not either of the two offered. The 256-block `blockhash` window at 2 s blocks is what sets `maxSnapshotAge` |
+| Q2 | Strategy on spokes: dedicated `Rebalancer` instances or the existing public vaults? | Dedicated instances (hardened generation). The public ones carry SEC-001 and have no provider caps | **Resolved (§0, revised 2026-09-28):** the existing `Rebalancer` source may be changed. It is hardened in place, storage-compatible, and new instances of it are deployed as the per-chain strategies (§11). The live public vaults are still not touched |
+| Q3 | Instant exit at launch? | Disabled (limits = 0) until monitoring and the guardian are live | **Resolved (§0): enabled with limits.** This recommendation was **overridden by the founder decision**: per-call and per-day caps, fresh-Tick requirement and a fee, calibrated by `instantFee ≥ downBucket.capacity` (§5.5) |
+| Q4 | Snapshot in calldata (on-chain arithmetic) or hash-only? | Calldata; measure the gas in Phase 1 | **Resolved (§0): full snapshot in calldata.** Measured: `commitTick` median about 198k gas (`docs/epoch-benchmark.md` §2). The hash-only fallback of §4.4 is not used |
+| Q5 | Initial epoch parameters | Placeholder: Tick every 1 h, `maxDuration` 6 h, `minTicks` 1. To be replaced by `docs/epoch-benchmark.md` with measured CCTP latency and clearing gas (§14) | **Resolved for launch** by `deploy/crosschain/registry.ts` (production: 4 h / 6 h / `minTicks` 1, `maxClearingDelay` derived) and justified in `docs/epoch-benchmark.md` §4–§5. Still to be retuned once CCTP latency is measured on mainnet |
+| Q6 | Legacy `CrossChainVault` on Base still accepts deposits at a ~24× wrong price | Pause deposits there (deployer key); see threat model §3 | **Open**, and the question changed: the founder reports not having deployed it, while on-chain it was created by the Thesauros deployer key. Tracked as C5 in `docs/crosschain-open-items.md` |
 
 ---
 
@@ -759,6 +869,19 @@ trades UX against netting, gas and operations:
 | every Tick (1 h) | ~0.5 h / ~2 h | same | 24 | poor | fine technically; many tiny epochs; more Ticks carry settlement weight |
 | 6 h | ~3.5 h / ~7 h | same | 4 | good | ≫ one CCTP round trip (standard ≈ source finality) so recalls fit inside one epoch |
 | 24 h | ~12.5 h / ~25 h | same | 1 | best | T+1 fund-like; poor for DeFi UX |
+
+This table is the Phase 0 sketch. `docs/epoch-benchmark.md` §4 is the current
+study: it adds the tick-count cadences that `EpochConfig.minTicks` supports
+directly (every 5 Ticks, every 10 Ticks) and a 30 min cadence as researched
+variants, and it separates withdrawal latency from deposit latency.
+
+Deployed values, all derived in `deploy/crosschain/registry.ts`: `minDuration`
+4 h / `maxDuration` 6 h / `minTicks` 1 in the production profile, and
+`maxClearingDelay = maxTickAge + maxSnapshotAge + 15 min = 2 h 23 min`. The
+"withdrawal wait (ex-liquidity)" column above covers only up to clearing; the
+funding leg is separate and is what `maxClearingDelay` bounds, not the epoch
+length. `instantFee` is 0.25%, set by the calibration rule of §5.5 rather than by
+the cadence, so it does not change with any row of this table.
 
 Still to be measured before choosing defaults:
 
@@ -796,6 +919,22 @@ Still to be measured before choosing defaults:
     shares − `W`, and claimable shares plus dust equals `sharesMinted`.
 14. While a domain is paused, no function in that domain changes state; funded
     claims and recalls are always possible.
+15. With `maxChainExposure` enabled, no accepted Tick leaves a chain's
+    `chainBids` share of `navBid` above the cap without setting
+    `FLAG_CHAIN_EXPOSURE` and `overExposed[chainId]`, and while that mark stands
+    `chainSendAllowed(chainId)` is false — so no further capital can be sent into
+    it. Sends out of it and all settlement stay possible. With the cap at 0 (the
+    deployed value) no chain is ever marked
+    (`testChainExposureDisabledByDefault`, `testOverExposedHubCanStillSendOut`,
+    `testOverExposedSpokeRefusesInboundSends`).
+16. A deposit past the cutoff is refundable until its epoch is cleared, and the
+    refund is NAV-neutral: it reduces `cash` and `pendingDeposits` by the same
+    amount, mints and burns nothing, and therefore changes neither `navBid` nor
+    any rate. A redeem past the cutoff is never cancellable
+    (`testCancelRulesAroundCutoff`, `testCancelAfterCutoffWhileFrozen`).
+17. A Tick rejected on the spread bound consumes no rate-bucket capacity: the
+    bucket level after the commit equals the level a plain time refill would have
+    produced (`testSpreadRejectionSpendsNoBucket`).
 
 ---
 

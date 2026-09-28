@@ -463,11 +463,17 @@ contract Rebalancer is
                 )
             );
             if (success) {
+// Same measured-amount idiom as ChainAgent: the delta across the provider
+            // call is the value that actually arrived, under `nonReentrant`.
+            // slither-disable-next-line reentrancy-balance
                 uint256 received = $._asset.balanceOf(address(this)) - balBefore;
                 assetsLeft -= received;
             }
         }
 
+        // `assetsLeft` accumulates the measured shortfalls of the loop above; under
+        // `nonReentrant` no caller can change the balance between the reads.
+        // slither-disable-next-line reentrancy-balance
         if (assetsLeft > 0) revert InsufficientLiquidity();
 
         $._lastTotalAssets -= assets;
@@ -569,9 +575,12 @@ contract Rebalancer is
             RebalancerStorage storage $ = _getRebalancerStorage();
             uint256 balanceBefore = $._asset.balanceOf(address(this));
             _delegateActionToProvider(assets, "withdraw", from);
+            // slither-disable-start reentrancy-balance
             uint256 received = $._asset.balanceOf(address(this)) - balanceBefore;
             if (received == 0) revert InvalidInput();
             _delegateActionToProvider(received, "deposit", to);
+            // slither-disable-end reentrancy-balance
+
             _enforceProviderCap(to);
 
             emit RebalanceExecuted(received, address(from), address(to));

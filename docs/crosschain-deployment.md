@@ -142,7 +142,7 @@ exposes `/metrics` (Prometheus). `--once` runs a single pass.
 
 | Service | Command | Key | What it does |
 |---|---|---|---|
-| NAV updater | `npm run nav` | `NAV_UPDATER_PRIVATE_KEY` | Builds the snapshot across chains and commits a Tick hourly, and immediately when a closed epoch waits for a post-cutoff Tick |
+| NAV updater | `npm run nav` | `NAV_UPDATER_PRIVATE_KEY` | Builds the snapshot across chains and commits a Tick hourly, and immediately when a closed epoch waits for a post-cutoff Tick. While a quarantine already stands it skips a commit whose move still exceeds the refilled bucket — the contract would reject it, so it would settle nothing — and sends one alert per episode rather than one per cadence; `--force` overrides |
 | Keeper | `npm run keeper` | `KEEPER_PRIVATE_KEY` (+ `EXECUTOR_PRIVATE_KEY` if `KEEPER_AUTOFUND=true`) | Closes epochs, clears both sides, funds, optionally claims for users and recalls hub-local liquidity |
 | Relayer | `npm run relayer` | `RELAYER_PRIVATE_KEY` | Delivers every CCTP transfer (Circle Iris attestation) to the destination agent |
 | Monitor | `npm run monitor` | none | 20+ check groups, Telegram alerts on change, independent Tick re-derivation |
@@ -153,6 +153,19 @@ exposes `/metrics` (Prometheus). `--once` runs a single pass.
 monitor verifies roles against them), `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`
 (same as the Rebalance-Engine), and ports via `PORT_NAV`, `PORT_KEEPER`,
 `PORT_RELAYER`, `PORT_MONITOR`.
+
+**Persistent state.** `TRANSFER_INDEX_FILE` (default `./crosschain-transfer-index.json`)
+holds the `BridgeOut`/`BridgeIn` index and the per-chain scan progress, shared by
+`nav`, `monitor`, `relayer` and `verify-tick`. It **must live on persistent disk**:
+without it every restart re-scans all bridge history from `startBlock`, and because
+the commit window is a fixed 256 blocks (about 490 s of usable budget on Base) a
+cold start that outgrows that budget makes every commit revert `InvalidHubReference`
+— Ticks stop, and settlement and instant exits stop with them. It is written
+atomically, bound to a fingerprint of the deployed `ChainAgent` addresses so fork or
+stand state can never be loaded by production, and rewound `INDEX_REWIND_BLOCKS`
+(default 5000) on load as reorg insurance. `INDEXER_DB` is the API's cache and is
+rebuildable. Neither file may be shared between two deployments; the rehearsal
+points both into `/tmp/xc-rehearsal`. See `ops/README.md`.
 
 **Hook into the existing healthchecker** (Thesauros-Rebalance-Engine
 `apps/healthchecker`):

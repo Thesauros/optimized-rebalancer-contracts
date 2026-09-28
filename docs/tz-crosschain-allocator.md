@@ -78,7 +78,7 @@ Base (хаб)                                   Arbitrum (спок)
 | Ликвидность рынка (сколько можно реально вывести сейчас) | Aave: `availableLiquidity` резерва; Compound: `totalSupply − totalBorrow`; MetaMorpho: `maxWithdraw` ваулта |
 | Переводы в пути | `/v1/transfers` (state = `in_flight`) |
 | Ограничения маршрутов | `ChainAgent.getRoute(routeId)`: `maxPerTransfer`, `capacity`, `level`, `refillPerSecond`, `enabled` |
-| Предохранители | `TickAccountant.frozen()`, `bridgeSendsAllowed()`, флаги последнего тика; `EpochVault.paused(5)`; `ChainAgent.paused(0/1)` |
+| Предохранители | `TickAccountant.frozen()`, `bridgeSendsAllowed()`, `chainSendAllowed(dstChainId)`, `maxChainExposure()`, `isChainOverExposed(chainId)`, флаги последнего тика; `EpochVault.paused(5)`; `ChainAgent.paused(0/1)` |
 
 ### 4.2 Решение: целевое распределение
 
@@ -104,11 +104,12 @@ max Σ_chain Σ_provider  x[c,p] · apr[c,p](x) · H  −  Σ_moves cost(move)
    - Ребаланс, который превышает лимит, откатится.
 3. **Маршруты:** `amount ≤ maxPerTransfer`, `amount ≤ текущий уровень ведра`, `minReceive ≥ amount × (1 − maxFeeBps)`.
 4. **Деньги в пути не больше `maxInFlightRatio` от NAV** (25% в боевом профиле). Если лимит превышен, тик получит флаг, и отправки с хаба остановятся до доставки.
-5. **Предохранители:**
-   - при `frozen()` или `!bridgeSendsAllowed()` — никаких `bridgeOut` и `allocate` на хабе;
+5. **Концентрация по сетям.** `TickAccountant.maxChainExposure()` задаёт потолок доли одной сети в признанном NAV (0 = выключено). Превышение ставит на тик флаг `FLAG_CHAIN_EXPOSURE` и помечает конкретную сеть: `chainSendAllowed(dstChainId)` вернёт false именно для неё. Важно для планировщика: блокируется отправка **в** переполненную сеть, а не **из** неё, поэтому corrective-перевод избытка наружу всегда разрешён. Перед выбором направления читать `chainSendAllowed`, а не только глобальный `bridgeSendsAllowed`.
+6. **Предохранители:**
+   - при `frozen()` или `!chainSendAllowed(dst)` — никаких `bridgeOut` в эту сеть и никакого `allocate` на хабе;
    - на паузе — никаких вызовов соответствующего домена;
-   - `deallocate` и `returnToVault` разрешены всегда.
-6. **Нездоровые рынки.** Если `providersHealthy() == false`, в эту стратегию не аллоцировать: депозиты в неё будут отклонены.
+   - `deallocate`, `deallocateShares` и `returnToVault` разрешены всегда.
+7. **Нездоровые рынки.** Если `providersHealthy() == false`, в эту стратегию не аллоцировать: депозиты в неё будут отклонены.
 
 ### 4.4 Ликвидность для выплат (приоритет выше доходности)
 
@@ -130,11 +131,12 @@ max Σ_chain Σ_provider  x[c,p] · apr[c,p](x) · H  −  Σ_moves cost(move)
 | Контракт | Функции |
 |---|---|
 | `EpochVault` (Base) | `pushToAgent(assets)` |
-| `ChainAgent` (каждая сеть) | `allocate(assets)`, `deallocate(assets)`, `deallocateShares(shares)`, `bridgeOut(routeId, amount, minReceive, rebalanceId)`, `returnToVault(assets)` (только хаб) |
+| `ChainAgent` (каждая сеть) | `allocate(assets)`, `deallocate(assets)`, `deallocateShares(shares, minAssets)`, `bridgeOut(routeId, amount, minReceive, rebalanceId)`, `returnToVault(assets)` (только хаб) |
 | `Rebalancer` (стратегия каждой сети) | `rebalance(amounts[], sources[], destinations[])` |
 
 - **routeId:** `keccak256("thesauros.route.v1:<srcChainId>-><dstChainId>")`.
 - **rebalanceId:** уникальный id плана (bytes32). Он пишется в событие `BridgeOut` и нужен для сквозной трассировки.
+- **minAssets** в `deallocateShares(shares, minAssets)` — пол, ниже которого выкуп доли стратегии откатится с `SlippageExceeded`. Считать из `strategy.convertToAssets(shares)` с небольшим допуском вниз: количество полученного всё равно измеряется по факту баланса, но план должен падать сразу, а не узнавать о проскальзывании только на следующем тике. Для `deallocate(assets)` пол не нужен — там количество фиксируется точно.
 
 **План** — это последовательность шагов с зависимостями, например:
 

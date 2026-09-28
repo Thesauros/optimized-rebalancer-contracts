@@ -153,6 +153,34 @@ library NavSnapshot {
         t.navOffer = assetsOffer - deductions;
     }
 
+    /**
+     * @notice Per-chain bid exposure, indexed exactly like `s.chains`, counting
+     *         the hub's accounted cash as hub exposure.
+     * @dev In-flight value belongs to no chain until it lands and is bounded
+     *      separately by `maxInFlightRatio`, so it is excluded here. Both arrays
+     *      are strictly ascending by chainId, so one pass over `chains` with a
+     *      cursor over `positions` visits every chain, including one that holds
+     *      nothing but hub cash.
+     */
+    function chainBids(
+        Snapshot calldata s,
+        uint64 hubChainId
+    ) internal pure returns (uint256[] memory bids) {
+        bids = new uint256[](s.chains.length);
+        uint256 cursor;
+        for (uint256 i; i < s.chains.length; i++) {
+            uint64 id = s.chains[i].chainId;
+            uint256 sum = id == hubChainId ? s.hubCash : 0;
+            while (
+                cursor < s.positions.length && s.positions[cursor].chainId == id
+            ) {
+                sum += s.positions[cursor].valueBid;
+                cursor++;
+            }
+            bids[i] = sum;
+        }
+    }
+
     function _positionAfter(
         Position calldata p,
         Position calldata prev

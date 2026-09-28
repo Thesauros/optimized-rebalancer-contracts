@@ -40,3 +40,11 @@ broadcast
 .product-squad-skill/
 .security-engineer-skill/
 SECURITY_AUDIT.md
+thesauros_tick_epoch_prompt_ru.md
+
+# ops caches: rebuildable, and state written against a fork or the stand must
+# never be committed or reused (TRANSFER_INDEX_FILE / INDEXER_DB override both)
+crosschain-transfer-index.json
+crosschain-transfer-index.json.*.tmp
+crosschain-indexer.sqlite
+crosschain-indexer.sqlite-*

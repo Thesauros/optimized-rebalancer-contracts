@@ -49,6 +49,7 @@ contract ChainAgent is Initializable, ReentrancyGuardUpgradeable, AccessManager 
     error RouteDisabled();
     error LimitExceeded();
     error InsufficientIdle();
+    error SlippageExceeded();
     error UnexpectedTokenAmount();
     error UnknownAdapter();
     error UnknownPeer();
@@ -205,17 +206,28 @@ contract ChainAgent is Initializable, ReentrancyGuardUpgradeable, AccessManager 
         uint256 before = $._asset.balanceOf(address(this));
         shares = strat.withdraw(assets, address(this), address(this));
         uint256 received = $._asset.balanceOf(address(this)) - before;
+// Measured amount: the balance delta across the external call IS the
+        // accounting fact, and `nonReentrant` plus a non-rebasing asset are what
+        // make the pre-call reading safe to compare against.
+        // slither-disable-next-line reentrancy-balance
         if (received != assets) revert UnexpectedTokenAmount();
         emit Deallocated(address(strat), received, shares);
     }
 
     /// @notice Redeems `shares` of the strategy to idle. Never paused.
-    function deallocateShares(uint256 shares) external nonReentrant onlyRole(EXECUTOR_ROLE) returns (uint256 received) {
+    /// @dev A redeem releases a variable amount, so the executor states the floor
+    ///      it accepts; the received amount is still measured, never assumed.
+    function deallocateShares(
+        uint256 shares,
+        uint256 minAssets
+    ) external nonReentrant onlyRole(EXECUTOR_ROLE) returns (uint256 received) {
         ChainAgentStorage storage $ = _getStorage();
         IERC4626 strat = $._strategy;
         uint256 before = $._asset.balanceOf(address(this));
         strat.redeem(shares, address(this), address(this));
         received = $._asset.balanceOf(address(this)) - before;
+        // slither-disable-next-line reentrancy-balance
+        if (received < minAssets) revert SlippageExceeded();
         emit Deallocated(address(strat), received, shares);
     }
 
@@ -237,11 +249,17 @@ contract ChainAgent is Initializable, ReentrancyGuardUpgradeable, AccessManager 
         bytes32 rebalanceId
     ) external payable nonReentrant onlyRole(EXECUTOR_ROLE) whenNotPaused(DOMAIN_BRIDGE_OUT) returns (bytes32 transferId) {
         ChainAgentStorage storage $ = _getStorage();
-        if (address($._accountant) != address(0) && !$._accountant.bridgeSendsAllowed()) {
-            revert SendsHalted();
-        }
         Route storage route = $._routes[routeId];
         if (!route.enabled) revert RouteDisabled();
+        // on the hub this folds in the accountant's breakers and refuses a
+        // destination that is already above its exposure cap; on a spoke there is
+        // no accountant to read and the guardian pauses instead
+        if (
+            address($._accountant) != address(0) &&
+            !$._accountant.chainSendAllowed(route.dstChainId)
+        ) {
+            revert SendsHalted();
+        }
         if (amount == 0 || minReceive > amount) revert InvalidInput();
         if (amount > route.maxPerTransfer) revert LimitExceeded();
         if (minReceive < amount.mulDiv(BPS - route.maxFeeBps, BPS, Math.Rounding.Ceil)) {
@@ -272,6 +290,7 @@ contract ChainAgent is Initializable, ReentrancyGuardUpgradeable, AccessManager 
             minReceive
         );
         token.forceApprove(route.adapter, 0);
+        // slither-disable-next-line reentrancy-balance
         if (before - token.balanceOf(address(this)) != amount) revert UnexpectedTokenAmount();
 
         emit BridgeOut(transferId, rebalanceId, routeId, route.dstChainId, route.dstAgent, amount, minReceive);
@@ -297,6 +316,7 @@ contract ChainAgent is Initializable, ReentrancyGuardUpgradeable, AccessManager 
 
         if (!$._peers[srcChainId][srcAgent]) revert UnknownPeer();
         if ($._received[transferId].receivedAt != 0) revert AlreadyReceived();
+        // slither-disable-next-line reentrancy-balance
         if (amount == 0) revert UnexpectedTokenAmount();
 
         $._received[transferId] = Received({

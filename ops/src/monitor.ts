@@ -17,7 +17,7 @@ import { Contract, formatUnits } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from './abi';
 import { Chain, envNumber, hubOf, identities, loadChains } from './config';
 import { checkDeployment } from './checks/deployment';
-import { TransferIndex, verifyTick } from './snapshot';
+import { TransferIndex, openTransferIndex, verifyTick } from './snapshot';
 import { routeId } from '../../deploy/crosschain/registry';
 import { log, loop, scanEvents, serveStatus, telegram } from './util';
 
@@ -215,7 +215,7 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
 
 async function main() {
   const chains = loadChains();
-  const index = new TransferIndex();
+  const index = await openTransferIndex(chains);
   const verified = new Map<string, boolean>();
   let checks: Check[] = [];
   let lastPass = 0;

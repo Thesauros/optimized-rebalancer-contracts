@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { AbiCoder, keccak256, zeroPadValue, toBeHex } from 'ethers';
 import { Snapshot, TransferIndex, consistentCut, hashSnapshot, sortPositions, totals } from '../src/snapshot';
 import { transferIdOf, sourceDomainOf } from '../src/cctp';
@@ -73,6 +76,38 @@ test('consistent cut leaves a consistent cut untouched and iterates to a fixpoin
   const cut2 = consistentCut(new Map([['base', 100], ['arbitrum', 60]]), idx2);
   assert.equal(cut2.get('base'), 110);
   assert.equal(cut2.get('arbitrum'), 70);
+});
+
+test('consistent cut never references a block above its confirmation depth', () => {
+  // receipt of 0x01 is inside the arbitrum cut, but its BridgeOut on base sits
+  // above base's confirmed head, so it cannot be advanced to
+  const idx = indexWith([['0x01', 'base', 120]], [['0x01', 'arbitrum', 55]]);
+  const refs = new Map([['base', 100], ['arbitrum', 60]]);
+  const ceilings = new Map([['base', 100], ['arbitrum', 60]]);
+
+  assert.equal(consistentCut(new Map(refs), idx).get('base'), 120, 'without a ceiling the source ref is pushed to an unconfirmed block');
+
+  const cut = consistentCut(refs, idx, ceilings);
+  assert.equal(cut.get('base'), 100, 'the source ref stays at its confirmed depth');
+  assert.equal(cut.get('arbitrum'), 54, 'the receipt leaves the cut instead, so the transfer stays in flight');
+});
+
+test('transfer index persists across restarts and rejects state from another deployment', async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-index-')), 'index.json');
+  const a = new TransferIndex(file, 'fp-1');
+  a.sent.set('0x01', { transferId: '0x01', chainKey: 'base', block: 120, txHash: '0xaa', amount: 5n, dstChainId: 42161n, minReceive: 4n });
+  a.received.set('0x01', { transferId: '0x01', chainKey: 'arbitrum', block: 55, txHash: '0xbb', amount: 4n });
+  await a.save();
+
+  const b = new TransferIndex(file, 'fp-1');
+  await b.load();
+  assert.equal(b.sent.get('0x01')?.amount, 5n, 'bigint survives the round trip');
+  assert.equal(b.sent.get('0x01')?.dstChainId, 42161n);
+  assert.equal(b.received.get('0x01')?.block, 55);
+
+  const c = new TransferIndex(file, 'fp-other');
+  await c.load();
+  assert.equal(c.sent.size, 0, 'state written by a different deployment is discarded');
 });
 
 test('CCTP helpers read our hookData and the source domain from a V2 message', () => {

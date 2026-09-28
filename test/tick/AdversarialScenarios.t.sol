@@ -165,7 +165,8 @@ contract AdversarialScenariosTest is TickFixture {
         uint64 epochId = _cycle();
         assertFalse(vault.getEpoch(epochId).funded);
         vm.startPrank(executor);
-        hubAgent.deallocateShares(hubAgent.strategyShares());
+        // minAssets 0: this test is about the recall path, not about slippage
+        hubAgent.deallocateShares(hubAgent.strategyShares(), 0);
         hubAgent.returnToVault(usdc.balanceOf(address(hubAgent)));
         vm.stopPrank();
         assertTrue(vault.getEpoch(epochId).funded);
@@ -173,5 +174,51 @@ contract AdversarialScenariosTest is TickFixture {
         assertLe(paid, (aliceShares * vault.getEpoch(epochId).priceRedeem) / WAD);
         (uint256 cash, uint256 pending,, uint256 reserved,,) = vault.accounting();
         assertGe(cash, pending + reserved);
+    }
+
+    /**
+     * @dev T18/T21 residual, quantified and bounded. `instantRedeem` is the only
+     *      backward-priced path, and a pending `commitTick` is public calldata, so
+     *      its rate is known before it lands. A searcher who exits just ahead of a
+     *      Tick that books a loss avoids the loss and pays only `instantFee`, so
+     *      the front-run pays exactly when the loss can exceed the fee. The
+     *      largest down-move one accepted Tick can carry is the down bucket's
+     *      capacity (beyond it the Tick quarantines, which freezes instant exits),
+     *      which gives the calibration rule:
+     *
+     *          instantFee >= downBucket.capacity  =>  no risk-free front-run
+     *
+     *      The first half shows the launch configuration (fee 0.1%, capacity
+     *      0.2%) violating it; the second half shows the same front-run losing
+     *      money once the fee covers the capacity.
+     */
+    function testInstantFeeMustCoverTheDownBucket() public {
+        uint256 shares = vault.balanceOf(alice) / 200; // ~5k USDC: inside both caps
+        uint256 loss = 1_200 * ONE; // 0.12% of nav: inside 0.2% capacity, above the 0.1% fee
+        assertLt(vault.limits().instantFee, _defaultDown().capacity, "launch config is miscalibrated");
+
+        _loss(hubSource, address(hubStrategy), loss);
+        vm.prank(alice);
+        uint256 out = vault.instantRedeem(shares, alice, alice, 0); // ahead of the commit
+        _advance(60);
+        _tick(); // books the loss
+        uint256 held = (shares * _lastTick().rateBid) / WAD;
+        assertGt(out, held, "fee < capacity: exiting ahead of the loss is profitable");
+        assertLt(out - held, (shares * _defaultDown().capacity) / WAD, "gain bounded by the down capacity");
+
+        // the fix: a fee at the capacity, and the same front-run, now loses
+        IEpochVault.Limits memory l = vault.limits();
+        l.instantFee = uint64(_defaultDown().capacity);
+        vault.setLimits(l);
+        accountant.setBuckets(_defaultUp(), _defaultDown()); // refill the down bucket
+        vm.prank(alice);
+        vault.transfer(bob, shares);
+
+        _loss(hubSource, address(hubStrategy), loss);
+        vm.prank(bob);
+        uint256 out2 = vault.instantRedeem(shares, bob, bob, 0);
+        _advance(60);
+        _tick();
+        assertLe(out2, (shares * _lastTick().rateBid) / WAD, "fee >= capacity: the front-run does not pay");
     }
 }

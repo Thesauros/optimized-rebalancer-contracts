@@ -13,7 +13,7 @@ import { AbiCoder, Contract } from 'ethers';
 import { CHAIN_AGENT } from './abi';
 import { Attested, attestLocally, fetchIris } from './cctp';
 import { Chain, envNumber, loadChains, signerFor } from './config';
-import { TransferIndex } from './snapshot';
+import { openTransferIndex } from './snapshot';
 import { log, loop, serveStatus, telegram } from './util';
 
 const SERVICE = 'relayer';
@@ -23,7 +23,7 @@ async function main() {
   const byChainId = new Map(chains.map((c) => [c.chainId, c]));
   const byKey = new Map(chains.map((c) => [c.key, c]));
   const mode = process.env.RELAYER_ATTESTATION ?? 'iris';
-  const index = new TransferIndex();
+  const index = await openTransferIndex(chains);
   const delivered = new Map<string, string>();
   const pending = new Map<string, { since: number; lastError?: string }>();
   let lastError = '';

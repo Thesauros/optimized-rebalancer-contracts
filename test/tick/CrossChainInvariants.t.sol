@@ -57,13 +57,24 @@ contract CrossChainHandler is TickFixture {
     }
 
     function cancelLatest() external {
-        if (openRequests.length == 0) return;
-        uint256 id = openRequests[openRequests.length - 1];
-        IEpochVault.Request memory r = vault.getRequest(id);
-        if (r.status != IEpochVault.RequestStatus.Requested || r.epoch != vault.currentEpoch()) return;
-        vm.prank(r.owner);
-        vault.cancel(id);
-        if (r.kind == IEpochVault.RequestKind.Deposit) ghostOut += r.amount;
+        // the newest request the contract would actually accept: anything in the
+        // open epoch, plus a deposit in a closed epoch that is not cleared yet.
+        // Bounded scan, because openRequests only ever grows.
+        uint256 n = openRequests.length;
+        uint256 floor = n > 32 ? n - 32 : 0;
+        for (uint256 i = n; i > floor; i--) {
+            uint256 id = openRequests[i - 1];
+            IEpochVault.Request memory r = vault.getRequest(id);
+            if (r.status != IEpochVault.RequestStatus.Requested) continue;
+            if (r.epoch != vault.currentEpoch()) {
+                if (r.kind != IEpochVault.RequestKind.Deposit) continue;
+                if (vault.getEpoch(r.epoch).depositsCleared) continue;
+            }
+            vm.prank(r.owner);
+            vault.cancel(id);
+            if (r.kind == IEpochVault.RequestKind.Deposit) ghostOut += r.amount;
+            return;
+        }
     }
 
     function tick(uint256 dt) external {
@@ -158,7 +169,9 @@ contract CrossChainHandler is TickFixture {
         uint256 shares = (a.strategyShares() * bound(bps, 1, 10_000)) / 10_000;
         if (shares == 0) return;
         vm.prank(executor);
-        a.deallocateShares(shares);
+        // minAssets 0: the handler injects yield and losses, so a floor here would
+        // make the action revert on legitimate price movement rather than explore
+        a.deallocateShares(shares, 0);
     }
 
     function bridge(bool fromSpoke, uint256 amount) external {
@@ -263,7 +276,7 @@ contract CrossChainInvariantsTest is Test {
     function setUp() public {
         h = new CrossChainHandler();
         h.init();
-        bytes4[] memory selectors = new bytes4[](15);
+        bytes4[] memory selectors = new bytes4[](14);
         selectors[0] = h.deposit.selector;
         selectors[1] = h.redeem.selector;
         selectors[2] = h.cancelLatest.selector;
@@ -278,7 +291,8 @@ contract CrossChainInvariantsTest is Test {
         selectors[11] = h.bridge.selector;
         selectors[12] = h.deliver.selector;
         selectors[13] = h.yieldOrLoss.selector;
-        selectors[14] = h.closeAndClear.selector;
+        // uniformly weighted: `closeAndClear` was listed twice, which silently gave
+        // the epoch lifecycle double the sampling of every other action
         targetSelector(FuzzSelector({addr: address(h), selectors: selectors}));
         targetContract(address(h));
     }

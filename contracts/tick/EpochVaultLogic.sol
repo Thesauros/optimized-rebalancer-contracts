@@ -91,11 +91,25 @@ library EpochVaultLogic {
     ) external returns (address owner, uint256 sharesToReturn) {
         IEpochVault.Request storage r = $.requests[requestId];
         if (r.owner != caller) revert IEpochVault.NotRequestOwner();
-        if (r.status != IEpochVault.RequestStatus.Requested || r.epoch != $.currentEpoch) {
+        if (r.status != IEpochVault.RequestStatus.Requested) {
             revert IEpochVault.RequestNotCancellable();
         }
-        r.status = IEpochVault.RequestStatus.Cancelled;
         IEpochVault.Epoch storage e = $.epochs[r.epoch];
+        if (r.epoch != $.currentEpoch) {
+            // Past the cutoff only a deposit may still be withdrawn, and only
+            // until its epoch is cleared. Pending deposits are excluded from NAV,
+            // so the refund is NAV-neutral: no price changes, and nobody can use
+            // it to leave at a pre-loss rate. A redemption is refused because its
+            // price is not fixed until clearing, so a late cancel would hand the
+            // holder a free option on the epoch's yield at the remaining holders'
+            // cost. Without this, a deposit caught in an epoch that closed while
+            // the accountant was frozen or quarantined has no exit at all:
+            // clearing needs a usable Tick and cancellation needed an open epoch.
+            if (r.kind != IEpochVault.RequestKind.Deposit || e.depositsCleared) {
+                revert IEpochVault.RequestNotCancellable();
+            }
+        }
+        r.status = IEpochVault.RequestStatus.Cancelled;
         owner = r.owner;
 
         if (r.kind == IEpochVault.RequestKind.Deposit) {
@@ -414,6 +428,10 @@ library EpochVaultLogic {
     function _pullExact(EpochVaultStorage.Layout storage $, address from, uint256 assets) private {
         IERC20Metadata asset_ = $.asset;
         uint256 before = asset_.balanceOf(address(this));
+        // `from` is never attacker-chosen: every caller passes either _msgSender()
+        // (a request) or the hub agent (returnFunds, which checks it). The measured
+        // balance delta below is what actually guards the amount.
+        // slither-disable-next-line arbitrary-send-erc20
         asset_.safeTransferFrom(from, address(this), assets);
         if (asset_.balanceOf(address(this)) - before != assets) {
             revert IEpochVault.UnexpectedTokenAmount();

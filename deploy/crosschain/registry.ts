@@ -163,15 +163,83 @@ export const NETWORKS: Record<string, NetworkEntry> = {
   },
 };
 
+/**
+ * Derived protocol bounds. Three of the configured values are not independent;
+ * they are computed here so the relations cannot drift when a limit is retuned.
+ */
+
+/** Hub block time. Base and the OP Stack produce a block every 2 s. */
+const HUB_BLOCK_TIME = 2n;
+/** EVM `blockhash` window, enforced by `TickAccountant._validateHubBinding`. */
+const BLOCKHASH_WINDOW = 256n;
+/** Hard ceiling on snapshot age on the hub: 256 blocks x 2 s = 512 s. */
+const SNAPSHOT_AGE_CEILING = BLOCKHASH_WINDOW * HUB_BLOCK_TIME;
+
+/**
+ * Kept below the ceiling on purpose. A snapshot that is too old then fails as
+ * `InvalidTime`, which names the problem, instead of `InvalidHubReference`,
+ * which does not distinguish "stale" from "reorged" from "wrong checkpoint".
+ */
+const MAX_SNAPSHOT_AGE = 8n * 60n;
+
+/** Staleness breaker: how long settlement may lag the last accepted Tick. */
+const MAX_TICK_AGE = 2n * 3600n;
+
+/**
+ * `_usableTick` requires BOTH `now - committedAt <= maxTickAge` AND
+ * `now - referenceTime <= maxClearingDelay`. A reference time precedes its commit
+ * by up to `maxSnapshotAge`, so a clearing delay shorter than the sum makes
+ * clearing impossible while the accountant still reports itself healthy: the
+ * updater looks fresh, every `clearDeposits`/`clearRedeems` reverts `TickNotUsable`,
+ * and `bridgeSendsAllowed` stays true, so nothing signals the deadlock. The extra
+ * 15 min is build and inclusion slack for the NAV service.
+ */
+const MAX_CLEARING_DELAY = MAX_TICK_AGE + MAX_SNAPSHOT_AGE + 15n * 60n;
+
+/** Largest down-move one accepted Tick can carry; beyond it the Tick quarantines. */
+const DOWN_BUCKET_CAPACITY = 2n * 10n ** 15n; // 0.2%
+
+/**
+ * `instantRedeem` is the only backward-priced path, and a pending `commitTick` is
+ * public calldata, so its rate is known before it lands. Exiting just ahead of a
+ * Tick that books a loss avoids that loss and costs only the instant fee, so the
+ * front-run pays exactly when the loss can exceed the fee. The largest loss one
+ * accepted Tick can book is the down bucket's capacity, which gives the rule
+ * `instantFee >= DOWN_BUCKET_CAPACITY`. 0.25% keeps a margin if governance ever
+ * widens the bucket; `checks/deployment.ts` fails the deploy if it does not.
+ */
+const INSTANT_FEE = 25n * 10n ** 14n; // 0.25%
+
+if (MAX_SNAPSHOT_AGE >= SNAPSHOT_AGE_CEILING) {
+  throw new Error(`maxSnapshotAge ${MAX_SNAPSHOT_AGE}s is unreachable: the hub blockhash window is ${SNAPSHOT_AGE_CEILING}s`);
+}
+if (MAX_CLEARING_DELAY < MAX_TICK_AGE + MAX_SNAPSHOT_AGE) {
+  throw new Error('maxClearingDelay below maxTickAge + maxSnapshotAge makes clearing impossible while ticks still look fresh');
+}
+if (INSTANT_FEE < DOWN_BUCKET_CAPACITY) {
+  throw new Error('instantFee below the down bucket capacity makes front-running commitTick a risk-free profit');
+}
+
 /** Hub-only protocol parameters per profile (docs/crosschain-limits.md explains each). */
 const COMMON_ACCOUNTANT = {
   minTickInterval: 5n * 60n,
-  maxSnapshotAge: 10n * 60n,
-  maxTickAge: 2n * 3600n,
+  maxSnapshotAge: MAX_SNAPSHOT_AGE,
+  maxTickAge: MAX_TICK_AGE,
   maxTransit: 3600n,
   maxSpread: 10n ** 16n, // 1%
   depositClearingMaxDown: 10n ** 15n, // 0.1%
   maxOverdueInFlight: 0n,
+  /**
+   * Per-chain concentration cap as a 1e18 fraction of gross bid assets; 0 disables
+   * it. Gross rather than NAV, because NAV nets off pending deposits and
+   * liabilities, which would inflate every chain's apparent share during a large
+   * deposit or redemption epoch. Left off at launch deliberately: with two chains
+   * all capital starts on the hub, so any cap below 100% is breached on day one and
+   * the flag would be permanent noise. Set it through the Timelock once a target
+   * allocation exists or a third chain is added (`05-governance-plan.ts`). It blocks
+   * sends INTO a chain that is over, never sends out of it and never settlement.
+   */
+  maxChainExposure: 0n,
 };
 
 const HUB_BY_PROFILE = {
@@ -182,8 +250,8 @@ const HUB_BY_PROFILE = {
     strategySeedAssets: USDC(1),
     accountant: { ...COMMON_ACCOUNTANT, maxInFlightRatio: 60n * 10n ** 16n }, // 60%: a test moves half the stand across
     upBucket: { capacity: 5n * 10n ** 15n, refillPerSecond: (2n * 10n ** 17n) / 31_536_000n },
-    downBucket: { capacity: 2n * 10n ** 15n, refillPerSecond: 10n ** 15n / 86_400n },
-    epoch: { minDuration: 3600n, maxDuration: 2n * 3600n, minTicks: 1n, maxClearingDelay: 3600n },
+    downBucket: { capacity: DOWN_BUCKET_CAPACITY, refillPerSecond: 10n ** 15n / 86_400n },
+    epoch: { minDuration: 3600n, maxDuration: 2n * 3600n, minTicks: 1n, maxClearingDelay: MAX_CLEARING_DELAY },
     limits: {
       minDeposit: USDC(1),
       maxEpochDeposits: USDC(500),
@@ -191,8 +259,8 @@ const HUB_BY_PROFILE = {
       minBufferRatio: 10n * 10n ** 16n, // 10%
       maxInstantWithdrawal: USDC(25),
       dailyInstantLimit: USDC(50),
-      instantFee: 10n ** 15n, // 0.1%
-      instantMaxTickAge: 2n * 3600n,
+      instantFee: INSTANT_FEE,
+      instantMaxTickAge: MAX_TICK_AGE,
     },
     fees: { management: 0n, performance: 0n },
   },
@@ -203,8 +271,8 @@ const HUB_BY_PROFILE = {
     strategySeedAssets: USDC(1),
     accountant: { ...COMMON_ACCOUNTANT, maxInFlightRatio: 25n * 10n ** 16n }, // 25%
     upBucket: { capacity: 5n * 10n ** 15n, refillPerSecond: (2n * 10n ** 17n) / 31_536_000n }, // 0.5%, 20% APR
-    downBucket: { capacity: 2n * 10n ** 15n, refillPerSecond: 10n ** 15n / 86_400n }, // 0.2%, 0.1%/day
-    epoch: { minDuration: 4n * 3600n, maxDuration: 6n * 3600n, minTicks: 1n, maxClearingDelay: 3600n },
+    downBucket: { capacity: DOWN_BUCKET_CAPACITY, refillPerSecond: 10n ** 15n / 86_400n }, // 0.2%, 0.1%/day
+    epoch: { minDuration: 4n * 3600n, maxDuration: 6n * 3600n, minTicks: 1n, maxClearingDelay: MAX_CLEARING_DELAY },
     limits: {
       minDeposit: USDC(10),
       maxEpochDeposits: USDC(5_000_000),
@@ -212,8 +280,8 @@ const HUB_BY_PROFILE = {
       minBufferRatio: 5n * 10n ** 16n, // 5% of bid NAV
       maxInstantWithdrawal: USDC(10_000),
       dailyInstantLimit: USDC(50_000),
-      instantFee: 10n ** 15n, // 0.1%
-      instantMaxTickAge: 2n * 3600n,
+      instantFee: INSTANT_FEE,
+      instantMaxTickAge: MAX_TICK_AGE,
     },
     fees: { management: 0n, performance: 0n },
   },

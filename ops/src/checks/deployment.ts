@@ -171,6 +171,38 @@ export async function checkDeployment(
     }
     const fees = await accountant.getFees();
     check(eq(fees.treasury, ids.safe), 'fee treasury = Safe', fees.treasury);
+
+    // Parameter coherence. These relations span two contracts and are set by
+    // separate Timelock calls, so no contract can enforce them; each violation is
+    // a silent stall rather than a revert at the time it is introduced.
+    const cfg = await accountant.config();
+    const [, down] = await accountant.buckets();
+    const epochCfg = await vault.epochConfig();
+    const lim = await vault.limits();
+    const hubBlockTime = 2n; // Base / OP Stack
+    const snapshotCeiling = 256n * hubBlockTime; // EVM blockhash window
+    check(
+      BigInt(cfg.maxSnapshotAge) < snapshotCeiling,
+      'maxSnapshotAge inside the blockhash window',
+      `${cfg.maxSnapshotAge}s against a ${snapshotCeiling}s ceiling: older snapshots fail as InvalidHubReference, which does not say why`,
+    );
+    check(
+      BigInt(epochCfg.maxClearingDelay) >= BigInt(cfg.maxTickAge) + BigInt(cfg.maxSnapshotAge),
+      'maxClearingDelay covers maxTickAge + maxSnapshotAge',
+      `${epochCfg.maxClearingDelay}s against ${BigInt(cfg.maxTickAge) + BigInt(cfg.maxSnapshotAge)}s needed: below it every clear reverts TickNotUsable while ticks still look fresh`,
+    );
+    check(
+      BigInt(lim.instantFee) >= BigInt(down.capacity),
+      'instantFee covers the down bucket capacity',
+      `${lim.instantFee} against ${down.capacity}: below it, exiting ahead of a pending commitTick that books a loss is risk-free`,
+    );
+    check(
+      BigInt(cfg.minTickInterval) >= BigInt(entry.confirmations) * hubBlockTime,
+      'minTickInterval covers the confirmation depth',
+      `${cfg.minTickInterval}s against ${BigInt(entry.confirmations) * hubBlockTime}s: below it the hub reference block can precede the previous commit block`,
+    );
+    const exposure = BigInt(await accountant.maxChainExposure());
+    check(true, 'maxChainExposure', exposure === 0n ? 'disabled' : `${(Number(exposure) / 1e16).toFixed(2)}% of gross bid assets per chain`);
   }
   return out;
 }

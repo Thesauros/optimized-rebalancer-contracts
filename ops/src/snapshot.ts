@@ -5,6 +5,8 @@
  * committed Tick to detect updater faults.
  */
 import { AbiCoder, Contract, Interface, keccak256, Provider } from 'ethers';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, SNAPSHOT_TUPLE, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, hubOf } from './config';
 import { blockAtOrBefore, scanEvents } from './util';
@@ -12,6 +14,12 @@ import { blockAtOrBefore, scanEvents } from './util';
 export const KIND_IDLE = 0;
 export const KIND_STRATEGY_SHARES = 1;
 const WAD = 10n ** 18n;
+
+/** Blocks re-scanned when a persisted index is loaded, as reorg insurance. */
+export const INDEX_REWIND_BLOCKS = Number(process.env.INDEX_REWIND_BLOCKS ?? 5_000);
+
+/** Default location of the persisted transfer index; a cache, safe to delete. */
+export const TRANSFER_INDEX_FILE = process.env.TRANSFER_INDEX_FILE ?? 'crosschain-transfer-index.json';
 
 export interface ChainRef {
   chainId: bigint;
@@ -142,6 +150,76 @@ export class TransferIndex {
   readonly received = new Map<string, TransferEvent>();
   private scanned = new Map<string, number>();
 
+  /**
+   * @param file Optional path to persist to. Without it the index lives in memory
+   *   only, so every restart re-scans every chain from its manifest's start block.
+   *   That scan is sequential and grows with history, while the commit window is a
+   *   fixed 256 blocks — about 490 s of usable budget on Base once the reference
+   *   block is set 10 confirmations deep. A cold start that outgrows the budget
+   *   makes every commit revert `InvalidHubReference`, ticks stop, and all
+   *   settlement and instant exits halt with it.
+   */
+  constructor(readonly file?: string, readonly fingerprint?: string) {}
+
+  async load(): Promise<void> {
+    if (!this.file) return;
+    let raw: any;
+    try {
+      raw = JSON.parse(await fsp.readFile(this.file, 'utf8'));
+    } catch {
+      return; // absent or unreadable: fall back to a full scan from startBlock
+    }
+    if (this.fingerprint !== undefined && raw.fingerprint !== this.fingerprint) {
+      // state from a different deployment: the scan marks are keyed by chain name,
+      // so a fork or a stand would otherwise poison a production run
+      return;
+    }
+    try {
+      for (const [k, v] of Object.entries<any>(raw.sent ?? {})) {
+        this.sent.set(k, {
+          transferId: v.transferId,
+          chainKey: v.chainKey,
+          block: v.block,
+          txHash: v.txHash,
+          amount: BigInt(v.amount),
+          dstChainId: BigInt(v.dstChainId),
+          minReceive: BigInt(v.minReceive),
+        });
+      }
+      for (const [k, v] of Object.entries<any>(raw.received ?? {})) {
+        this.received.set(k, { transferId: v.transferId, chainKey: v.chainKey, block: v.block, txHash: v.txHash, amount: BigInt(v.amount) });
+      }
+      for (const [k, v] of Object.entries<any>(raw.scanned ?? {})) {
+        // rewind past the mark so a reorg below it cannot hide an event; replaying
+        // a range is idempotent because both maps are keyed by transferId
+        this.scanned.set(k, Math.max(0, Number(v) - INDEX_REWIND_BLOCKS));
+      }
+    } catch {
+      this.sent.clear();
+      this.received.clear();
+      this.scanned.clear();
+    }
+  }
+
+  /** Written through a temp file and renamed, so a reader never sees a partial state. */
+  async save(): Promise<void> {
+    if (!this.file) return;
+    const json = JSON.stringify(
+      {
+        fingerprint: this.fingerprint,
+        sent: Object.fromEntries(this.sent),
+        received: Object.fromEntries(this.received),
+        scanned: Object.fromEntries(this.scanned),
+      },
+      (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+    );
+    const abs = path.resolve(this.file);
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    const tmp = `${abs}.${process.pid}.tmp`;
+    await fsp.writeFile(tmp, json);
+    await fsp.rename(tmp, abs);
+  }
+
   async sync(chains: Chain[], upTo?: Map<string, number>): Promise<void> {
     for (const c of chains) {
       const agent = new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider);
@@ -170,15 +248,54 @@ export class TransferIndex {
       }
       this.scanned.set(c.key, head);
     }
+    await this.save();
   }
+}
+
+/**
+ * Opens the shared transfer index and restores its scan progress. Every
+ * long-running service should use this rather than `new TransferIndex()`, so a
+ * restart costs one incremental scan instead of a full replay from each manifest's
+ * start block. Concurrent writers are safe: the file is replaced atomically and a
+ * stale `scanned` mark only causes a range to be re-read, which is idempotent.
+ *
+ * The persisted state is bound to the agent addresses it was built from, so state
+ * left behind by a fork rehearsal or by the stand cannot be loaded by production.
+ */
+export async function openTransferIndex(chains: Chain[], file: string = TRANSFER_INDEX_FILE): Promise<TransferIndex> {
+  const fingerprint = keccak256(
+    Buffer.from(
+      chains
+        .map((c) => `${c.key}:${c.chainId}:${c.manifest.contracts.ChainAgent.toLowerCase()}`)
+        .sort()
+        .join('|'),
+    ),
+  );
+  const index = new TransferIndex(file, fingerprint);
+  await index.load();
+  return index;
 }
 
 /**
  * Consistent cut (docs/nav-reproduction.md step 2): advance a source reference
  * block until every receipt inside the cut has its send inside the cut.
  * Pure function over the index; returns the adjusted refs.
+ *
+ * `ceilings`, when given, is the deepest block each chain may be referenced at
+ * (head minus its confirmation depth). A send above its ceiling cannot be
+ * advanced to, so the receipt leaves the cut instead: the receiving chain's ref
+ * drops below the receipt block, the transfer stays in flight and is valued at
+ * minReceive. Without this the cut could reference a spoke block that is only one
+ * or two confirmations deep, and because only the hub reference block is bound
+ * on-chain, a reorg there would produce an accepted Tick with wrong values.
+ * Lowering a ref is always safe: it stays at or before T and goes deeper, and the
+ * loop still terminates because refs only ever decrease on that branch.
  */
-export function consistentCut(refs: Map<string, number>, index: TransferIndex): Map<string, number> {
+export function consistentCut(
+  refs: Map<string, number>,
+  index: TransferIndex,
+  ceilings?: Map<string, number>,
+): Map<string, number> {
   const out = new Map(refs);
   for (let changed = true; changed; ) {
     changed = false;
@@ -186,10 +303,15 @@ export function consistentCut(refs: Map<string, number>, index: TransferIndex): 
       if (r.block > (out.get(r.chainKey) ?? -1)) continue;
       const s = index.sent.get(id);
       if (!s) throw new Error(`receipt ${id} on ${r.chainKey} has no BridgeOut in the index`);
-      if (s.block > (out.get(s.chainKey) ?? -1)) {
-        out.set(s.chainKey, s.block);
+      if (s.block <= (out.get(s.chainKey) ?? -1)) continue;
+      const ceiling = ceilings?.get(s.chainKey);
+      if (ceiling !== undefined && s.block > ceiling) {
+        out.set(r.chainKey, r.block - 1);
         changed = true;
+        continue;
       }
+      out.set(s.chainKey, s.block);
+      changed = true;
     }
   }
   return out;
@@ -292,20 +414,26 @@ export async function buildSnapshot(allChains: Chain[], index: TransferIndex, pr
   for (const c of chains) heads.set(c.key, await c.provider.getBlockNumber());
 
   const conf = (c: Chain) => Number(process.env[`CONFIRMATIONS_${c.key.toUpperCase()}`] ?? c.entry.confirmations);
+  const confirmedHeads = new Map<string, number>();
+  for (const c of chains) confirmedHeads.set(c.key, heads.get(c.key)! - conf(c));
+
   const refs = new Map<string, number>();
-  const hubRef = heads.get(hub.key)! - conf(hub);
+  const hubRef = confirmedHeads.get(hub.key)!;
   refs.set(hub.key, hubRef);
   const t = (await hub.provider.getBlock(hubRef))!.timestamp;
   for (const c of chains) {
     if (c === hub) continue;
-    const confirmed = heads.get(c.key)! - conf(c);
+    const confirmed = confirmedHeads.get(c.key)!;
     const lo = c.manifest.startBlock;
     const ts = (await c.provider.getBlock(lo))!.timestamp;
     refs.set(c.key, ts > t ? lo : await blockAtOrBefore(c.provider, t, lo, confirmed));
   }
 
+  // the index runs to the raw heads so a receipt is never seen without its send;
+  // the cut is what enforces confirmation depth, by dropping such a receipt back
+  // into flight rather than referencing an unconfirmed block
   await index.sync(chains, heads);
-  const cut = consistentCut(refs, index);
+  const cut = consistentCut(refs, index, confirmedHeads);
   return assemble(chains, index, cut, prevOffers);
 }
 
