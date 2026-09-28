@@ -16,7 +16,7 @@
  */
 import { ethers } from 'hardhat';
 import { HUB_PARAMS, NETWORKS, PROFILE, identities } from './registry';
-import { Manifest, banner, codehash, currentEntry, deployer, readManifest, send, writeManifest } from './lib';
+import { EMPTY_CODEHASH, Manifest, banner, codehash, currentEntry, deployer, readManifest, send, settle, writeManifest } from './lib';
 
 async function main() {
   const [key, entry] = await currentEntry();
@@ -54,6 +54,13 @@ async function main() {
 
   async function deploy(name: string, contract: string, args: unknown[] = [], libraries?: Record<string, string>) {
     if (m.contracts[name]) {
+      // an earlier run may have hashed before the RPC served the code
+      if (!m.codehashes[name] || m.codehashes[name] === EMPTY_CODEHASH) {
+        m.codehashes[name] = await codehash(m.contracts[name]);
+        save();
+        console.log(`  = ${name} ${m.contracts[name]} (code hash re-read)`);
+        return m.contracts[name];
+      }
       console.log(`  = ${name} ${m.contracts[name]}`);
       return m.contracts[name];
     }
@@ -62,6 +69,7 @@ async function main() {
     await c.waitForDeployment();
     m.contracts[name] = await c.getAddress();
     m.txs[name] = c.deploymentTransaction()!.hash;
+    await settle(m.contracts[name], m.txs[name]);
     m.codehashes[name] = await codehash(m.contracts[name]);
     save();
     console.log(`  ✓ ${name} ${m.contracts[name]}`);
@@ -77,7 +85,9 @@ async function main() {
     if (seed) {
       // the initializer pulls the seed from the proxy creator; approve the address the
       // proxy will have, i.e. the CREATE address of the transaction after the approve
-      const nonce = await ethers.provider.getTransactionCount(me, 'pending');
+      // the approve is already confirmed, so 'latest' is exact; 'pending' from a
+      // lagging node in an RPC pool could be lower and mispredict the address
+      const nonce = await ethers.provider.getTransactionCount(me, 'latest');
       const predicted = ethers.getCreateAddress({ from: me, nonce: nonce + 1 });
       await send(`approve ${name} seed`, usdc.approve(predicted, seed) as any);
       const proxy = await deployRaw(name, implName, initData);
@@ -93,6 +103,7 @@ async function main() {
     await c.waitForDeployment();
     m.contracts[name] = await c.getAddress();
     m.txs[name] = c.deploymentTransaction()!.hash;
+    await settle(m.contracts[name], m.txs[name]);
     save();
     console.log(`  ✓ ${name} ${m.contracts[name]} (proxy of ${implName})`);
     return m.contracts[name];
@@ -137,6 +148,7 @@ async function main() {
     m.contracts.Strategy = log!.args.vault;
     m.txs.Strategy = tx.hash;
     save();
+    await settle(m.contracts.Strategy, tx.hash);
     console.log(`  ✓ Strategy ${m.contracts.Strategy}`);
   }
 

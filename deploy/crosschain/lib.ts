@@ -73,15 +73,45 @@ export function peers(selfKey: string): [string, NetworkEntry][] {
   return Object.entries(NETWORKS).filter(([k]) => k !== selfKey);
 }
 
+/**
+ * Confirmations awaited per transaction. Public RPC endpoints are pools of nodes,
+ * and a read right after a write can land on a node one or two blocks behind: it
+ * then sees no code at a fresh address and stale state after a call. Waiting a few
+ * blocks before the next read removes that race on live networks.
+ */
+const CONFIRMATIONS = Number(process.env.DEPLOY_CONFIRMATIONS ?? (network.name.endsWith('Local') || network.name === 'hardhat' ? 1 : 3));
+
+export const EMPTY_CODEHASH = '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470';
+
 export async function send(label: string, tx: Promise<ContractTransactionResponse>): Promise<string> {
   const sent = await tx;
-  const receipt = await sent.wait();
+  const receipt = await sent.wait(CONFIRMATIONS);
   if (!receipt || receipt.status !== 1) throw new Error(`${label}: transaction failed (${sent.hash})`);
   console.log(`  ✓ ${label}  ${sent.hash}`);
   return sent.hash;
 }
 
+/** Waits for a deployment's confirmations, then until the RPC actually serves its code. */
+export async function settle(address: string, txHash?: string): Promise<void> {
+  if (txHash) {
+    // hardhat's provider has no waitForTransaction; poll the receipt and the head
+    for (let i = 0; ; i++) {
+      const r = await ethers.provider.getTransactionReceipt(txHash);
+      if (r && (await ethers.provider.getBlockNumber()) >= r.blockNumber + CONFIRMATIONS - 1) break;
+      if (i >= 90) throw new Error(`${txHash} not confirmed ${CONFIRMATIONS} deep after 180 s`);
+      await new Promise((res) => setTimeout(res, 2000));
+    }
+  }
+  for (let i = 0; i < 30; i++) {
+    if ((await ethers.provider.getCode(address)) !== '0x') return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`no code at ${address} after 60 s: the RPC is lagging or the deployment failed`);
+}
+
+/** keccak256 of the deployed code; refuses to record the hash of empty code. */
 export async function codehash(address: string): Promise<string> {
+  await settle(address);
   return ethers.keccak256(await ethers.provider.getCode(address));
 }
 
