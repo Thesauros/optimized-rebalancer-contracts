@@ -495,8 +495,9 @@ export async function committedSnapshot(hub: Chain, tickId: bigint): Promise<{ s
   if (Number(tick.status) === 0 || tickId === 0n) return undefined;
   // the commit happened a few blocks after the hub reference block
   const from = Number(tick.hubBlock);
-  const to = from + 300;
-  const logs = await accountant.queryFilter(accountant.filters.TickCommitted(tickId), from, to);
+  const to = Math.min(from + 300, await hub.provider.getBlockNumber());
+  const logs = (await scanMany(accountant, ['TickCommitted'], from, to))
+    .filter((event) => BigInt(event.args.tickId) === tickId);
   if (logs.length === 0) throw new Error(`TickCommitted(${tickId}) not found in [${from}, ${to}]`);
   const tx = await hub.provider.getTransaction(logs[0].transactionHash);
   const parsed = accountantIface.parseTransaction({ data: tx!.data });
