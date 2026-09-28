@@ -16,8 +16,8 @@ const root = path.join(__dirname, '..', '..');
 const USDC = (n: number) => BigInt(n) * 1_000_000n;
 // amounts sized to the profile's limits (stand: 50-100 USD test stand)
 const A = PROFILE === 'stand'
-  ? { deposit: 100, push: 60, allocate: 20, bridge: 40, instant: 5, redeem: 10 }
-  : { deposit: 200_000, push: 150_000, allocate: 50_000, bridge: 100_000, instant: 1_000, redeem: 10_000 };
+  ? { deposit: 100, push: 60, allocate: 20, bridge: 40, instant: 5, redeem: 10, back: 10 }
+  : { deposit: 200_000, push: 150_000, allocate: 50_000, bridge: 100_000, instant: 1_000, redeem: 10_000, back: 10_000 };
 const EPOCH_WAIT = Number(HUB_PARAMS.epoch.minDuration) + 60;
 
 function service(name: string, ...extra: string[]) {
@@ -26,6 +26,12 @@ function service(name: string, ...extra: string[]) {
     stdio: 'inherit',
     env: { ...process.env, KEEPER_CLAIM_FOR_USERS: 'true' },
   });
+}
+
+/** The operator CLI, exactly as an operator runs it; capital moves go through it. */
+function exec(...args: string[]) {
+  console.log(`\n--- exec ${args.join(' ')}`);
+  execFileSync('npx', ['ts-node', '--transpile-only', path.join(root, 'ops', 'src', 'exec.ts'), ...args], { stdio: 'inherit', env: process.env });
 }
 
 async function advance(providers: JsonRpcProvider[], seconds: number) {
@@ -82,15 +88,16 @@ async function main() {
   const shares = BigInt(await vault.balanceOf(userWallet.address));
   assert(shares > 0n, `deposit cleared and claimed by the keeper: ${shares} shares`);
 
-  console.log('\n== 4. executor deploys capital: hub strategy + CCTP to Arbitrum');
-  resync();
-  const vaultX = new Contract(hc.EpochVault, EPOCH_VAULT, executorHub);
-  const hubAgent = new Contract(hc.ChainAgent, CHAIN_AGENT, executorHub);
-  await (await vaultX.pushToAgent(USDC(A.push))).wait();
-  await (await hubAgent.allocate(USDC(A.allocate))).wait();
-  const route = id(`thesauros.route.v1:${hub.chainId}->${spoke.chainId}`);
-  await (await hubAgent.bridgeOut(route, USDC(A.bridge), USDC(A.bridge), id('rehearsal-rebalance-1'))).wait();
+  console.log('\n== 4. executor deploys capital through the operator CLI: hub strategy + CCTP to Arbitrum');
+  const hubAgent = new Contract(hc.ChainAgent, CHAIN_AGENT, hub.provider);
+  exec('push', String(A.push));
+  assert(BigInt(await hubAgent.idle()) === 0n, 'exec without --yes is a dry run: nothing moved');
+  exec('push', String(A.push), '--yes');
+  exec('allocate', hub.key, String(A.allocate), '--yes');
+  exec('bridge', hub.key, spoke.key, 'all', '--tag', 'rehearsal-rebalance-1', '--yes');
   assert(BigInt(await hubAgent.idle()) === 0n, 'hub agent idle fully allocated and bridged');
+  assert(A.push - A.allocate === A.bridge, 'the bridged remainder is the planned amount');
+  exec('status');
 
   console.log('\n== 5. tick with the transfer in flight');
   await advance(providers, 6 * 60);
@@ -100,10 +107,10 @@ async function main() {
 
   console.log('\n== 6. relayer delivers on Arbitrum (local attester), spoke allocates');
   service('relayer');
-  resync();
-  const spokeAgent = new Contract(sc.ChainAgent, CHAIN_AGENT, executorSpoke);
+  const spokeAgent = new Contract(sc.ChainAgent, CHAIN_AGENT, spoke.provider);
   assert(BigInt(await spokeAgent.idle()) === USDC(A.bridge), `spoke agent received exactly ${A.bridge} USDC via CCTP`);
-  await (await spokeAgent.allocate(USDC(A.bridge))).wait();
+  exec('transfers');
+  exec('allocate', spoke.key, 'all', '--yes');
   const spokeStrategy = new Contract(sc.Strategy, STRATEGY, spoke.provider);
   assert(BigInt(await spokeStrategy.balanceOf(sc.ChainAgent)) > 0n, 'spoke strategy shares held by the agent');
 
@@ -131,6 +138,23 @@ async function main() {
   service('keeper');
   const [, , liabilities] = await vault.accounting();
   assert(BigInt(liabilities) < 10n, 'redemption cleared, funded and claimed by the keeper');
+
+  console.log('\n== 8b. return path: Arbitrum strategy -> CCTP -> Base -> vault');
+  const [cashBefore] = await vault.accounting();
+  exec('deallocate', spoke.key, String(A.back), '--yes');
+  exec('bridge', spoke.key, hub.key, String(A.back), '--tag', 'rehearsal-return-1', '--yes');
+  await advance(providers, 60);
+  service('relayer');
+  assert(BigInt(await hubAgent.idle()) === USDC(A.back), `hub agent received exactly ${A.back} USDC back from Arbitrum`);
+  exec('return', 'all', '--yes');
+  const [cashAfter] = await vault.accounting();
+  assert(BigInt(cashAfter) - BigInt(cashBefore) === USDC(A.back), 'returned capital is vault cash again');
+  await advance(providers, 6 * 60);
+  service('nav', '--force');
+  const backId = BigInt(await accountant.lastAcceptedTickId());
+  const v2 = await verifyTick(chains, new TransferIndex(), backId);
+  assert(v2.ok, `tick ${backId} after the round trip re-derived identically ${v2.mismatches.join('; ')}`);
+  exec('status');
 
   console.log('\n== 9. indexer + API');
   const port = '18085';

@@ -9,7 +9,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, SNAPSHOT_TUPLE, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, hubOf } from './config';
-import { blockAtOrBefore, scanEvents } from './util';
+import { blockAtOrBefore, scanMany } from './util';
 
 export const KIND_IDLE = 0;
 export const KIND_STRATEGY_SHARES = 1;
@@ -226,7 +226,17 @@ export class TransferIndex {
       const head = upTo?.get(c.key) ?? (await c.provider.getBlockNumber());
       const from = (this.scanned.get(c.key) ?? c.manifest.startBlock - 1) + 1;
       if (from > head) continue;
-      for (const e of await scanEvents(agent, 'BridgeOut', from, head)) {
+      for (const e of await scanMany(agent, ['BridgeOut', 'BridgeIn'], from, head)) {
+        if (e.eventName === 'BridgeIn') {
+          this.received.set(e.args.transferId, {
+            transferId: e.args.transferId,
+            chainKey: c.key,
+            block: e.blockNumber,
+            txHash: e.transactionHash,
+            amount: e.args.amount,
+          });
+          continue;
+        }
         this.sent.set(e.args.transferId, {
           transferId: e.args.transferId,
           chainKey: c.key,
@@ -235,15 +245,6 @@ export class TransferIndex {
           amount: e.args.amount,
           dstChainId: e.args.dstChainId,
           minReceive: e.args.minReceive,
-        });
-      }
-      for (const e of await scanEvents(agent, 'BridgeIn', from, head)) {
-        this.received.set(e.args.transferId, {
-          transferId: e.args.transferId,
-          chainKey: c.key,
-          block: e.blockNumber,
-          txHash: e.transactionHash,
-          amount: e.args.amount,
         });
       }
       this.scanned.set(c.key, head);

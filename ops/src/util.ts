@@ -4,7 +4,7 @@
  * as the Thesauros-Rebalance-Engine alert manager).
  */
 import http from 'http';
-import { Contract, EventLog, Log, Provider } from 'ethers';
+import { Contract, Log, Provider } from 'ethers';
 
 export function log(service: string, msg: string, extra?: unknown): void {
   const line = { t: new Date().toISOString(), service, msg, ...(extra ? { extra } : {}) };
@@ -13,21 +13,84 @@ export function log(service: string, msg: string, extra?: unknown): void {
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** queryFilter in bounded block ranges (public RPCs cap eth_getLogs ranges). */
-export async function scanEvents(
-  contract: Contract,
-  eventName: string,
-  fromBlock: number,
-  toBlock: number,
-  step = Number(process.env.LOG_RANGE ?? 9_000),
-): Promise<EventLog[]> {
-  const out: EventLog[] = [];
-  for (let start = fromBlock; start <= toBlock; start += step + 1) {
-    const end = Math.min(toBlock, start + step);
-    const logs = (await contract.queryFilter(contract.getEvent(eventName), start, end)) as (EventLog | Log)[];
-    for (const l of logs) if ((l as EventLog).args) out.push(l as EventLog);
+/** A decoded log; the fields callers read from ethers' EventLog. */
+export interface ScannedEvent {
+  eventName: string;
+  args: any;
+  blockNumber: number;
+  transactionHash: string;
+  logIndex: number;
+}
+
+/**
+ * Blocks per eth_getLogs request, minus one (ranges are inclusive). Starts at
+ * LOG_RANGE and shrinks to whatever the provider says its limit is: Moralis caps
+ * at 100 blocks, public endpoints at a few thousand, paid ones at 10k or more.
+ */
+let logStep = Number(process.env.LOG_RANGE ?? 9_000);
+
+function providerRangeLimit(e: unknown): number | undefined {
+  const text = String((e as any)?.info?.responseBody ?? (e as any)?.error?.message ?? (e as any)?.message ?? e);
+  if (!/range|limit|too many|10000 results/i.test(text)) return undefined;
+  const m = text.match(/(?:block range|range)[^0-9]{0,40}(\d{2,7})/i);
+  const n = m ? Number(m[1]) : undefined;
+  return n && n > 1 ? n - 1 : 0;
+}
+
+/**
+ * Every named event of one contract, in log order, with one eth_getLogs per
+ * block range: a topic-0 OR filter instead of one request per event name.
+ * Log order matters to callers that replay state (a cancel after its request).
+ */
+export async function scanMany(contract: Contract, eventNames: string[], fromBlock: number, toBlock: number): Promise<ScannedEvent[]> {
+  const topics = eventNames.map((n) => contract.interface.getEvent(n)!.topicHash);
+  const address = await contract.getAddress();
+  const provider = contract.runner?.provider ?? (contract.runner as unknown as Provider);
+  const out: ScannedEvent[] = [];
+  for (let start = fromBlock; start <= toBlock; ) {
+    const end = Math.min(toBlock, start + logStep);
+    let logs: Log[];
+    try {
+      logs = await provider!.getLogs({ address, topics: [topics], fromBlock: start, toBlock: end });
+    } catch (e) {
+      const limit = providerRangeLimit(e);
+      const span = end - start;
+      if (limit === undefined || span === 0) throw e;
+      // trust the provider's stated limit when it is smaller; otherwise halve
+      logStep = limit > 0 && limit < span ? limit : Math.floor(span / 2);
+      continue; // retry the same start with the smaller range
+    }
+    for (const l of logs) {
+      const parsed = contract.interface.parseLog(l);
+      if (!parsed) continue;
+      out.push({ eventName: parsed.name, args: parsed.args, blockNumber: l.blockNumber, transactionHash: l.transactionHash, logIndex: l.index });
+    }
+    start = end + 1;
   }
   return out;
+}
+
+/** One event name; kept for callers that need a single kind. */
+export async function scanEvents(contract: Contract, eventName: string, fromBlock: number, toBlock: number): Promise<ScannedEvent[]> {
+  return scanMany(contract, [eventName], fromBlock, toBlock);
+}
+
+/**
+ * Accumulates events across passes so a long-running loop scans only the blocks
+ * it has not seen, instead of re-reading history on every pass.
+ */
+export class EventCache {
+  private readonly state = new Map<string, { to: number; events: ScannedEvent[] }>();
+
+  async get(key: string, contract: Contract, eventNames: string[], fromBlock: number, head: number): Promise<ScannedEvent[]> {
+    const s = this.state.get(key) ?? { to: fromBlock - 1, events: [] };
+    if (head > s.to) {
+      s.events.push(...(await scanMany(contract, eventNames, Math.max(fromBlock, s.to + 1), head)));
+      s.to = head;
+    }
+    this.state.set(key, s);
+    return s.events;
+  }
 }
 
 /** Highest block with timestamp <= t, searching in [lo, hi]. */

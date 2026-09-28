@@ -10,6 +10,33 @@ Off-chain services for the cross-chain vault:
 | `npm run monitor` | Monitor: checks, Telegram alerts, `/health`, `/metrics`, Tick re-derivation |
 | `npm run indexer` | Indexer + read API for the frontend (requests, epochs, NAV history, allocation) |
 | `npm run verify-tick -- <ids>` | Independent Tick verification for partners |
+| `npm run exec -- <command>` | Operator CLI: status, transfers, capital moves, user and keeper actions. Every write is simulated; nothing is sent without `--yes` |
+
+## Operator CLI
+
+```bash
+npm run exec -- status                       # ticks, breakers, vault, epoch, agents, routes, gas
+npm run exec -- transfers                    # every CCTP transfer and whether it was delivered
+npm run exec -- push 60 --yes                # vault -> hub agent (buffer enforced)
+npm run exec -- allocate base 20 --yes       # hub agent -> hub strategy
+npm run exec -- bridge base arbitrum all --yes
+npm run exec -- allocate arbitrum all --yes  # after the relayer delivered
+npm run exec -- deallocate arbitrum 10 --yes
+npm run exec -- bridge arbitrum base 10 --yes
+npm run exec -- return all --yes             # hub agent -> vault, funds redemptions
+npm run exec -- deposit 10 --yes             # as USER_PRIVATE_KEY (falls back to the executor key)
+npm run exec -- close --yes | clear --yes | fund --yes
+```
+
+Run `npm run exec -- help` for the full list. A revert is decoded to the
+contract's custom error when `artifacts/` exists (`npx hardhat compile`).
+
+## RPC limits
+
+Log scans fetch every event of a contract in one `eth_getLogs` per range and
+shrink the range to whatever limit the provider reports (Moralis: 100 blocks),
+so `LOG_RANGE` is only a starting value. Long-running services scan
+incrementally; nothing re-reads history on every pass.
 
 Configuration, deployment and operations: `docs/crosschain-deployment.md`.
 Snapshot rules: `docs/nav-reproduction.md`.

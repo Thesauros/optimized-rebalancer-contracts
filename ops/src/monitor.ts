@@ -19,7 +19,11 @@ import { Chain, envNumber, hubOf, identities, loadChains } from './config';
 import { checkDeployment } from './checks/deployment';
 import { TransferIndex, openTransferIndex, verifyTick } from './snapshot';
 import { routeId } from '../../deploy/crosschain/registry';
-import { log, loop, scanEvents, serveStatus, telegram } from './util';
+import { EventCache, log, loop, serveStatus, telegram } from './util';
+
+// governance history is read once and then incrementally: a provider that caps
+// eth_getLogs at 100 blocks would otherwise need thousands of requests per pass
+const events = new EventCache();
 
 const SERVICE = 'monitor';
 type Severity = 'ok' | 'warn' | 'crit';
@@ -112,8 +116,8 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
   // agent allowed on-chain would hold value the snapshot never counts
   {
     const allowed = new Map<string, Set<string>>();
-    const events = await scanEvents(accountant, 'AgentUpdated', hub.manifest.startBlock, await hub.provider.getBlockNumber());
-    for (const ev of events) {
+    const updates = await events.get(`agents:${hub.key}`, accountant, ['AgentUpdated'], hub.manifest.startBlock, await hub.provider.getBlockNumber());
+    for (const ev of updates) {
       const key = ev.args.chainId.toString();
       const set = allowed.get(key) ?? new Set<string>();
       if (ev.args.allowed) set.add(ev.args.agent.toLowerCase());
@@ -236,9 +240,9 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
     const tl = new Contract(c.manifest.contracts.Timelock, TIMELOCK, c.provider);
     const head = await c.provider.getBlockNumber();
     const from = Math.max(c.manifest.startBlock, head - envNumber('MONITOR_TIMELOCK_LOOKBACK_BLOCKS', 500_000));
-    const queued = await scanEvents(tl, 'Queued', from, head);
-    const done = new Set([...(await scanEvents(tl, 'Executed', from, head)), ...(await scanEvents(tl, 'Cancelled', from, head))].map((e) => e.args.txId));
-    const open = queued.filter((q) => !done.has(q.args.txId));
+    const history = (await events.get(`timelock:${c.key}`, tl, ['Queued', 'Executed', 'Cancelled'], from, head)).filter((e) => e.blockNumber >= from);
+    const done = new Set(history.filter((e) => e.eventName !== 'Queued').map((e) => e.args.txId));
+    const open = history.filter((q) => q.eventName === 'Queued' && !done.has(q.args.txId));
     add(`timelock.${c.key}`, open.length ? 'warn' : 'ok', open.length ? `${c.key}: ${open.length} queued governance tx: ${open.map((q) => `${q.args.signature}@${q.args.target} eta ${new Date(Number(q.args.timestamp) * 1000).toISOString()}`).join('; ')}` : `${c.key}: no queued governance tx`);
   }
 

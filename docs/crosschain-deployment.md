@@ -100,6 +100,10 @@ The monitor watches their balances through `MONITOR_WATCH_BALANCES`.
 (services). Use paid providers. Run the monitor on a **different provider**
 from the NAV service, so its re-derivation is independent.
 
+The stand uses Moralis nodes (`RPC_BASE`, `RPC_ARBITRUM`, and `ARBITRUM_RPC_URL`
+for hardhat). Moralis caps `eth_getLogs` at 100 blocks; the services detect the
+cap and adapt (`ops/README.md`, RPC limits), so no setting is needed.
+
 ## 3. Deployment
 
 ```bash
@@ -200,6 +204,9 @@ existing Telegram channel pages on it without extra wiring.
 ## 5. Operations
 
 ### Executor (the only role that moves capital)
+
+Every step below is one `npm run exec` command (`ops/README.md`, Operator CLI);
+the raw calls are listed for reference.
 
 1. **Deploy capital.** Call `EpochVault.pushToAgent` (the buffer is enforced),
    then `ChainAgent.allocate` into the strategy.

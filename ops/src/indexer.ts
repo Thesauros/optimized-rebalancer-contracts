@@ -25,7 +25,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Contract, getAddress, isAddress } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, envNumber, hubOf, loadChains } from './config';
-import { log, loop, scanEvents } from './util';
+import { log, loop, scanMany } from './util';
 
 const SERVICE = 'indexer';
 const WAD = 10n ** 18n;
@@ -161,49 +161,54 @@ export class Indexer {
     const c = this.hub;
     const vault = new Contract(c.manifest.contracts.EpochVault, EPOCH_VAULT_EVENTS, c.provider);
     const accountant = new Contract(c.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, c.provider);
-    for (const e of await scanEvents(vault, 'DepositRequested', from, to)) {
-      this.db.prepare('insert or ignore into requests(id, kind, owner, receiver, epoch, amount, status, requested_tx, requested_at) values (?,?,?,?,?,?,?,?,?)')
-        .run(Number(e.args.requestId), 'deposit', e.args.owner.toLowerCase(), e.args.receiver.toLowerCase(), Number(e.args.epoch), e.args.assets.toString(), 'requested', e.transactionHash, await this.ts(c, e.blockNumber));
-    }
-    for (const e of await scanEvents(vault, 'RedeemRequested', from, to)) {
-      this.db.prepare('insert or ignore into requests(id, kind, owner, receiver, epoch, amount, status, requested_tx, requested_at) values (?,?,?,?,?,?,?,?,?)')
-        .run(Number(e.args.requestId), 'redeem', e.args.owner.toLowerCase(), e.args.receiver.toLowerCase(), Number(e.args.epoch), e.args.shares.toString(), 'requested', e.transactionHash, await this.ts(c, e.blockNumber));
-    }
-    for (const e of await scanEvents(vault, 'RequestCancelled', from, to)) {
-      this.db.prepare("update requests set status = 'cancelled', cancelled_tx = ? where id = ?").run(e.transactionHash, Number(e.args.requestId));
-    }
-    for (const name of ['DepositClaimed', 'RedeemClaimed']) {
-      for (const e of await scanEvents(vault, name, from, to)) {
-        const amount = name === 'DepositClaimed' ? e.args.shares : e.args.assets;
-        this.db.prepare("update requests set status = 'claimed', claimed_tx = ?, claimed_amount = ?, claimed_at = ? where id = ?")
-          .run(e.transactionHash, amount.toString(), await this.ts(c, e.blockNumber), Number(e.args.requestId));
+    const vaultEvents = ['DepositRequested', 'RedeemRequested', 'RequestCancelled', 'DepositClaimed', 'RedeemClaimed', 'InstantRedeemed'];
+    for (const e of await scanMany(vault, vaultEvents, from, to)) {
+      switch (e.eventName) {
+        case 'DepositRequested':
+        case 'RedeemRequested': {
+          const deposit = e.eventName === 'DepositRequested';
+          this.db.prepare('insert or ignore into requests(id, kind, owner, receiver, epoch, amount, status, requested_tx, requested_at) values (?,?,?,?,?,?,?,?,?)')
+            .run(Number(e.args.requestId), deposit ? 'deposit' : 'redeem', e.args.owner.toLowerCase(), e.args.receiver.toLowerCase(), Number(e.args.epoch), (deposit ? e.args.assets : e.args.shares).toString(), 'requested', e.transactionHash, await this.ts(c, e.blockNumber));
+          break;
+        }
+        case 'RequestCancelled':
+          this.db.prepare("update requests set status = 'cancelled', cancelled_tx = ? where id = ?").run(e.transactionHash, Number(e.args.requestId));
+          break;
+        case 'DepositClaimed':
+        case 'RedeemClaimed': {
+          const amount = e.eventName === 'DepositClaimed' ? e.args.shares : e.args.assets;
+          this.db.prepare("update requests set status = 'claimed', claimed_tx = ?, claimed_amount = ?, claimed_at = ? where id = ?")
+            .run(e.transactionHash, amount.toString(), await this.ts(c, e.blockNumber), Number(e.args.requestId));
+          break;
+        }
+        case 'InstantRedeemed':
+          this.db.prepare('insert or ignore into instants(tx, owner, receiver, tick, shares, assets, time) values (?,?,?,?,?,?,?)')
+            .run(e.transactionHash, e.args.owner.toLowerCase(), e.args.receiver.toLowerCase(), Number(e.args.tickId), e.args.shares.toString(), e.args.assets.toString(), await this.ts(c, e.blockNumber));
+          break;
       }
     }
-    for (const e of await scanEvents(vault, 'InstantRedeemed', from, to)) {
-      this.db.prepare('insert or ignore into instants(tx, owner, receiver, tick, shares, assets, time) values (?,?,?,?,?,?,?)')
-        .run(e.transactionHash, e.args.owner.toLowerCase(), e.args.receiver.toLowerCase(), Number(e.args.tickId), e.args.shares.toString(), e.args.assets.toString(), await this.ts(c, e.blockNumber));
-    }
-    for (const e of await scanEvents(accountant, 'TickCommitted', from, to)) {
+    for (const e of await scanMany(accountant, ['TickCommitted', 'TickRatified'], from, to)) {
+      if (e.eventName === 'TickRatified') {
+        this.db.prepare('update ticks set status = 3 where id = ?').run(Number(e.args.tickId));
+        continue;
+      }
       this.db.prepare('insert or replace into ticks(id, status, flags, reference_time, hub_block, rate_bid, rate_offer, nav_bid, nav_offer, nav_hash, committed_at, tx) values (?,?,?,?,?,?,?,?,?,?,?,?)')
         .run(Number(e.args.tickId), Number(e.args.status), Number(e.args.flags), Number(e.args.referenceTime), Number(e.args.hubBlock), e.args.rateBid.toString(), e.args.rateOffer.toString(), e.args.navBid.toString(), e.args.navOffer.toString(), e.args.navHash, await this.ts(c, e.blockNumber), e.transactionHash);
-    }
-    for (const e of await scanEvents(accountant, 'TickRatified', from, to)) {
-      this.db.prepare('update ticks set status = 3 where id = ?').run(Number(e.args.tickId));
     }
   }
 
   private async syncAgent(c: Chain, from: number, to: number) {
     const agent = new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider);
-    for (const e of await scanEvents(agent, 'BridgeOut', from, to)) {
-      this.db.prepare('insert into transfers(id, src_chain, dst_chain, amount, min_receive, rebalance_id, sent_tx, sent_at) values (?,?,?,?,?,?,?,?) on conflict(id) do update set src_chain = excluded.src_chain, dst_chain = excluded.dst_chain, amount = excluded.amount, min_receive = excluded.min_receive, rebalance_id = excluded.rebalance_id, sent_tx = excluded.sent_tx, sent_at = excluded.sent_at')
-        .run(e.args.transferId, Number(c.chainId), Number(e.args.dstChainId), e.args.amount.toString(), e.args.minReceive.toString(), e.args.rebalanceId, e.transactionHash, await this.ts(c, e.blockNumber));
-    }
-    for (const e of await scanEvents(agent, 'BridgeIn', from, to)) {
-      this.db.prepare('insert into transfers(id, received_amount, received_tx, received_at) values (?,?,?,?) on conflict(id) do update set received_amount = excluded.received_amount, received_tx = excluded.received_tx, received_at = excluded.received_at')
-        .run(e.args.transferId, e.args.amount.toString(), e.transactionHash, await this.ts(c, e.blockNumber));
-    }
-    for (const e of await scanEvents(agent, 'WrittenDown', from, to)) {
-      this.db.prepare('update transfers set written_down = ? where id = ?').run(e.args.totalWrittenDown.toString(), e.args.transferId);
+    for (const e of await scanMany(agent, ['BridgeOut', 'BridgeIn', 'WrittenDown'], from, to)) {
+      if (e.eventName === 'BridgeOut') {
+        this.db.prepare('insert into transfers(id, src_chain, dst_chain, amount, min_receive, rebalance_id, sent_tx, sent_at) values (?,?,?,?,?,?,?,?) on conflict(id) do update set src_chain = excluded.src_chain, dst_chain = excluded.dst_chain, amount = excluded.amount, min_receive = excluded.min_receive, rebalance_id = excluded.rebalance_id, sent_tx = excluded.sent_tx, sent_at = excluded.sent_at')
+          .run(e.args.transferId, Number(c.chainId), Number(e.args.dstChainId), e.args.amount.toString(), e.args.minReceive.toString(), e.args.rebalanceId, e.transactionHash, await this.ts(c, e.blockNumber));
+      } else if (e.eventName === 'BridgeIn') {
+        this.db.prepare('insert into transfers(id, received_amount, received_tx, received_at) values (?,?,?,?) on conflict(id) do update set received_amount = excluded.received_amount, received_tx = excluded.received_tx, received_at = excluded.received_at')
+          .run(e.args.transferId, e.args.amount.toString(), e.transactionHash, await this.ts(c, e.blockNumber));
+      } else {
+        this.db.prepare('update transfers set written_down = ? where id = ?').run(e.args.totalWrittenDown.toString(), e.args.transferId);
+      }
     }
   }
 

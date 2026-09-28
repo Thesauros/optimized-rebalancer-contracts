@@ -14,7 +14,7 @@
 import { Contract } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, STRATEGY } from './abi';
 import { envNumber, hubOf, loadChains, signerFor } from './config';
-import { log, loop, scanEvents, serveStatus } from './util';
+import { log, loop, scanMany, serveStatus } from './util';
 
 const SERVICE = 'keeper';
 
@@ -103,9 +103,7 @@ async function main() {
   async function claims() {
     const head = await hub.provider.getBlockNumber();
     if (head > scannedTo) {
-      for (const name of ['DepositRequested', 'RedeemRequested']) {
-        for (const e of await scanEvents(vault, name, scannedTo + 1, head)) openRequests.add(e.args.requestId.toString());
-      }
+      for (const e of await scanMany(vault, ['DepositRequested', 'RedeemRequested'], scannedTo + 1, head)) openRequests.add(e.args.requestId.toString());
       scannedTo = head;
     }
     for (const id of [...openRequests]) {
