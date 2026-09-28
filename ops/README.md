@@ -38,6 +38,9 @@ shrink the range to whatever limit the provider reports (Moralis: 100 blocks),
 so `LOG_RANGE` is only a starting value. Long-running services scan
 incrementally; nothing re-reads history on every pass.
 
+**Production runs only on the server, in Docker: `docs/crosschain-server.md`.**
+`npm run preflight -- --layout operators|separate` checks an environment before start.
+
 Configuration, deployment and operations: `docs/crosschain-deployment.md`.
 Snapshot rules: `docs/nav-reproduction.md`.
 Open items: `docs/crosschain-open-items.md`.

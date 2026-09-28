@@ -146,6 +146,8 @@ git add deployments/*/crosschain.json && git commit -m "crosschain: deployed"
 
 ## 4. Services
 
+Services run only on the server, in Docker: `docs/crosschain-server.md`.
+
 All four services live in `ops/` (TypeScript, ethers v6), with `npm install` in
 `ops/`. Each exposes `/health` (200 or 503) and `/status`; the monitor also
 exposes `/metrics` (Prometheus). `--once` runs a single pass.

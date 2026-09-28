@@ -31,7 +31,6 @@
  * (RPC_BASE, RPC_ARBITRUM, CROSSCHAIN_MANIFEST_DIR).
  */
 import fs from 'fs';
-import path from 'path';
 import { Contract, ContractTransactionResponse, Interface, NonceManager, Wallet, formatEther, formatUnits, id, parseUnits } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, hubOf, loadChains } from './config';
@@ -51,25 +50,8 @@ const SEND = flags.has('yes');
 const usd = (v: bigint) => formatUnits(v, 6);
 const TICK_STATUS = ['None', 'Accepted', 'Quarantined', 'Ratified'];
 
-/** Custom errors from the compiled artifacts, so a revert names its reason. */
-const errors = (() => {
-  const root = path.join(__dirname, '..', '..', 'artifacts', 'contracts');
-  const files = [
-    'crosschain/ChainAgent.sol/ChainAgent.json',
-    'crosschain/bridges/CctpV2Adapter.sol/CctpV2Adapter.json',
-    'tick/EpochVault.sol/EpochVault.json',
-    'tick/EpochVaultLogic.sol/EpochVaultLogic.json',
-    'tick/TickAccountant.sol/TickAccountant.json',
-    'Rebalancer.sol/Rebalancer.json',
-  ];
-  const frags = new Map<string, unknown>();
-  for (const f of files) {
-    const p = path.join(root, f);
-    if (!fs.existsSync(p)) continue;
-    for (const e of JSON.parse(fs.readFileSync(p, 'utf8')).abi) if (e.type === 'error') frags.set(JSON.stringify(e), e);
-  }
-  return new Interface([...frags.values()] as any[]);
-})();
+/** Custom errors of our contracts (src/errors.json, see scripts/extract-errors.js), so a revert names its reason. */
+const errors = new Interface(require('./errors.json'));
 
 function reason(e: any): string {
   const data: string | undefined = e?.data ?? e?.info?.error?.data ?? e?.error?.data;

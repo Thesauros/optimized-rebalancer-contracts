@@ -103,14 +103,16 @@ export function hubOf(chains: Chain[]): Chain {
 const signers = new Map<string, NonceManager>();
 
 /**
- * One NonceManager per (key, chain): services send several transactions in a
- * row from the same key, so nonces are tracked locally and re-synced from the
- * chain after any failed iteration.
+ * One NonceManager per (address, chain): services send several transactions in
+ * a row from the same key, so nonces are tracked locally and re-synced from the
+ * chain after any failed iteration. Keyed by address, not by variable name: on
+ * the stand NAV_UPDATER, KEEPER, RELAYER and EXECUTOR are one key, and they
+ * share one counter only when they run in one process (`operators.ts`).
  */
 export function signerFor(chain: Chain, envKey: string): NonceManager {
   const pk = process.env[envKey];
   if (!pk) throw new Error(`${envKey} is not set`);
-  const cacheKey = `${envKey}:${chain.key}`;
+  const cacheKey = `${new Wallet(pk).address}:${chain.chainId}`;
   let s = signers.get(cacheKey);
   if (!s) {
     s = new NonceManager(new Wallet(pk, chain.provider));

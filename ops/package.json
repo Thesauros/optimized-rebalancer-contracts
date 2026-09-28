@@ -11,14 +11,16 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --require ts-node/register/transpile-only --test test/*.test.ts",
     "indexer": "ts-node --transpile-only src/indexer.ts",
-    "exec": "ts-node --transpile-only src/exec.ts"
+    "exec": "ts-node --transpile-only src/exec.ts",
+    "preflight": "ts-node --transpile-only src/preflight.ts",
+    "operators": "ts-node --transpile-only src/operators.ts"
   },
   "dependencies": {
-    "ethers": "^6.13.0"
+    "ethers": "6.16.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "ts-node": "^10.9.2",
+    "ts-node": "10.9.2",
     "typescript": "^5.4.0"
   }
 }

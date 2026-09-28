@@ -48,3 +48,7 @@ crosschain-transfer-index.json
 crosschain-transfer-index.json.*.tmp
 crosschain-indexer.sqlite
 crosschain-indexer.sqlite-*
+
+# ops server secrets (templates: ops/.env.server.example, ops/.env.keys.example)
+ops/.env.server
+ops/.env.keys

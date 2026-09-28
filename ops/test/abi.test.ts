@@ -40,3 +40,10 @@ for (const [name, abi, rel] of cases) {
     }
   });
 }
+
+test('src/errors.json matches the compiled artifacts (re-run scripts/extract-errors.js)', (t) => {
+  if (!fs.existsSync(artifacts)) return t.skip('run `npx hardhat compile` first');
+  const { extract } = require('../scripts/extract-errors.js');
+  const committed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'errors.json'), 'utf8'));
+  assert.deepEqual(committed, JSON.parse(JSON.stringify(extract())));
+});

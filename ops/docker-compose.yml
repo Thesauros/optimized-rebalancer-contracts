@@ -1,0 +1,100 @@
+# Cross-chain ops on the server. Run from the repository root:
+#
+#   stand (one key for every role):  docker compose -f ops/docker-compose.yml --profile stand up -d --build
+#   production (a key per role):     docker compose -f ops/docker-compose.yml --profile production up -d --build
+#
+# Every service waits for `preflight`, which exits non-zero on any
+# misconfiguration, so nothing starts half-configured. Runbook: docs/crosschain-server.md.
+
+x-common: &common
+  image: thesauros/crosschain-ops:local
+  init: true # node as PID 1 would ignore SIGTERM
+  restart: unless-stopped
+  env_file: [.env.server]
+  volumes: [ops-data:/data]
+  logging:
+    driver: json-file
+    options: { max-size: 20m, max-file: "10" }
+
+x-signing: &signing
+  <<: *common
+  env_file: [.env.server, .env.keys]
+  depends_on:
+    preflight: { condition: service_completed_successfully }
+
+x-health: &health
+  interval: 60s
+  timeout: 10s
+  retries: 3
+  start_period: 120s
+
+services:
+  preflight:
+    <<: *common
+    build: { context: .., dockerfile: ops/Dockerfile }
+    env_file: [.env.server, .env.keys]
+    restart: "no"
+    command: ["src/preflight.ts", "--layout", "${OPS_LAYOUT:-operators}"]
+    profiles: [stand, production, tools]
+
+  # stand: nav, keeper and relayer share one key, so they share one process and
+  # one nonce counter (ops/src/operators.ts)
+  operators:
+    <<: *signing
+    command: ["src/operators.ts"]
+    profiles: [stand]
+    ports: ["127.0.0.1:8081:8081", "127.0.0.1:8082:8082", "127.0.0.1:8083:8083"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "node", "-e", "Promise.all([8081,8082,8083].map(p=>fetch('http://127.0.0.1:'+p+'/health').then(r=>{if(!r.ok)throw r.status}))).then(()=>process.exit(0),()=>process.exit(1))"]
+
+  # production: one key and one process per role
+  nav:
+    <<: *signing
+    command: ["src/nav.ts"]
+    profiles: [production]
+    ports: ["127.0.0.1:8081:8081"]
+    healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
+  keeper:
+    <<: *signing
+    command: ["src/keeper.ts"]
+    profiles: [production]
+    ports: ["127.0.0.1:8082:8082"]
+    healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8082/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
+  relayer:
+    <<: *signing
+    command: ["src/relayer.ts"]
+    profiles: [production]
+    ports: ["127.0.0.1:8083:8083"]
+    healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8083/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
+
+  # read-only services: no keys in their environment
+  monitor:
+    <<: *common
+    command: ["src/monitor.ts"]
+    profiles: [stand, production]
+    depends_on:
+      preflight: { condition: service_completed_successfully }
+    ports: ["127.0.0.1:8084:8084"]
+    healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8084/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
+  indexer:
+    <<: *common
+    command: ["src/indexer.ts"]
+    profiles: [stand, production]
+    depends_on:
+      preflight: { condition: service_completed_successfully }
+    # the frontend's read API; put a TLS reverse proxy in front of it
+    ports: ["127.0.0.1:8085:8085"]
+    healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8085/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
+
+  # operator CLI, run on demand:
+  #   docker compose -f ops/docker-compose.yml run --rm exec status
+  exec:
+    <<: *common
+    env_file: [.env.server, .env.keys]
+    restart: "no"
+    entrypoint: ["node", "--require", "/app/node_modules/ts-node/register/transpile-only", "src/exec.ts"]
+    profiles: [tools]
+
+volumes:
+  ops-data:
