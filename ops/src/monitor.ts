@@ -78,20 +78,53 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
   }
   add('tick.rate', 'ok', `bid ${Number((BigInt(latest.rateBid) * 1_000_000n) / WAD) / 1e6}, nav ${usd(BigInt(latest.navBid)).toFixed(2)} USDC`, Number(BigInt(latest.navBid) / 1_000_000n));
 
-  // independent re-derivation of the latest accepted tick
-  if (process.env.MONITOR_VERIFY_TICKS !== 'false' && BigInt(latestId) > 0n) {
-    const key = latestId.toString();
-    if (!verified.has(key)) {
+  // Independent re-derivation of every committed tick, not only the latest: a
+  // tick committed while the monitor was down, or superseded before a pass ran,
+  // is still checked. Bounded per pass so a long backlog cannot stall the loop;
+  // a failed verdict stays critical until the process restarts.
+  if (process.env.MONITOR_VERIFY_TICKS !== 'false') {
+    const lastId = Number(await accountant.lastTickId());
+    const perPass = envNumber('MONITOR_VERIFY_PER_PASS', 5);
+    const backlog = envNumber('MONITOR_VERIFY_BACKLOG', 50);
+    let done = 0;
+    for (let id = Math.max(1, lastId - backlog + 1); id <= lastId && done < perPass; id++) {
+      const key = id.toString();
+      if (verified.has(key)) continue;
+      done++;
       try {
-        const r = await verifyTick(chains, index, BigInt(latestId));
+        const r = await verifyTick(chains, index, BigInt(id));
         verified.set(key, r.ok);
         if (!r.ok) log(SERVICE, 'tick verification failed', { tickId: key, mismatches: r.mismatches });
-        add('tick.verify', r.ok ? 'ok' : 'crit', r.ok ? `tick ${key} re-derived identically` : `tick ${key} does not reproduce: ${r.mismatches.slice(0, 3).join('; ')}`);
       } catch (e) {
-        add('tick.verify', 'warn', `tick ${key} verification error: ${String(e).slice(0, 160)}`);
+        add(`tick.verify.${key}`, 'warn', `tick ${key} verification error: ${String(e).slice(0, 160)}`);
       }
-    } else {
-      add('tick.verify', verified.get(key) ? 'ok' : 'crit', `tick ${key} ${verified.get(key) ? 'verified' : 'failed verification'}`);
+    }
+    const failed = [...verified].filter(([, ok]) => !ok).map(([k]) => k);
+    const pending = Math.max(0, Math.min(lastId, backlog) - [...verified.keys()].filter((k) => Number(k) > lastId - backlog).length);
+    add(
+      'tick.verify',
+      failed.length ? 'crit' : 'ok',
+      failed.length ? `ticks ${failed.join(',')} do not reproduce` : `last ${Math.min(lastId, backlog) - pending} ticks re-derived identically${pending ? `, ${pending} pending` : ''}`,
+    );
+  }
+
+  // Agent set: positions are read only from the manifest agents, so an extra
+  // agent allowed on-chain would hold value the snapshot never counts
+  {
+    const allowed = new Map<string, Set<string>>();
+    const events = await scanEvents(accountant, 'AgentUpdated', hub.manifest.startBlock, await hub.provider.getBlockNumber());
+    for (const ev of events) {
+      const key = ev.args.chainId.toString();
+      const set = allowed.get(key) ?? new Set<string>();
+      if (ev.args.allowed) set.add(ev.args.agent.toLowerCase());
+      else set.delete(ev.args.agent.toLowerCase());
+      allowed.set(key, set);
+    }
+    for (const c of chains) {
+      const set = allowed.get(c.chainId.toString()) ?? new Set<string>();
+      const want = c.manifest.contracts.ChainAgent.toLowerCase();
+      const ok = set.size === 1 && set.has(want);
+      add(`agents.${c.key}`, ok ? 'ok' : 'crit', ok ? `${c.key}: exactly the manifest agent is allowed` : `${c.key}: allowed agents [${[...set].join(', ')}], manifest ${want}`);
     }
   }
 
@@ -149,6 +182,14 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
   for (const c of chains) {
     const agent = new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider);
     const strategy = new Contract(c.manifest.contracts.Strategy, STRATEGY, c.provider);
+    // Actions.Withdraw blocks deallocate, hence recalls, epoch funding and every
+    // queued redemption; ADMIN can set it instantly (threat model T27)
+    const [depositPaused, withdrawPaused]: boolean[] = [await strategy.paused(0), await strategy.paused(1)];
+    add(
+      `strategy.${c.key}.paused`,
+      withdrawPaused ? 'crit' : depositPaused ? 'warn' : 'ok',
+      withdrawPaused ? `${c.key} strategy WITHDRAW paused: recalls and all queued redemptions are blocked` : depositPaused ? `${c.key} strategy deposits paused` : `${c.key} strategy not paused`,
+    );
     const healthy: boolean = await strategy.providersHealthy();
     add(`strategy.${c.key}.health`, healthy ? 'ok' : 'crit', healthy ? `${c.key} strategy providers healthy` : `${c.key} strategy has a failing provider view: deposits blocked, NAV understated`);
     const total: bigint = await strategy.totalAssets();

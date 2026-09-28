@@ -60,6 +60,8 @@ interface IEpochVault {
         uint128 priceRedeem;
         uint128 sharesMinted;
         uint128 assetsOwed;
+        uint128 redeemSharesClaimed;
+        uint128 assetsPaid;
     }
 
     struct EpochConfig {
@@ -85,6 +87,7 @@ interface IEpochVault {
     event RequestCancelled(uint256 indexed requestId);
     event DepositClaimed(uint256 indexed requestId, address indexed receiver, uint256 shares);
     event RedeemClaimed(uint256 indexed requestId, address indexed receiver, uint256 assets);
+    event RedeemDustReleased(uint64 indexed epoch, uint256 assets);
     event EpochClosed(uint64 indexed epoch, uint64 closedAt);
     event EpochOpened(uint64 indexed epoch, uint64 openTickId, uint256 openRateBid);
     event DepositsCleared(uint64 indexed epoch, uint64 indexed tickId, uint256 assets, uint256 rateOffer, uint256 sharesMinted);

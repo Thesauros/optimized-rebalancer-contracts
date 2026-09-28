@@ -154,6 +154,19 @@ library EpochVaultLogic {
             $.reserved -= amountOut;
             $.liabilities -= amountOut;
             $.cash -= amountOut;
+            // clearing booked the aggregate floor and each claim pays its own
+            // floor; the last claim releases the difference back to NAV instead
+            // of leaving it reserved and owed forever
+            e.redeemSharesClaimed += r.amount;
+            e.assetsPaid += amountOut.toUint128();
+            if (e.redeemSharesClaimed == e.redeemShares) {
+                uint256 dust = e.assetsOwed - e.assetsPaid;
+                if (dust != 0) {
+                    $.reserved -= dust;
+                    $.liabilities -= dust;
+                    emit IEpochVault.RedeemDustReleased(r.epoch, dust);
+                }
+            }
             $.asset.safeTransfer(receiver, amountOut);
             _checkpoint($, supply);
             emit IEpochVault.RedeemClaimed(requestId, receiver, amountOut);

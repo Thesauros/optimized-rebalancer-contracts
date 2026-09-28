@@ -247,11 +247,52 @@ contract TickAccountantTest is TickFixture {
         vm.expectRevert(IAccessManager.Unauthorized.selector);
         accountant.ratifyTick(s.tickId);
 
+        // an upward re-pricing could pay redeemers from the remaining holders,
+        // so ADMIN alone cannot ratify it; the Timelock (this contract) can
         vm.prank(admin);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        accountant.ratifyTick(s.tickId);
+
         accountant.ratifyTick(s.tickId);
         assertEq(uint8(accountant.getTick(s.tickId).status), uint8(ITickAccountant.TickStatus.Ratified));
         assertEq(accountant.lastAcceptedTickId(), s.tickId);
         assertFalse(accountant.frozen());
+    }
+
+    /// @dev A loss is the conservative direction, so ADMIN ratifies it at once.
+    function testAdminRatifiesLargeLossWithoutTimelock() public {
+        (NavSnapshot.Snapshot memory s, uint256 idx) = _buildSnapshot();
+        _advance(1);
+        s.positions[0].valueBid -= s.positions[0].valueBid / 50; // -2%, beyond the down bucket
+        _commit(s, idx);
+        assertEq(uint8(accountant.getTick(s.tickId).status), uint8(ITickAccountant.TickStatus.Quarantined));
+
+        vm.prank(attacker);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        accountant.ratifyTick(s.tickId);
+
+        vm.prank(admin);
+        accountant.ratifyTick(s.tickId);
+        assertEq(uint8(accountant.getTick(s.tickId).status), uint8(ITickAccountant.TickStatus.Ratified));
+        assertEq(accountant.lastAcceptedTickId(), s.tickId);
+    }
+
+    /// @dev The upward corridor has an absolute ceiling, so governance can widen
+    ///      it only within bounds and never remove it.
+    function testUpBucketHasAHardCeiling() public {
+        ITickAccountant.Bucket memory up = _defaultUp();
+        up.capacity = accountant.MAX_UP_CAPACITY() + 1;
+        vm.expectRevert(ITickAccountant.InvalidConfig.selector);
+        accountant.setBuckets(up, _defaultDown());
+
+        up = _defaultUp();
+        up.refillPerSecond = accountant.MAX_UP_REFILL_PER_SECOND() + 1;
+        vm.expectRevert(ITickAccountant.InvalidConfig.selector);
+        accountant.setBuckets(up, _defaultDown());
+
+        up.capacity = accountant.MAX_UP_CAPACITY();
+        up.refillPerSecond = accountant.MAX_UP_REFILL_PER_SECOND();
+        accountant.setBuckets(up, _defaultDown());
     }
 
     /// @dev Invariant 11: many individually small moves cannot exceed the bucket.
@@ -395,6 +436,30 @@ contract TickAccountantTest is TickFixture {
         (bytes32 transferId,) = _bridgeHubToSpoke(100_000 * ONE, 99_900 * ONE);
         assertNotEq(transferId, bytes32(0), "the corrective send went through");
         assertEq(hubAgent.getSent(transferId).amount, uint128(100_000 * ONE));
+    }
+
+    /// @dev A quarantined Tick is not trusted for settlement, so it must not
+    ///      move the exposure marks either; only the next accepted Tick does.
+    function testQuarantinedTickLeavesExposureMarks() public {
+        accountant.setMaxChainExposure(0.8e18);
+        _advance(60);
+        _tick();
+        assertTrue(accountant.isChainOverExposed(HUB));
+
+        // with the cap off, any Tick would clear the mark, but this one quarantines
+        accountant.setMaxChainExposure(0);
+        (NavSnapshot.Snapshot memory s, uint256 idx) = _buildSnapshot();
+        _advance(1);
+        s.positions[0].valueBid += s.positions[0].valueBid / 100;
+        s.positions[0].valueOffer = s.positions[0].valueBid;
+        _commit(s, idx);
+        assertEq(uint8(accountant.getTick(s.tickId).status), uint8(ITickAccountant.TickStatus.Quarantined));
+        assertTrue(accountant.isChainOverExposed(HUB), "a quarantined Tick does not clear the mark");
+
+        _advance(60);
+        uint64 id = _tick();
+        assertEq(uint8(accountant.getTick(id).status), uint8(ITickAccountant.TickStatus.Accepted));
+        assertFalse(accountant.isChainOverExposed(HUB), "the next accepted Tick does");
     }
 
     /**

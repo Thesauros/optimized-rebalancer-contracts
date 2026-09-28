@@ -220,6 +220,10 @@ if (INSTANT_FEE < DOWN_BUCKET_CAPACITY) {
   throw new Error('instantFee below the down bucket capacity makes front-running commitTick a risk-free profit');
 }
 
+/** Mirrors `TickAccountant.MAX_UP_CAPACITY` / `MAX_UP_REFILL_PER_SECOND`. */
+const MAX_UP_CAPACITY = 2n * 10n ** 16n; // 2%
+const MAX_UP_REFILL_PER_SECOND = 10n ** 18n / 31_536_000n; // 100% a year
+
 /** Hub-only protocol parameters per profile (docs/crosschain-limits.md explains each). */
 const COMMON_ACCOUNTANT = {
   minTickInterval: 5n * 60n,
@@ -288,6 +292,11 @@ const HUB_BY_PROFILE = {
 };
 
 export const HUB_PARAMS = HUB_BY_PROFILE[PROFILE];
+for (const [name, p] of Object.entries(HUB_BY_PROFILE)) {
+  if (p.upBucket.capacity > MAX_UP_CAPACITY || p.upBucket.refillPerSecond > MAX_UP_REFILL_PER_SECOND) {
+    throw new Error(`${name}: the up bucket exceeds the TickAccountant ceiling, setBuckets would revert`);
+  }
+}
 
 /** Governance and operational identities; must be set in the environment. */
 export function identities() {

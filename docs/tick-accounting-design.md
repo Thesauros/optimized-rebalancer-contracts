@@ -328,8 +328,8 @@ navHash = keccak256(abi.encode(snapshot));
      `grossOffer = navOffer · 1e18 / totalShares`, both floored.
 7. **Risk metrics, computed before the bounds test.** `_riskFlags` derives
    `FLAG_DOWN_BEYOND_DEPOSIT_LIMIT`, `FLAG_OVERDUE_IN_FLIGHT` and
-   `FLAG_IN_FLIGHT_LIMIT` from the snapshot; `_markChainExposure` derives
-   `FLAG_CHAIN_EXPOSURE` and refreshes `overExposed[chainId]` from
+   `FLAG_IN_FLIGHT_LIMIT` from the snapshot; `_chainExposure` derives
+   `FLAG_CHAIN_EXPOSURE` and the `overExposed[chainId]` marks (written only for an accepted Tick) from
    `NavSnapshot.chainBids` (§7). They are flags on the stored Tick, never a
    quarantine (§0 item 4).
 8. **In bounds — two independent conditions, tested in this order.**
@@ -562,7 +562,10 @@ anomalous Tick**:
 * **Resolution** is one of:
   * a later honest Tick that falls inside the buckets computed from the last
     **accepted** Tick; or
-  * `ratifyTick(id)` by `ADMIN_ROLE` (Safe), no Timelock. It sets the latest
+  * `ratifyTick(id)`: by `ADMIN_ROLE` (Safe) at once when the Tick's bid rate is
+    at or below the last accepted one, by the Timelock only when it is above
+    (an upward re-pricing is the direction that could pay redeemers from the
+    remaining holders). It sets the latest
     Tick's status to `Ratified`, makes it the latest accepted Tick, clears the
     quarantine and emits `TickRatified`. It charges no fee on the ratified Tick
     and does not raise the high-water mark. **It does not touch the buckets:**
@@ -590,7 +593,7 @@ anomalous Tick**:
 | Stale: `now − latestAccepted.committedAt > maxTickAge` | any settle path | Clearing and instant exits revert; requests still accepted (they are forward-priced, so safe) |
 | `overdueInFlight > maxOverdueInFlight`, where overdue means age > `maxTransit` at the reference time | `commitTick` → `_riskFlags` | Sets `FLAG_OVERDUE_IN_FLIGHT` **on the accepted Tick**. Nothing is paused and the Tick still settles redemptions. The flag then blocks deposit clearing (`DEPOSIT_BLOCKING_FLAGS`) and hub sends (`_bridgeSendsAllowed`). Two thresholds are involved: `maxTransit` decides what counts as overdue, `maxOverdueInFlight` decides how much of it is tolerated — deployed at 0, so a single overdue unit trips it |
 | `inFlight > navBid · maxInFlightRatio / 1e18` | `commitTick` → `_riskFlags` | Sets `FLAG_IN_FLIGHT_LIMIT` on the accepted Tick. Blocks hub sends only; it is **not** in `DEPOSIT_BLOCKING_FLAGS`, so deposit clearing continues |
-| `chainBids[i] > grossBidAssets · maxChainExposure / 1e18` | `commitTick` → `_markChainExposure`, from `NavSnapshot.chainBids` | Sets `FLAG_CHAIN_EXPOSURE` and `overExposed[chainId]`. The denominator is **gross** bid assets (`navBid + pendingDeposits + liabilities`), not NAV: netting off pending deposits and liabilities would inflate every chain's apparent share past 100% during a large deposit or redemption epoch and latch the flag for a reason unrelated to concentration. `chainSendAllowed(dst)` — what the hub `ChainAgent.bridgeOut` calls — is `bridgeSendsAllowed() && !overExposed[dst]`, so it blocks sends **into** an over-cap chain only. It never blocks sends out of that chain, never blocks settlement, and is not in `DEPOSIT_BLOCKING_FLAGS`. In-flight value is excluded from `chainBids` (it belongs to no chain and is bounded by `maxInFlightRatio`) but sits in the denominator, so the shares sum to slightly under 100% — the conservative direction. Hub accounted cash counts as hub exposure. `maxChainExposure = 0` disables it, which is the deployed value |
+| `chainBids[i] > grossBidAssets · maxChainExposure / 1e18` | `commitTick` → `_chainExposure`, from `NavSnapshot.chainBids` | Sets `FLAG_CHAIN_EXPOSURE` on every stored Tick; writes `overExposed[chainId]` only when the Tick is accepted, so a quarantined Tick can neither open nor close sends. The denominator is **gross** bid assets (`navBid + pendingDeposits + liabilities`), not NAV: netting off pending deposits and liabilities would inflate every chain's apparent share past 100% during a large deposit or redemption epoch and latch the flag for a reason unrelated to concentration. `chainSendAllowed(dst)` — what the hub `ChainAgent.bridgeOut` calls — is `bridgeSendsAllowed() && !overExposed[dst]`, so it blocks sends **into** an over-cap chain only. It never blocks sends out of that chain, never blocks settlement, and is not in `DEPOSIT_BLOCKING_FLAGS`. In-flight value is excluded from `chainBids` (it belongs to no chain and is bounded by `maxInFlightRatio`) but sits in the denominator, so the shares sum to slightly under 100% — the conservative direction. Hub accounted cash counts as hub exposure. `maxChainExposure = 0` disables it, which is the deployed value |
 | Per-protocol exposure above `capBps` | `Rebalancer` after every deposit and rebalance | Rejects the allocation. `capBps == 0` means uncapped, which is the default and what the entry provider ships at |
 | Guardian call | `GUARDIAN_ROLE` | Pause any domain; unpausing needs `ADMIN_ROLE`. On the accountant the guardian's only action is `freeze()` |
 
@@ -794,7 +797,7 @@ per adapter, in `docs/cross-chain-threat-model.md` §5:
 | Role | Holder (target) | Allowed | Prohibited | Worst case if compromised |
 |---|---|---|---|---|
 | Governance (`Timelock`) | Safe-owned Timelock | Routes, peers, strategy addresses, buckets, limits, fees, epoch params | anything instant | Everything, after the delay; monitoring must watch the queue |
-| `ADMIN_ROLE` | Safe | Role grants and revocations (there are no role admins), unpause, `ratifyTick`, `writeDown`, and on each strategy `Rebalancer`: `pause(Withdraw)`, `setManagementFee` ≤ 5% and `setPerformanceFee` ≤ 25% — all instant, no Timelock | Config changes that the Timelock owns | Ratify a bad Tick → mis-settle one epoch at an unbounded rate; pause strategy withdrawals → block every recall and every queued redemption (threat model T27–T29) |
+| `ADMIN_ROLE` | Safe | Role grants and revocations (there are no role admins), unpause, `ratifyTick` of a downward Tick (upward needs the Timelock), `writeDown`, and on each strategy `Rebalancer`: `pause(Withdraw)`, `setManagementFee` ≤ 5% and `setPerformanceFee` ≤ 25% — all instant, no Timelock | Config changes that the Timelock owns | Ratify a bad Tick → mis-settle one epoch at an unbounded rate; pause strategy withdrawals → block every recall and every queued redemption (threat model T27–T29) |
 | `NAV_UPDATER_ROLE` | Dedicated key/service | `commitTick` | Everything else | Rate moves within buckets per window, or forced quarantine (DoS) |
 | `EXECUTOR_ROLE` | Rebalancer bot | allocate / deallocate / bridgeOut within limits, vault↔agent within buffer | Choose recipients, adapters or chains; exceed buckets | Misallocation; bridge volume up to bucket capacity along fixed routes |
 | `GUARDIAN_ROLE` | Ops multisig/EOA | Pause any domain | Unpause | Liveness: pauses the vault |

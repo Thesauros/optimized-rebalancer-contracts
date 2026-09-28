@@ -206,7 +206,7 @@ contract ChainAgent is Initializable, ReentrancyGuardUpgradeable, AccessManager 
         uint256 before = $._asset.balanceOf(address(this));
         shares = strat.withdraw(assets, address(this), address(this));
         uint256 received = $._asset.balanceOf(address(this)) - before;
-// Measured amount: the balance delta across the external call IS the
+        // Measured amount: the balance delta across the external call IS the
         // accounting fact, and `nonReentrant` plus a non-rebasing asset are what
         // make the pre-call reading safe to compare against.
         // slither-disable-next-line reentrancy-balance

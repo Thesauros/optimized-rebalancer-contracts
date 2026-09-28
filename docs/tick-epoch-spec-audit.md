@@ -165,7 +165,7 @@ for oversights.
   volume bucket. Open item B6.
 - **There is no per-epoch redemption cap.** Deposits are capped; redemptions are
   not.
-- **Redeem rounding dust is permanent.** Clearing books the aggregate floor,
+- **Redeem rounding dust** (fixed, see D9). Clearing books the aggregate floor,
   claims pay per-request floors, and the difference stays in `reserved` and
   `liabilities` forever, so it keeps reducing NAV by a few wei per epoch.
   Conservative, negligible, and there is no sweep path.
@@ -199,7 +199,9 @@ resolution and a timelock would extend the settlement halt by the delay;
 conservative direction, while an upward one requires the Timelock; (c) full
 Timelock. Recommended: (b). It keeps fast loss recovery and removes the drain
 primitive, and the direction test is one comparison against the last accepted
-rate.
+rate. **RESOLVED (b)** in the follow-up review: ADMIN ratifies a Tick at or below
+the last accepted bid rate, the Timelock ratifies one above it. Cost: a donation
+beyond the up bucket (T22) now halts settlement for the Timelock delay.
 
 **D2. The Timelock is a transparency window, not a veto.** The same Safe holds
 ADMIN on every contract and `Timelock.owner()`, and `queue`, `cancel` and
@@ -224,14 +226,17 @@ full exit freeze.** It blocks `ChainAgent.deallocate`, which blocks recalls from
 spokes, which blocks epoch funding, which blocks every queued redemption, with no
 timelock and no threat-model row. Pausing must stay fast, so the fix is not a
 delay; it is a dedicated critical monitor alert on the strategy's Withdraw domain
-and an explicit runbook entry. Recommended: add both.
+and an explicit runbook entry. Recommended: add both. **RESOLVED (alert)**:
+`strategy.<chain>.paused` is critical on Withdraw, warning on Deposit.
 
 **D5. `_setBuckets` has no upper bound on `up.capacity`.** One Timelock action,
 with as little as the 30-minute `MIN_DELAY`, removes the rate corridor entirely.
 The documents present the buckets as a hard bound on the NAV updater without
 saying that governance can lift it. Recommended: an absolute ceiling constant
 alongside `MAX_PERFORMANCE_FEE`, and a monitor warning when the bucket is widened
-beyond the launch value.
+beyond the launch value. **RESOLVED**: `MAX_UP_CAPACITY` (2%) and
+`MAX_UP_REFILL_PER_SECOND` (100%/year) in `TickAccountant`, mirrored and asserted
+in `registry.ts`.
 
 **D6. Provider concentration is not actually bounded.** Caps default to 0 =
 uncapped, `AaveV3` ships uncapped on both chains because every deposit lands in
@@ -255,6 +260,9 @@ ratio-only buffer until TVL passes the floor.
 releasing the residual on the last claim, which needs one field appended to
 `Epoch`. Cheap now, impossible after deployment without a storage migration.
 Recommended: do it before the first mainnet deploy, or accept it explicitly.
+**RESOLVED**: `Epoch.redeemSharesClaimed` and `Epoch.assetsPaid` are appended;
+the last claim of an epoch releases the residual (`RedeemDustReleased`). Deposit
+share dust (per-claim floors of `sharesMinted`) stays in escrow and is not swept.
 
 **D10. Section 16's `messageId` and per-leg `rebalanceId`.** Recording the CCTP
 nonce in `CctpV2Adapter.Sent` and adding a `rebalanceId` to `Allocated` and
@@ -283,15 +291,15 @@ the rest are genuinely open.
 | O3 | No archive-RPC canary. Every valuation read is pinned with `blockTag`; a pruned RPC that silently degrades it to latest produces a Tick with head-block values, and the accountant cannot catch it because remote values are trusted. On an idle vault the checkpoint comparison coincidentally agrees and the Tick is accepted | OPEN |
 | O4 | The consistent cut could push a spoke reference block above its confirmation depth, because `index.sync` ran to the raw heads. Spoke block hashes are not bound on-chain, so a reorg there yields an accepted Tick with wrong values, contradicting `nav-reproduction.md` §2 | FIXED. `consistentCut` now takes per-chain ceilings; a send above its ceiling cannot be advanced to, so the receipt leaves the cut instead and the transfer stays in flight, valued at `minReceive`. Lowering a reference is always confirmation-safe, and the fixpoint still terminates. Pinned by `ops/test/snapshot.test.ts` |
 | O5 | Quarantine produced an indefinite five-minute commit-and-alert loop: the NAV service never read `quarantined()`, and while a quarantine stands the "closed epoch waits for a post-cutoff Tick" condition stays true forever, so each pass committed another quarantined Tick, burned gas that settled nothing, and fired another alert | FIXED. The service now skips a commit when a quarantine already stands and the predicted move still exceeds the *refilled* bucket — computed with the same ceil arithmetic as `_consumeBuckets`, so it never suppresses a Tick the contract would accept, and an in-bounds Tick (which is what resolves the quarantine) always goes through. One alert per episode; the monitor owns the repeat cadence. `--force` overrides. Not covered by the rehearsal, which never quarantines: the arithmetic mirrors `_consumeBuckets` exactly (same direction choice, same ceil, same refill capped at capacity), so the skip can only fire on a Tick the contract would reject, but it is typechecked rather than executed. The trade-off is a gap in the on-chain append-only trail for skipped observations; the service log carries them |
-| O6 | One agent per chain is assumed, never verified. Positions are read only from the manifest's `ChainAgent`, while `setAgent` permits N per chain and no contract can detect an omitted one. `nav-reproduction.md` states the invariant; nothing enforces it | OPEN. Build the agent set from `AgentUpdated` and assert it matches the manifest |
+| O6 | One agent per chain is assumed, never verified. Positions are read only from the manifest's `ChainAgent`, while `setAgent` permits N per chain and no contract can detect an omitted one. `nav-reproduction.md` states the invariant; nothing enforces it | FIXED in the monitor: `agents.<chain>` rebuilds the allowed set from `AgentUpdated` and is critical unless it is exactly the manifest agent |
 | O7 | Two independent RPC providers per chain, which `nav-reproduction.md` §4 requires. Not implemented: one provider per chain, which is also the source of independence for the monitor's re-derivation | OPEN |
 | O8 | Key management, hosting, and the allocation strategy | OPEN, items A1/A4/A5. Without A1 capital stays in the hub buffer and the hub strategy, which is safe but earns nothing |
 | O9 | External audit | OPEN, item B1. Everything in §4, §6 and this table should be in scope, together with the snapshot spec and the ops NAV engine |
 
-The monitor also re-derives only the latest accepted Tick and caches the verdict
-permanently, so a Tick verified once is never rechecked and Ticks committed while
-the monitor was down are never verified. Weaker than `nav-reproduction.md` §3
-claims. Open.
+The monitor re-derived only the latest accepted Tick, so Ticks committed while
+it was down were never verified. FIXED: it now walks every committed Tick over a
+50-Tick backlog, five per pass (`MONITOR_VERIFY_BACKLOG`, `MONITOR_VERIFY_PER_PASS`),
+and any mismatch stays critical.
 
 ---
 

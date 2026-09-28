@@ -36,6 +36,7 @@ export const TICK_ACCOUNTANT = [
   'function buckets() view returns (tuple(uint128 capacity,uint128 refillPerSecond,uint128 level,uint64 updatedAt) up, tuple(uint128 capacity,uint128 refillPerSecond,uint128 level,uint64 updatedAt) down)',
   'function chainIds() view returns (uint64[])',
   'function isAgent(uint64 chainId, address agent) view returns (bool)',
+  'event AgentUpdated(uint64 indexed chainId, address indexed agent, bool allowed)',
   'function vault() view returns (address)',
   'function getFees() view returns (uint96 managementFee, uint96 performanceFee, uint256 highWaterMark, address treasury)',
   'function bridgeSendsAllowed() view returns (bool)',
@@ -49,7 +50,7 @@ export const TICK_ACCOUNTANT = [
 ];
 
 const EPOCH =
-  'tuple(uint64 openedAt,uint64 closedAt,uint64 openTickId,uint64 depositTickId,uint64 redeemTickId,bool depositsCleared,bool redeemsCleared,bool funded,uint128 openRateBid,uint128 depositAssets,uint128 redeemShares,uint128 rateOffer,uint128 priceRedeem,uint128 sharesMinted,uint128 assetsOwed)';
+  'tuple(uint64 openedAt,uint64 closedAt,uint64 openTickId,uint64 depositTickId,uint64 redeemTickId,bool depositsCleared,bool redeemsCleared,bool funded,uint128 openRateBid,uint128 depositAssets,uint128 redeemShares,uint128 rateOffer,uint128 priceRedeem,uint128 sharesMinted,uint128 assetsOwed,uint128 redeemSharesClaimed,uint128 assetsPaid)';
 
 export const EPOCH_VAULT = [
   ...ACCESS,
@@ -119,6 +120,7 @@ export const STRATEGY = [
   'function getProviders() view returns (address[])',
   'function getEntryProvider() view returns (address)',
   'function getProviderCap(address provider) view returns (uint256)',
+  'function paused(uint8 action) view returns (bool)',
 ];
 
 export const PROVIDER = ['function getDepositBalance(address user, address vault) view returns (uint256)', 'function getIdentifier() view returns (string)'];

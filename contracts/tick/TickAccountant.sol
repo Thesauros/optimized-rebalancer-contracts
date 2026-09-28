@@ -43,6 +43,13 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
     ///      from sending more capital into the chains that are already over.
     uint8 public constant FLAG_CHAIN_EXPOSURE = 1 << 3;
 
+    /// @notice Hard ceiling on the upward corridor, so no Timelock action can lift
+    ///         it: at most a 2% rise per accepted Tick, refilled at 100% a year.
+    ///         The downward bucket has no such ceiling because widening it only
+    ///         admits losses, which is the conservative direction.
+    uint128 public constant MAX_UP_CAPACITY = 0.02e18;
+    uint128 public constant MAX_UP_REFILL_PER_SECOND = uint128(1e18) / 365 days;
+
     /// @custom:storage-location erc7201:thesauros.storage.TickAccountant
     struct TickAccountantStorage {
         IEpochVaultAccounting _vault;
@@ -146,6 +153,7 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
         uint256 prevRate;
         bytes32 navHash;
         NavSnapshot.Totals totals;
+        bool[] overExposed;
     }
 
     /// @inheritdoc ITickAccountant
@@ -167,9 +175,9 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
         c.grossBid = c.totals.navBid.mulDiv(WAD, s.totalShares);
         c.grossOffer = c.totals.navOffer.mulDiv(WAD, s.totalShares);
         c.prevRate = $._ticks[$._lastAcceptedTickId].rateBid;
-        c.flags =
-            _riskFlags($._config, c.totals, c.grossBid, c.prevRate) |
-            _markChainExposure($, s, c.totals.navBid);
+        uint8 exposureFlag;
+        (exposureFlag, c.overExposed) = _chainExposure($, s, c.totals.navBid);
+        c.flags = _riskFlags($._config, c.totals, c.grossBid, c.prevRate) | exposureFlag;
         c.navHash = s.hash();
 
         // the spread bound is tested first: `_consumeBuckets` spends rate
@@ -194,6 +202,12 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
             $._highWaterMark = rateBid;
         }
         _storeTick($, s.tickId, s.referenceTime, TickStatus.Accepted, c, rateBid, rateOffer);
+
+        // exposure marks follow accepted Ticks only: a quarantined Tick is not
+        // trusted for settlement, so it must not open or close sends either
+        for (uint256 i; i < s.chains.length; i++) {
+            $._overExposed[s.chains[i].chainId] = c.overExposed[i];
+        }
 
         // an in-bounds Tick measured against the last accepted one resolves a
         // quarantine; a guardian freeze is only lifted by ADMIN (see `unfreeze`)
@@ -318,22 +332,24 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
      *      sum to slightly under 100% — the conservative direction.
      *      Because the cap gates sends *into* a chain, a chain that is over can
      *      always be brought back down by sending capital out of it; settlement is
-     *      never affected. A cap of zero disables the check and clears every mark.
+     *      never affected. A cap of zero disables the check; the marks it returns
+     *      are written by `commitTick` only when the Tick is accepted, so a cap of
+     *      zero clears every mark on the next accepted Tick.
      */
-    function _markChainExposure(
+    function _chainExposure(
         TickAccountantStorage storage $,
         NavSnapshot.Snapshot calldata s,
         uint256 navBid
-    ) internal returns (uint8 flags) {
+    ) internal view returns (uint8 flags, bool[] memory over) {
         uint256 cap = uint256($._maxChainExposure);
         uint256[] memory bids = s.chainBids(uint64(block.chainid));
         // gross bid assets = navBid + the deductions NAV was netted by
         uint256 gross = navBid + s.pendingDeposits + s.liabilities;
         uint256 limit = gross.mulDiv(cap, WAD);
+        over = new bool[](s.chains.length);
         for (uint256 i; i < s.chains.length; i++) {
-            bool over = cap != 0 && bids[i] > limit;
-            $._overExposed[s.chains[i].chainId] = over;
-            if (over) flags |= FLAG_CHAIN_EXPOSURE;
+            over[i] = cap != 0 && bids[i] > limit;
+            if (over[i]) flags |= FLAG_CHAIN_EXPOSURE;
         }
     }
 
@@ -465,12 +481,26 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
      * @notice Makes the latest, quarantined Tick settle-able.
      * @dev For real large losses or recoveries. No fee is charged on a ratified
      *      Tick; the high-water mark is not raised by it.
+     *      Split by direction. A Tick whose bid rate is at or below the last
+     *      accepted one is the conservative direction: redemptions are priced at
+     *      `min(openRateBid, rateBid)`, and a down-move beyond
+     *      `depositClearingMaxDown` cannot clear deposits, so ADMIN may ratify it
+     *      at once and a real loss is not held up. An upward re-pricing is the
+     *      one that could pay redeemers from the remaining holders, so it needs
+     *      the Timelock. The NAV service stops re-committing while a quarantine
+     *      stands and the move exceeds the bucket, so the Tick stays the latest
+     *      through the delay.
      */
-    function ratifyTick(uint64 tickId) external onlyRole(ADMIN_ROLE) {
+    function ratifyTick(uint64 tickId) external {
         TickAccountantStorage storage $ = _getStorage();
         Tick storage tick = $._ticks[tickId];
         if (tickId != $._lastTickId || tick.status != TickStatus.Quarantined) {
             revert NotQuarantined();
+        }
+        if (tick.rateBid > $._ticks[$._lastAcceptedTickId].rateBid) {
+            if (_msgSender() != $._timelock) revert Unauthorized();
+        } else if (!hasRole(ADMIN_ROLE, _msgSender()) && _msgSender() != $._timelock) {
+            revert Unauthorized();
         }
         tick.status = TickStatus.Ratified;
         $._lastAcceptedTickId = tickId;
@@ -570,7 +600,13 @@ contract TickAccountant is Initializable, AccessManager, ITickAccountant {
     }
 
     function _setBuckets(Bucket memory up_, Bucket memory down_) internal {
-        if (up_.capacity == 0 || down_.capacity == 0 || down_.capacity >= WAD) {
+        if (
+            up_.capacity == 0 ||
+            up_.capacity > MAX_UP_CAPACITY ||
+            up_.refillPerSecond > MAX_UP_REFILL_PER_SECOND ||
+            down_.capacity == 0 ||
+            down_.capacity >= WAD
+        ) {
             revert InvalidConfig();
         }
         TickAccountantStorage storage $ = _getStorage();

@@ -92,6 +92,17 @@ test('consistent cut never references a block above its confirmation depth', () 
   assert.equal(cut.get('arbitrum'), 54, 'the receipt leaves the cut instead, so the transfer stays in flight');
 });
 
+test('consistent cut terminates when a dropped receipt would be re-pulled by another transfer', () => {
+  // 0x01 base@120 (above base's ceiling) -> arbitrum@55, so arbitrum drops to 54.
+  // 0x02 arbitrum@58 -> base@90 then asks to advance arbitrum to 58, which would
+  // re-include 0x01's receipt; without the lowered ceiling this oscillates forever.
+  // (Causally impossible on honest chains, but a reorged or lying RPC can serve it.)
+  const idx = indexWith([['0x01', 'base', 120], ['0x02', 'arbitrum', 58]], [['0x01', 'arbitrum', 55], ['0x02', 'base', 90]]);
+  const cut = consistentCut(new Map([['base', 100], ['arbitrum', 60]]), idx, new Map([['base', 100], ['arbitrum', 60]]));
+  assert.equal(cut.get('arbitrum'), 54);
+  assert.equal(cut.get('base'), 89, 'the receipt of 0x02 leaves the cut too, since its send is now above the cut');
+});
+
 test('transfer index persists across restarts and rejects state from another deployment', async () => {
   const file = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-index-')), 'index.json');
   const a = new TransferIndex(file, 'fp-1');

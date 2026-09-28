@@ -288,8 +288,10 @@ export async function openTransferIndex(chains: Chain[], file: string = TRANSFER
  * minReceive. Without this the cut could reference a spoke block that is only one
  * or two confirmations deep, and because only the hub reference block is bound
  * on-chain, a reorg there would produce an accepted Tick with wrong values.
- * Lowering a ref is always safe: it stays at or before T and goes deeper, and the
- * loop still terminates because refs only ever decrease on that branch.
+ * Lowering a ref is always safe: it stays at or before T and goes deeper. The
+ * lowered ref also becomes that chain's ceiling, so a later advance can never
+ * pull it back above the receipt it just dropped; every lowering strictly shrinks
+ * a ceiling, every advance is bounded by one, and the loop terminates.
  */
 export function consistentCut(
   refs: Map<string, number>,
@@ -297,6 +299,7 @@ export function consistentCut(
   ceilings?: Map<string, number>,
 ): Map<string, number> {
   const out = new Map(refs);
+  const cap = new Map(ceilings ?? []);
   for (let changed = true; changed; ) {
     changed = false;
     for (const [id, r] of index.received) {
@@ -304,9 +307,10 @@ export function consistentCut(
       const s = index.sent.get(id);
       if (!s) throw new Error(`receipt ${id} on ${r.chainKey} has no BridgeOut in the index`);
       if (s.block <= (out.get(s.chainKey) ?? -1)) continue;
-      const ceiling = ceilings?.get(s.chainKey);
+      const ceiling = cap.get(s.chainKey);
       if (ceiling !== undefined && s.block > ceiling) {
         out.set(r.chainKey, r.block - 1);
+        cap.set(r.chainKey, Math.min(cap.get(r.chainKey) ?? Infinity, r.block - 1));
         changed = true;
         continue;
       }

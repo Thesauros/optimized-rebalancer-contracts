@@ -463,7 +463,7 @@ contract Rebalancer is
                 )
             );
             if (success) {
-// Same measured-amount idiom as ChainAgent: the delta across the provider
+            // Same measured-amount idiom as ChainAgent: the delta across the provider
             // call is the value that actually arrived, under `nonReentrant`.
             // slither-disable-next-line reentrancy-balance
                 uint256 received = $._asset.balanceOf(address(this)) - balBefore;

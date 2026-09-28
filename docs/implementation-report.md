@@ -495,9 +495,10 @@ cheapest time to do it):
 * The NAV updater, for remote values, within buckets.
 * **ADMIN (Safe) — the largest single trust assumption, because none of the
   following waits for the Timelock:**
-  * `ratifyTick`: an unbounded, instant re-pricing. It makes a quarantined Tick
-    settle-able whatever its rate, charges no fee on it, does not raise the
-    high-water mark and does not consume bucket capacity;
+  * `ratifyTick` of a downward Tick: an instant loss recognition. It makes a
+    quarantined Tick settle-able, charges no fee on it, does not raise the
+    high-water mark and does not consume bucket capacity. An upward
+    ratification needs the Timelock;
   * `grantRole` / `revokeRole`: `AccessManager` has no role admins, so ADMIN
     grants and revokes everything and can grant itself `NAV_UPDATER_ROLE`,
     `EXECUTOR_ROLE` and `GUARDIAN_ROLE` on the accountant, the vault and every

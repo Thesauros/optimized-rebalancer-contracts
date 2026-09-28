@@ -141,6 +141,30 @@ contract EpochVaultTest is TickFixture {
         assertEq(paid, (shares * openRate) / WAD);
     }
 
+    /// @dev Clearing books the aggregate floor, each claim pays its own floor.
+    ///      The last claim of an epoch releases the difference, so no liability
+    ///      outlives the requests it was booked for.
+    function testLastRedeemClaimReleasesRoundingDust() public {
+        _yield(hubSource, address(hubStrategy), 777 * ONE + 333);
+        _cycle(); // the next epoch opens at a rate with a long fractional part
+        uint256[3] memory ids;
+        ids[0] = _requestRedeem(alice, 1_000_001);
+        ids[1] = _requestRedeem(alice, 7_000_003);
+        ids[2] = _requestRedeem(alice, 13_000_007);
+        uint64 epochId = _cycle();
+        IEpochVault.Epoch memory e = vault.getEpoch(epochId);
+        assertTrue(e.funded);
+
+        uint256 paid;
+        for (uint256 i; i < 3; i++) paid += vault.claim(ids[i]);
+        e = vault.getEpoch(epochId);
+        assertGt(e.assetsOwed, paid, "the per-claim floors really left dust");
+        assertEq(e.assetsPaid, paid);
+        (,, uint256 liabilities, uint256 reserved,,) = vault.accounting();
+        assertEq(liabilities, 0, "no liability outlives its requests");
+        assertEq(reserved, 0);
+    }
+
     /// @dev Front-running an unfavourable Tick: request before the loss is booked,
     ///      the loss is booked before clearing, the request bears it.
     function testRedeemBeforeNegativeTickBearsTheLoss() public {

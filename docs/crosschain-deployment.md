@@ -186,11 +186,12 @@ existing Telegram channel pages on it without extra wiring.
 | Quarantine / freeze | any | — |
 | Tick flags | overdue in flight | down-move beyond deposit threshold, in-flight above limit |
 | Rate buckets | — | below 10% |
-| Tick re-derivation | the latest accepted Tick does not reproduce from chain data | verification error |
+| Tick re-derivation | any of the last 50 committed Ticks does not reproduce from chain data (five verified per pass) | verification error |
+| Agent set | the accountant allows any agent on a chain other than exactly the manifest agent (rebuilt from `AgentUpdated`) | — |
 | Vault solvency / backing | `cash < pending + reserved`, or USDC balance below cash | — |
 | Epochs | clearing stuck more than 6 h, funding stuck more than 72 h | open past max duration + 1 h, clearing more than 2 h, funding more than 24 h, unfunded liabilities |
 | Transfers | undelivered for more than 4 × `maxTransit` | undelivered for more than `maxTransit` |
-| Strategies | a provider view failing (deposits blocked) | a provider above its cap |
+| Strategies | a provider view failing (deposits blocked), or the strategy's Withdraw action paused (blocks recalls and every queued redemption) | a provider above its cap, strategy deposits paused |
 | Routes / pauses | — | route disabled or bucket below 10%, any paused domain |
 | Governance | any deployment check fails: ProxyAdmin/Timelock owner, implementation code drift, deployer roles, routes, remotes, caps, chain set | — |
 | Timelock | — | any queued, unexecuted governance tx (with signature and ETA) |
@@ -226,8 +227,12 @@ the vault and CCTP deliveries **cannot** be paused. That is by design.
 ### Safe (ADMIN)
 
 * **Quarantined Tick.** Investigate with `ts-node ops/src/verify-tick.ts <id>`.
-  If the move is real, call `TickAccountant.ratifyTick(id)`. If not, the NAV
-  service's next honest Tick clears it; rotate the NAV key if it was compromised.
+  If the move is real and downward, the Safe calls `TickAccountant.ratifyTick(id)`
+  at once. A real upward move must be ratified through the Timelock
+  (`05-governance-plan.ts`-style queue, 24 h in production); the NAV service keeps
+  the Tick the latest meanwhile, because it does not re-commit while the move
+  exceeds the bucket. If the move is not real, the NAV service's next honest Tick
+  clears it; rotate the NAV key if it was compromised.
 * **Lost transfer.** Call `ChainAgent.writeDown(transferId, amount, reason)` on
   the source agent. A late delivery still books the recovery.
 * **Freeze and pauses.** `unfreeze()` and `unpause(domain)` after the incident.
