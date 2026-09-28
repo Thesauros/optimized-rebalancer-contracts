@@ -57,6 +57,9 @@ export TRANSFER_INDEX_FILE=/tmp/xc-rehearsal/transfer-index.json
 export INDEXER_DB=/tmp/xc-rehearsal/indexer.sqlite
 export RPC_BASE=http://127.0.0.1:8545
 export RPC_ARBITRUM=http://127.0.0.1:8546
+# broadcast through a different URL to the same node, so the read/send split
+# (RoutedProvider) is exercised by every service in the rehearsal
+export RPC_SEND_BASE=http://localhost:8545 RPC_SEND_ARBITRUM=http://localhost:8546
 export NAV_UPDATER_PRIVATE_KEY=${KEYS[1]}
 export EXECUTOR_PRIVATE_KEY=${KEYS[2]}
 export GUARDIAN_PRIVATE_KEY=${KEYS[3]}

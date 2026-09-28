@@ -6,13 +6,15 @@
  * Environment:
  *   RPC_<NETWORK>             RPC URL per registry key, e.g. RPC_BASE, RPC_ARBITRUM
  *                             (falls back to BASE_RPC_URL / ARBITRUM_RPC_URL)
+ *   RPC_SEND_<NETWORK>        optional: where signed transactions are broadcast.
+ *                             Reads stay on RPC_<NETWORK>. Unset = same RPC.
  *   CROSSCHAIN_MANIFEST_DIR   manifest root (default: <repo>/deployments)
  *   CROSSCHAIN_SAFE, CROSSCHAIN_NAV_UPDATER, CROSSCHAIN_EXECUTOR, CROSSCHAIN_GUARDIAN
  *   <ROLE>_PRIVATE_KEY        signer keys per service (see each service)
  */
 import fs from 'fs';
 import path from 'path';
-import { JsonRpcProvider, NonceManager, Wallet } from 'ethers';
+import { JsonRpcPayload, JsonRpcProvider, JsonRpcResult, NonceManager, Wallet } from 'ethers';
 import { onError } from './util';
 import { NETWORKS, NetworkEntry } from '../../deploy/crosschain/registry';
 
@@ -55,9 +57,39 @@ export function rpcUrl(key: string): string {
   throw new Error(`no RPC for ${key}: set RPC_${key.toUpperCase()}`);
 }
 
+/**
+ * Reads from one RPC and broadcasts signed transactions through another. A data
+ * provider can accept eth_sendRawTransaction and never propagate it (seen with
+ * Moralis during the Base deployment): the service then waits on a transaction
+ * the network never saw. The chain's own public endpoint is the reliable path
+ * into the sequencer; everything else stays on the provider with the limits and
+ * archive data we need.
+ */
+export class RoutedProvider extends JsonRpcProvider {
+  readonly sender: JsonRpcProvider;
+
+  constructor(readUrl: string, sendUrl: string, chainId: number) {
+    super(readUrl, chainId, { staticNetwork: true, batchMaxCount: 1 });
+    this.sender = new JsonRpcProvider(sendUrl, chainId, { staticNetwork: true, batchMaxCount: 1 });
+  }
+
+  async _send(payload: JsonRpcPayload | Array<JsonRpcPayload>): Promise<Array<JsonRpcResult>> {
+    const list = Array.isArray(payload) ? payload : [payload];
+    if (list.length > 0 && list.every((p) => p.method === 'eth_sendRawTransaction')) return this.sender._send(payload);
+    return super._send(payload);
+  }
+}
+
+export function providerFor(key: string, chainId: bigint): JsonRpcProvider {
+  const send = process.env[`RPC_SEND_${key.toUpperCase()}`];
+  const read = rpcUrl(key);
+  if (send && send !== read) return new RoutedProvider(read, send, Number(chainId));
+  return new JsonRpcProvider(read, Number(chainId), { staticNetwork: true, batchMaxCount: 1 });
+}
+
 export function loadChains(): Chain[] {
   return Object.entries(NETWORKS).map(([key, entry]) => {
-    const provider = new JsonRpcProvider(rpcUrl(key), Number(entry.chainId), { staticNetwork: true, batchMaxCount: 1 });
+    const provider = providerFor(key, entry.chainId);
     return { key, entry, chainId: entry.chainId, provider, manifest: loadManifest(key) };
   });
 }

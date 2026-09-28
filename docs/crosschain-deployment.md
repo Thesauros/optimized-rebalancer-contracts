@@ -104,6 +104,12 @@ The stand uses Moralis nodes (`RPC_BASE`, `RPC_ARBITRUM`, and `ARBITRUM_RPC_URL`
 for hardhat). Moralis caps `eth_getLogs` at 100 blocks; the services detect the
 cap and adapt (`ops/README.md`, RPC limits), so no setting is needed.
 
+Signed transactions do not go through Moralis: during the Base deployment it
+twice accepted a transaction and never propagated it. Services broadcast through
+`RPC_SEND_BASE=https://mainnet.base.org` and `RPC_SEND_ARBITRUM=https://arb1.arbitrum.io/rpc`
+and read everything else from `RPC_<NETWORK>`. Hardhat deploys use the public
+endpoints directly (`BASE_RPC_URL`, `ARBITRUM_RPC_URL`).
+
 ## 3. Deployment
 
 ```bash
