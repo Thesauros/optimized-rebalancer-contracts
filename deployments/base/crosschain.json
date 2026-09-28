@@ -5,7 +5,7 @@
   "profile": "stand",
   "deployer": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
   "startBlock": 51905646,
-  "phase": 1,
+  "phase": 3,
   "contracts": {
     "Timelock": "0x540cAab5492014084502c1dB6F15644eedCa87ee",
     "VaultFactory": "0x29372842607fbff5E7Eee16baD228C11531871c1",

@@ -1,0 +1,42 @@
+{
+  "network": "arbitrum",
+  "chainId": "42161",
+  "role": "spoke",
+  "profile": "stand",
+  "deployer": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+  "startBlock": 509725687,
+  "phase": 3,
+  "contracts": {
+    "Timelock": "0x5383077e9BD3D476ab52d257f552Caa6C8Ebb948",
+    "VaultFactory": "0x4325A7DdE71150CE10960c0b05e805a0040901f8",
+    "ProviderManager": "0x0b47A0d3CD25C84D7E6b40030e9B05EC15C1B418",
+    "CompoundV3Provider": "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+    "StrategyImplementation": "0x84163d2d9CFfe0e53078C3Cd02ee3db1975117d5",
+    "Strategy": "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+    "ChainAgentImplementation": "0x96528a41D3e5a2AfE29Bbf61ae8704eDCB01b67C",
+    "ChainAgent": "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+    "CctpV2Adapter": "0x12a6126507012368c8a4523437f7c3422CBFea0f"
+  },
+  "codehashes": {
+    "Timelock": "0xda940a86f89c948b586d044558be6d86b20b8f680866342938727bb0e837e636",
+    "VaultFactory": "0xff7e0c1bbe3393b035288286b0a6a3e31d681f7225d8feb2e1c5998c25b9a8d6",
+    "ProviderManager": "0x3a5763842c7aae0280b14b889c66e760268ab90bc395f3becf55b1f6c2cf3871",
+    "CompoundV3Provider": "0x0cc2e0a1cafb9da13191b328234591facb206006859080bc0209d3bb7cb5a0af",
+    "StrategyImplementation": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+    "ChainAgentImplementation": "0xe55493176a611f9137ce67c128b581a60c6f868b0d9ef55c116ecad1e5d7b50f",
+    "CctpV2Adapter": "0x4ad16e8469fa7a3aec1ff2e44547a9c1873e2204afc98c8b34f1af111c6b70ea",
+    "Strategy#proxy": "0xb9bed4b6f110ad1f0247d785547a0c52e24af4e140a065c24c744bd7aa72436d",
+    "ChainAgent#proxy": "0x2f04538a290700598a10628d01d8912ee613dc32aa684c4295b77795c9e6479a"
+  },
+  "txs": {
+    "Timelock": "0x72e383809772e881aadd2e5d3465562b07c4638056f50a742b8bd75e29479633",
+    "VaultFactory": "0xbb199bbe2d52724462966b04d68395938bf3fcd93c33adb02e5a26b71bb030d3",
+    "ProviderManager": "0xfcde0dc315170621e5776d632f7b16622e5b0fa5ff478aa0267b54da1f998b14",
+    "CompoundV3Provider": "0x17074bea6ad19874f6bc492da25bee5d284220d872f516eab553095b53f11c45",
+    "StrategyImplementation": "0x084355ce0bcfe793545409a814c54b79ba566fa0123eb732e64c03e1e496d000",
+    "Strategy": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+    "ChainAgentImplementation": "0xb71af25ab78f7e1e2d4f7118603c58df5aa7083ba04aa80036d0c47ca3bfeb69",
+    "ChainAgent": "0x9fca9597f3ac4093590b2812c1b15fc5332f2b372bfd7cd65ba8b41812fdb60e",
+    "CctpV2Adapter": "0x0db6400dc79ee93da9f6fdbeae16c48cab87f60202b069ab5c6ce8ae668e4dbe"
+  }
+}
