@@ -649,7 +649,8 @@ async function main() {
   const state = { lastSync: 0, lastError: '' };
   if (!process.argv.includes('--once')) {
     const port = envNumber('PORT_INDEXER', 8085);
-    createServer(ix, state).listen(port, () => log(SERVICE, `api on :${port}`));
+    const host = process.env.INDEXER_HOST ?? '0.0.0.0';
+    createServer(ix, state).listen(port, host, () => log(SERVICE, `api on ${host}:${port}`));
   }
   await loop(SERVICE, POLL_SECONDS * 1000, async () => {
     try {
