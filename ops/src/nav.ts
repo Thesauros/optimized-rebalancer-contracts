@@ -5,6 +5,8 @@
  *   NAV_UPDATER_PRIVATE_KEY   key holding NAV_UPDATER_ROLE on the TickAccountant
  *   NAV_INTERVAL_SECONDS      target cadence (default 3600)
  *   NAV_POLL_SECONDS          loop period (default 60)
+ *   NAV_SNAPSHOT_SEND_MARGIN_SECONDS
+ *                             refresh snapshots this close to expiry (default 15)
  *   PORT_NAV                  status port (default 8081)
  *
  * Commits when the cadence is due, or earlier when a closed epoch waits for a
@@ -19,7 +21,8 @@
 import { Contract } from 'ethers';
 import { EPOCH_VAULT, TICK_ACCOUNTANT } from './abi';
 import { envNumber, hubOf, loadChains, signerFor } from './config';
-import { Snapshot, buildSnapshot, committedSnapshot, offersOf, openTransferIndex } from './snapshot';
+import { snapshotRefreshReason } from './nav-freshness';
+import { Built, Snapshot, buildSnapshot, committedSnapshot, offersOf, openTransferIndex } from './snapshot';
 import { log, loop, serveStatus, telegram } from './util';
 
 const SERVICE = 'nav';
@@ -49,7 +52,7 @@ async function main() {
 
   await loop(SERVICE, envNumber('NAV_POLL_SECONDS', 60) * 1000, async () => {
     try {
-      const [, latest] = await accountant.latestAccepted();
+      let [, latest] = await accountant.latestAccepted();
       const lastId: bigint = await accountant.lastTickId();
       const last = await accountant.getTick(lastId);
       const cfg = await accountant.config();
@@ -77,7 +80,29 @@ async function main() {
         const acceptedId: bigint = await accountant.lastAcceptedTickId();
         lastSnapshot = (await committedSnapshot(hub, acceptedId))?.snapshot;
       }
-      const built = await buildSnapshot(chains, index, lastSnapshot ? offersOf(lastSnapshot) : new Map());
+      let built: Built;
+      for (let buildAttempt = 0; ; buildAttempt += 1) {
+        built = await buildSnapshot(chains, index, lastSnapshot ? offersOf(lastSnapshot) : new Map());
+        const currentLastId: bigint = await accountant.lastTickId();
+        const currentLast = await accountant.getTick(currentLastId);
+        const currentCfg = await accountant.config();
+        const currentNow = BigInt((await hub.provider.getBlock('latest'))!.timestamp);
+        const reason = snapshotRefreshReason(built.snapshot, {
+          lastTickId: currentLastId,
+          lastReferenceTime: BigInt(currentLast.referenceTime),
+          now: currentNow,
+          maxSnapshotAge: BigInt(currentCfg.maxSnapshotAge),
+          sendMargin: BigInt(envNumber('NAV_SNAPSHOT_SEND_MARGIN_SECONDS', 15)),
+        });
+        if (!reason) break;
+        if (buildAttempt > 0) throw new Error(`snapshot remained stale after refresh: ${reason}`);
+        log(SERVICE, 'snapshot became stale while building; rebuilding', {
+          reason,
+          tickId: built.snapshot.tickId,
+          referenceTime: built.snapshot.referenceTime,
+        });
+        [, latest] = await accountant.latestAccepted();
+      }
       const prevRate = BigInt(latest.rateBid);
       const moveBps = prevRate === 0n ? 0n : ((built.totals.grossBid - prevRate) * 10_000n) / prevRate;
       log(SERVICE, 'snapshot built', {
