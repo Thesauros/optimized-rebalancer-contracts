@@ -18,7 +18,7 @@ test('drainCursor waits for the read RPC cursor before another transaction', asy
       events.push(`cursor:${cursor}`);
       return cursor;
     },
-    { label: 'clearRedeems', maxPolls: 4, pause: async () => events.push('pause') },
+    { label: 'clearRedeems', maxPolls: 4, pause: async () => { events.push('pause'); } },
   );
 
   assert.equal(completed, 1);
