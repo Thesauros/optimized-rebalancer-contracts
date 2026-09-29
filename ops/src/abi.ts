@@ -55,6 +55,7 @@ const EPOCH =
 export const EPOCH_VAULT = [
   ...ACCESS,
   'function asset() view returns (address)',
+  'function symbol() view returns (string)',
   'function accountant() view returns (address)',
   'function hubAgent() view returns (address)',
   'function totalSupply() view returns (uint256)',

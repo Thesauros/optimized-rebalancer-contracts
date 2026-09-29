@@ -13,6 +13,64 @@ export function log(service: string, msg: string, extra?: unknown): void {
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Bounds how many async operations run at once, process-wide.
+ *
+ * Read APIs issue dozens of independent provider calls per request and providers are built with
+ * `batchMaxCount: 1`, so an unbounded `Promise.all` opens one TLS socket per call in the same
+ * instant. Both Moralis and public endpoints drop that burst ("Client network socket disconnected
+ * before secure TLS connection was established"), which ends up slower than the sequential code it
+ * replaced. A small bound keeps most of the speed-up without the failures.
+ *
+ * The slot is handed directly to the next waiter instead of being released and re-taken, so the
+ * count stays exact under contention. Callers must not await a limited call from inside another
+ * limited call: with every slot held by an outer call waiting on an inner one, that deadlocks.
+ */
+export function semaphore(size: number) {
+  const limit = Math.max(1, size);
+  let active = 0;
+  const queue: (() => void)[] = [];
+  return async function run<T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= limit) await new Promise<void>((resolve) => queue.push(resolve));
+    else active++;
+    try {
+      return await fn();
+    } finally {
+      const next = queue.shift();
+      if (next) next();
+      else active--;
+    }
+  };
+}
+
+/**
+ * True for transport-level failures, which are transient and worth retrying: dropped sockets,
+ * reset connections, DNS hiccups and request timeouts. Deliberately does not match a contract
+ * revert or a bad argument, because those are deterministic and retrying only wastes the budget.
+ */
+function isTransient(e: unknown): boolean {
+  const text = String((e as any)?.cause?.message ?? (e as any)?.shortMessage ?? (e as any)?.message ?? e);
+  return /socket disconnected|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|timeout|bad gateway|502|503|504|429/i.test(text);
+}
+
+/**
+ * Retries a provider read on transport failures with exponential backoff.
+ *
+ * Both Moralis and public endpoints drop connections intermittently under load; measured on the
+ * stand, roughly two in five live reads failed this way while sequential indexing stayed healthy.
+ * Without a retry a read API turns that into a 500 the caller cannot distinguish from a real fault.
+ */
+export async function retryTransient<T>(fn: () => Promise<T>, attempts = 3, baseMs = 150): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i + 1 >= attempts || !isTransient(e)) throw e;
+      await sleep(baseMs * 2 ** i);
+    }
+  }
+}
+
 /** A decoded log; the fields callers read from ethers' EventLog. */
 export interface ScannedEvent {
   eventName: string;

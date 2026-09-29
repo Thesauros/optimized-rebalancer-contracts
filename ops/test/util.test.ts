@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Contract, Interface, zeroPadValue, toBeHex } from 'ethers';
-import { EventCache, scanMany } from '../src/util';
+import { EventCache, retryTransient, scanMany, semaphore } from '../src/util';
 
 const ABI = ['event A(uint256 indexed n)', 'event B(uint256 indexed n)'];
 const iface = new Interface(ABI);
@@ -61,4 +61,77 @@ test('EventCache reads only the blocks it has not seen', async () => {
   assert.deepEqual(fake.calls.slice(before), [[51, 80]], 'the second pass scans only the new blocks');
   await cache.get('k', c, ['A', 'B'], 0, 80);
   assert.equal(fake.calls.length, before + 1, 'no request when the head has not moved');
+});
+
+test('semaphore bounds concurrent work and preserves input order', async () => {
+  let active = 0;
+  let peak = 0;
+  const run = semaphore(3);
+  const task = (i: number) =>
+    run(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return i * 2;
+    });
+  const out = await Promise.all(Array.from({ length: 20 }, (_, i) => task(i)));
+  assert.deepEqual(out, Array.from({ length: 20 }, (_, i) => i * 2), 'results keep their input order');
+  assert.ok(peak <= 3, `never exceeds the bound, peaked at ${peak}`);
+  assert.ok(peak >= 2, `does run in parallel, peaked at ${peak}`);
+});
+
+test('semaphore of size 1 serialises, and a failing task still releases its slot', async () => {
+  const run = semaphore(1);
+  const order: string[] = [];
+  await assert.rejects(
+    () => run(async () => { throw new Error('boom'); }),
+    /boom/,
+  );
+  await Promise.all([
+    run(async () => {
+      order.push('a-start');
+      await new Promise((r) => setTimeout(r, 5));
+      order.push('a-end');
+    }),
+    run(async () => {
+      order.push('b-start');
+      order.push('b-end');
+    }),
+  ]);
+  assert.deepEqual(order, ['a-start', 'a-end', 'b-start', 'b-end'], 'no overlap, and the throw did not wedge it');
+});
+
+test('retryTransient retries transport failures and gives up on a real revert', async () => {
+  let transport = 0;
+  const flaky = () =>
+    retryTransient(async () => {
+      transport++;
+      if (transport < 3) throw new Error('Client network socket disconnected before secure TLS connection was established');
+      return 'ok';
+    }, 4, 1);
+  assert.equal(await flaky(), 'ok');
+  assert.equal(transport, 3, 'succeeded on the third attempt');
+
+  let reverts = 0;
+  await assert.rejects(
+    () =>
+      retryTransient(async () => {
+        reverts++;
+        throw new Error("execution reverted: custom error 'LimitExceeded()'");
+      }, 4, 1),
+    /LimitExceeded/,
+  );
+  assert.equal(reverts, 1, 'a deterministic revert is not retried');
+
+  let timeouts = 0;
+  await assert.rejects(
+    () =>
+      retryTransient(async () => {
+        timeouts++;
+        throw new Error('request timeout (code=TIMEOUT, version=6.16.0)');
+      }, 3, 1),
+    /timeout/,
+  );
+  assert.equal(timeouts, 3, 'a timeout is transient, so it exhausts the budget');
 });

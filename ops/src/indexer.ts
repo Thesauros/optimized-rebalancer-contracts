@@ -16,6 +16,7 @@
  *   GET /v1/ticks?limit=200           NAV / rate history (accepted and quarantined)
  *   GET /v1/allocation                capital per chain / strategy / provider + in flight
  *   GET /v1/transfers?limit=50
+ *   GET /v1/activity?limit=50         one chronological feed of everything that happened
  *
  * Source of truth is the chain: events are indexed up to head - confirmations
  * and live state (balances, epochs, accounting) is read on request.
@@ -25,11 +26,26 @@ import { DatabaseSync } from 'node:sqlite';
 import { Contract, getAddress, isAddress } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, envNumber, hubOf, loadChains } from './config';
-import { log, loop, scanMany } from './util';
+import type { NetworkEntry } from '../../deploy/crosschain/registry';
+import { log, loop, retryTransient, scanMany, semaphore } from './util';
 
 const SERVICE = 'indexer';
 const WAD = 10n ** 18n;
 const YEAR = 365 * 24 * 3600;
+
+const gate = semaphore(envNumber('RPC_CONCURRENCY', 4));
+
+/**
+ * One live provider read.
+ *
+ * Bounded, because a page load fires /v1/vault and /v1/allocation together and an unbounded
+ * Promise.all opens one socket per call at the same instant, which the endpoint drops. Retried,
+ * because the drops also happen on their own. Each attempt takes the gate separately, so a call
+ * waiting to retry does not hold a slot.
+ */
+const rpc = <T>(fn: () => Promise<T>) => retryTransient(() => gate(fn));
+
+const POLL_SECONDS = envNumber('INDEXER_POLL_SECONDS', 15);
 
 /*//////////////////////////////////////////////////////////////
                     PURE DERIVATIONS (unit-tested)
@@ -46,6 +62,39 @@ export interface EpochLike {
 
 export type RequestState = 'pending' | 'clearing' | 'awaiting_liquidity' | 'claimable' | 'claimed' | 'cancelled';
 
+/** One line of the public activity feed; which optional fields are set depends on `type`. */
+export type ActivityType =
+  | 'deposit_requested'
+  | 'deposit_claimed'
+  | 'redeem_requested'
+  | 'redeem_claimed'
+  | 'request_cancelled'
+  | 'instant_exit'
+  | 'tick_accepted'
+  | 'tick_quarantined'
+  | 'tick_ratified'
+  | 'bridge_sent'
+  | 'bridge_arrived';
+
+export interface ActivityItem {
+  time: number;
+  type: ActivityType;
+  tx: string | null;
+  requestId?: number;
+  kind?: 'deposit' | 'redeem';
+  epoch?: number;
+  owner?: string;
+  receiver?: string;
+  amount?: string;
+  tickId?: number;
+  rateBid?: string;
+  navBid?: string;
+  srcChain?: number;
+  dstChain?: number;
+  shares?: string;
+  assets?: string;
+}
+
 /** Status of a request as a user sees it, from the stored status and its epoch. */
 export function deriveRequest(
   kind: 'deposit' | 'redeem',
@@ -59,7 +108,11 @@ export function deriveRequest(
   if (storedStatus === 'claimed') return { state: 'claimed', cancellable: false, claimable: 0n };
   if (epochId === currentEpoch) return { state: 'pending', cancellable: true, claimable: 0n };
   if (kind === 'deposit') {
-    if (!e.depositsCleared) return { state: 'clearing', cancellable: false, claimable: 0n };
+    // A deposit stays cancellable until it is priced, past the cutoff included: the refund is
+    // NAV-neutral, and this is the only exit for a deposit caught in a frozen or quarantined
+    // epoch (EpochVaultLogic.cancel). A redeem is not cancellable past the cutoff, because its
+    // price is fixed only at clearing and a late cancel would be a free option on the epoch.
+    if (!e.depositsCleared) return { state: 'clearing', cancellable: true, claimable: 0n };
     return { state: 'claimable', cancellable: false, claimable: (amount * WAD) / e.rateOffer };
   }
   if (!e.redeemsCleared) return { state: 'clearing', cancellable: false, claimable: 0n };
@@ -88,6 +141,21 @@ export function annualized(rateThen: bigint, rateNow: bigint, seconds: number): 
   return Math.pow(growth, YEAR / seconds) - 1;
 }
 
+/**
+ * Registry label for a provider address.
+ *
+ * `getIdentifier()` is not enough: three different Morpho vaults on one chain all report
+ * `Morpho_Provider`, so a consumer cannot tell them apart. The registry already names them,
+ * and Compound V3 is named by its manifest entry, so the label is stable per deployment.
+ */
+export function providerLabel(entry: NetworkEntry, manifestContracts: Record<string, string>, address: string): string | null {
+  const a = address.toLowerCase();
+  const reused = entry.strategy?.reusedProviders?.find((p) => p.address.toLowerCase() === a);
+  if (reused) return reused.label;
+  const deployed = Object.keys(manifestContracts).find((k) => manifestContracts[k].toLowerCase() === a);
+  return deployed ? deployed.replace(/Provider$/, '') : null;
+}
+
 /*//////////////////////////////////////////////////////////////
                                STORE
 //////////////////////////////////////////////////////////////*/
@@ -97,7 +165,7 @@ create table if not exists meta (key text primary key, value text not null);
 create table if not exists requests (
   id integer primary key, kind text not null, owner text not null, receiver text not null,
   epoch integer not null, amount text not null, status text not null,
-  requested_tx text, requested_at integer, cancelled_tx text, claimed_tx text, claimed_amount text, claimed_at integer);
+  requested_tx text, requested_at integer, cancelled_tx text, cancelled_at integer, claimed_tx text, claimed_amount text, claimed_at integer);
 create index if not exists requests_owner on requests(owner);
 create index if not exists requests_receiver on requests(receiver);
 create table if not exists ticks (
@@ -121,6 +189,9 @@ export class Indexer {
   constructor(readonly chains: Chain[], dbPath: string) {
     this.db = new DatabaseSync(dbPath);
     this.db.exec(SCHEMA);
+    // The DB is a rebuildable cache, but an existing file predates cancelled_at.
+    const cols = this.db.prepare("select name from pragma_table_info('requests')").all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'cancelled_at')) this.db.exec('alter table requests add column cancelled_at integer');
     this.hub = hubOf(chains);
   }
 
@@ -172,7 +243,7 @@ export class Indexer {
           break;
         }
         case 'RequestCancelled':
-          this.db.prepare("update requests set status = 'cancelled', cancelled_tx = ? where id = ?").run(e.transactionHash, Number(e.args.requestId));
+          this.db.prepare("update requests set status = 'cancelled', cancelled_tx = ?, cancelled_at = ? where id = ?").run(e.transactionHash, await this.ts(c, e.blockNumber), Number(e.args.requestId));
           break;
         case 'DepositClaimed':
         case 'RedeemClaimed': {
@@ -226,21 +297,37 @@ export class Indexer {
 
   private async epochs(ids: bigint[]): Promise<Map<string, any>> {
     const vault = this.vault();
-    const out = new Map<string, any>();
-    for (const id of [...new Set(ids.map(String))]) out.set(id, await vault.getEpoch(BigInt(id)));
-    return out;
+    const unique = [...new Set(ids.map(String))];
+    const rows = await Promise.all(unique.map((id) => rpc(() => vault.getEpoch(BigInt(id)))));
+    return new Map(unique.map((id, i) => [id, rows[i]]));
   }
 
   async vaultSummary() {
     const vault = this.vault();
     const accountant = new Contract(this.hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, this.hub.provider);
-    const [tickId, tick] = await accountant.latestAccepted();
-    const now = (await this.hub.provider.getBlock('latest'))!.timestamp;
-    const current: bigint = await vault.currentEpoch();
-    const e = await vault.getEpoch(current);
-    const ec = await vault.epochConfig();
-    const l = await vault.limits();
-    const [cash, pending, liabilities, reserved] = await vault.accounting();
+    // Every read except getEpoch(current) is independent, and providers are constructed with
+    // batchMaxCount: 1, so awaiting them one by one is one HTTP round trip each. Issued
+    // together this is two waves instead of fourteen, which is the difference between a
+    // dashboard that renders and one that appears to hang.
+    const [latest, block, current, ec, l, cfg, acct, asset, symbol, totalSupply, frozen, quarantined, freeCash] = await Promise.all([
+      rpc(() => accountant.latestAccepted() as Promise<[bigint, any]>),
+      rpc(() => this.hub.provider.getBlock('latest')),
+      rpc(() => vault.currentEpoch() as Promise<bigint>),
+      rpc(() => vault.epochConfig()),
+      rpc(() => vault.limits()),
+      rpc(() => accountant.config()),
+      rpc(() => vault.accounting() as Promise<[bigint, bigint, bigint, bigint, bigint, bigint]>),
+      rpc(() => vault.asset() as Promise<string>),
+      rpc(() => vault.symbol() as Promise<string>),
+      rpc(() => vault.totalSupply() as Promise<bigint>),
+      rpc(() => accountant.frozen() as Promise<boolean>),
+      rpc(() => accountant.quarantined() as Promise<boolean>),
+      rpc(() => vault.freeCash() as Promise<bigint>),
+    ]);
+    const [tickId, tick] = latest;
+    const now = block!.timestamp;
+    const e = await rpc(() => vault.getEpoch(current));
+    const [cash, pending, liabilities, reserved] = acct;
     const exits = (this.db.prepare('select time, assets from instants order by time').all() as { time: number; assets: string }[]).map((x) => ({ time: x.time, assets: BigInt(x.assets) }));
     const aprOver = (days: number) => {
       const row = this.db.prepare('select rate_bid, committed_at from ticks where status in (1,3) and committed_at <= ? order by committed_at desc limit 1').get(now - days * 86400) as { rate_bid: string; committed_at: number } | undefined;
@@ -250,10 +337,11 @@ export class Indexer {
     return {
       chainId: Number(this.hub.chainId),
       vault: this.hub.manifest.contracts.EpochVault,
-      asset: await vault.asset(),
+      asset,
+      symbol,
       decimals: 6,
       profile: this.hub.manifest.profile ?? 'production',
-      totalSupply: (await vault.totalSupply()).toString(),
+      totalSupply: totalSupply.toString(),
       tick: {
         id: Number(tickId),
         rateBid: tick.rateBid.toString(),
@@ -261,9 +349,19 @@ export class Indexer {
         navBid: tick.navBid.toString(),
         navOffer: tick.navOffer.toString(),
         committedAt: Number(tick.committedAt),
-        ageSeconds: now - Number(tick.committedAt),
+        // Tick 0 is the synthetic launch tick: nothing has been published yet, so there is no
+        // age to report and `now - 0` would be a meaningless ~1.79e9 seconds.
+        ageSeconds: tickId > 0n ? now - Number(tick.committedAt) : null,
         flags: Number(tick.flags),
-        frozen: await accountant.frozen(),
+        frozen,
+        quarantined,
+      },
+      /** Thresholds a consumer needs to judge the tick and the in-flight capital honestly. */
+      risk: {
+        maxTickAge: Number(cfg.maxTickAge),
+        maxTransit: Number(cfg.maxTransit),
+        maxSpread: cfg.maxSpread.toString(),
+        maxInFlightRatio: cfg.maxInFlightRatio.toString(),
       },
       apr: { d7: aprOver(7), d30: aprOver(30) },
       epoch: {
@@ -274,10 +372,15 @@ export class Indexer {
         depositAssets: e.depositAssets.toString(),
         redeemShares: e.redeemShares.toString(),
       },
-      accounting: { cash: cash.toString(), pendingDeposits: pending.toString(), liabilities: liabilities.toString(), reserved: reserved.toString(), freeCash: (await vault.freeCash()).toString() },
+      accounting: { cash: cash.toString(), pendingDeposits: pending.toString(), liabilities: liabilities.toString(), reserved: reserved.toString(), freeCash: freeCash.toString() },
       limits: {
         minDeposit: l.minDeposit.toString(),
         maxEpochDeposits: l.maxEpochDeposits.toString(),
+        // The buffer pair is what bounds capital utilization: pushToAgent refuses to leave less
+        // than max(minimumBuffer, minBufferRatio * navBid) in the vault, so a consumer cannot
+        // explain "why is cash idle" without them.
+        minimumBuffer: l.minimumBuffer.toString(),
+        minBufferRatio: l.minBufferRatio.toString(),
         maxInstantWithdrawal: l.maxInstantWithdrawal.toString(),
         dailyInstantLimit: l.dailyInstantLimit.toString(),
         instantFee: l.instantFee.toString(),
@@ -290,7 +393,7 @@ export class Indexer {
 
   private async requestViews(rows: any[]) {
     const vault = this.vault();
-    const current: bigint = await vault.currentEpoch();
+    const current: bigint = await rpc(() => vault.currentEpoch() as Promise<bigint>);
     const epochs = await this.epochs(rows.map((r) => BigInt(r.epoch)));
     return rows.map((r) => {
       const e = epochs.get(String(r.epoch));
@@ -325,8 +428,11 @@ export class Indexer {
     const a = address.toLowerCase();
     const vault = this.vault();
     const accountant = new Contract(this.hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, this.hub.provider);
-    const [, tick] = await accountant.latestAccepted();
-    const shares: bigint = await vault.balanceOf(getAddress(address));
+    const [latest, shares] = await Promise.all([
+      rpc(() => accountant.latestAccepted() as Promise<[bigint, any]>),
+      rpc(() => vault.balanceOf(getAddress(address)) as Promise<bigint>),
+    ]);
+    const [, tick] = latest;
     const rows = this.db.prepare('select * from requests where owner = ? or receiver = ? order by id desc limit 200').all(a, a);
     const instants = this.db.prepare('select * from instants where owner = ? or receiver = ? order by time desc limit 50').all(a, a);
     return {
@@ -345,29 +451,27 @@ export class Indexer {
 
   async epochList(limit: number) {
     const vault = this.vault();
-    const current = Number(await vault.currentEpoch());
-    const out = [];
-    for (let id = current; id >= Math.max(1, current - limit + 1); id--) {
-      const e = await vault.getEpoch(id);
-      out.push({
-        id,
-        openedAt: Number(e.openedAt),
-        closedAt: Number(e.closedAt) || null,
-        openRateBid: e.openRateBid.toString(),
-        depositAssets: e.depositAssets.toString(),
-        redeemShares: e.redeemShares.toString(),
-        depositsCleared: e.depositsCleared,
-        redeemsCleared: e.redeemsCleared,
-        funded: e.funded,
-        rateOffer: e.rateOffer.toString(),
-        priceRedeem: e.priceRedeem.toString(),
-        sharesMinted: e.sharesMinted.toString(),
-        assetsOwed: e.assetsOwed.toString(),
-        depositTickId: Number(e.depositTickId) || null,
-        redeemTickId: Number(e.redeemTickId) || null,
-      });
-    }
-    return out;
+    const current = Number(await rpc(() => vault.currentEpoch() as Promise<bigint>));
+    const ids: number[] = [];
+    for (let id = current; id >= Math.max(1, current - limit + 1); id--) ids.push(id);
+    const rows = await Promise.all(ids.map((id) => rpc(() => vault.getEpoch(id))));
+    return rows.map((e, i) => ({
+      id: ids[i],
+      openedAt: Number(e.openedAt),
+      closedAt: Number(e.closedAt) || null,
+      openRateBid: e.openRateBid.toString(),
+      depositAssets: e.depositAssets.toString(),
+      redeemShares: e.redeemShares.toString(),
+      depositsCleared: e.depositsCleared,
+      redeemsCleared: e.redeemsCleared,
+      funded: e.funded,
+      rateOffer: e.rateOffer.toString(),
+      priceRedeem: e.priceRedeem.toString(),
+      sharesMinted: e.sharesMinted.toString(),
+      assetsOwed: e.assetsOwed.toString(),
+      depositTickId: Number(e.depositTickId) || null,
+      redeemTickId: Number(e.redeemTickId) || null,
+    }));
   }
 
   ticks(limit: number) {
@@ -381,31 +485,104 @@ export class Indexer {
     }));
   }
 
-  async allocation() {
-    const chains = [];
-    for (const c of this.chains) {
-      const agentAddr = c.manifest.contracts.ChainAgent;
-      const agent = new Contract(agentAddr, CHAIN_AGENT, c.provider);
-      const strategy = new Contract(c.manifest.contracts.Strategy, STRATEGY, c.provider);
-      const idle: bigint = await new Contract(c.entry.usdc, ERC20, c.provider).balanceOf(agentAddr);
-      const shares: bigint = await agent.strategyShares();
-      const value: bigint = shares > 0n ? await strategy.convertToAssets(shares) : 0n;
-      const total: bigint = await strategy.totalAssets();
-      const providers = [];
-      for (const p of (await strategy.getProviders()) as string[]) {
-        const pc = new Contract(p, PROVIDER, c.provider);
-        let balance = 0n;
-        let name = p;
-        try {
-          balance = await pc.getDepositBalance(c.manifest.contracts.Strategy, c.manifest.contracts.Strategy);
-          name = await pc.getIdentifier();
-        } catch {
-          /* unhealthy provider: reported as zero */
-        }
-        providers.push({ address: p, identifier: name, capBps: Number(await strategy.getProviderCap(p)), agentShare: total > 0n ? ((balance * value) / total).toString() : '0' });
-      }
-      chains.push({ chainId: Number(c.chainId), network: c.key, role: c.entry.role, agent: agentAddr, idle: idle.toString(), strategy: c.manifest.contracts.Strategy, strategyValue: value.toString(), providersHealthy: await strategy.providersHealthy(), providers });
+  /**
+   * One chronological feed of everything the system did, newest first.
+   *
+   * Pure SQLite, no RPC, so it is cheap enough for a browser to poll. Every source is limited
+   * to its own newest `limit` rows before the merge, which makes the returned window exact:
+   * the newest `limit` items overall cannot contain more than `limit` items from one source.
+   */
+  activity(limit: number): ActivityItem[] {
+    const out: ActivityItem[] = [];
+
+    const requested = this.db.prepare('select id, kind, owner, receiver, epoch, amount, requested_tx as tx, requested_at as time from requests where requested_at is not null order by requested_at desc limit ?').all(limit) as any[];
+    for (const r of requested) {
+      out.push({ time: r.time, type: r.kind === 'deposit' ? 'deposit_requested' : 'redeem_requested', tx: r.tx, requestId: r.id, kind: r.kind, epoch: r.epoch, owner: r.owner, receiver: r.receiver, amount: r.amount });
     }
+
+    const claimed = this.db.prepare('select id, kind, owner, receiver, epoch, claimed_amount as amount, claimed_tx as tx, claimed_at as time from requests where claimed_at is not null order by claimed_at desc limit ?').all(limit) as any[];
+    for (const r of claimed) {
+      out.push({ time: r.time, type: r.kind === 'deposit' ? 'deposit_claimed' : 'redeem_claimed', tx: r.tx, requestId: r.id, kind: r.kind, epoch: r.epoch, owner: r.owner, receiver: r.receiver, amount: r.amount });
+    }
+
+    const cancelled = this.db.prepare('select id, kind, owner, receiver, epoch, amount, cancelled_tx as tx, cancelled_at as time from requests where cancelled_at is not null order by cancelled_at desc limit ?').all(limit) as any[];
+    for (const r of cancelled) {
+      out.push({ time: r.time, type: 'request_cancelled', tx: r.tx, requestId: r.id, kind: r.kind, epoch: r.epoch, owner: r.owner, receiver: r.receiver, amount: r.amount });
+    }
+
+    const instants = this.db.prepare('select tx, owner, receiver, tick, shares, assets, time from instants order by time desc limit ?').all(limit) as any[];
+    for (const r of instants) {
+      out.push({ time: r.time, type: 'instant_exit', tx: r.tx, owner: r.owner, receiver: r.receiver, tickId: r.tick, shares: r.shares, assets: r.assets, amount: r.assets });
+    }
+
+    const ticks = this.db.prepare('select id, status, rate_bid, nav_bid, committed_at as time, tx from ticks where status in (1, 2, 3) order by committed_at desc limit ?').all(limit) as any[];
+    for (const r of ticks) {
+      const type: ActivityType = r.status === 2 ? 'tick_quarantined' : r.status === 3 ? 'tick_ratified' : 'tick_accepted';
+      out.push({ time: r.time, type, tx: r.tx, tickId: r.id, rateBid: r.rate_bid, navBid: r.nav_bid });
+    }
+
+    const sent = this.db.prepare('select src_chain, dst_chain, amount, sent_tx as tx, sent_at as time from transfers where sent_at is not null order by sent_at desc limit ?').all(limit) as any[];
+    for (const r of sent) {
+      out.push({ time: r.time, type: 'bridge_sent', tx: r.tx, srcChain: r.src_chain, dstChain: r.dst_chain, amount: r.amount });
+    }
+
+    const arrived = this.db.prepare('select src_chain, dst_chain, received_amount as amount, received_tx as tx, received_at as time from transfers where received_at is not null order by received_at desc limit ?').all(limit) as any[];
+    for (const r of arrived) {
+      out.push({ time: r.time, type: 'bridge_arrived', tx: r.tx, srcChain: r.src_chain, dstChain: r.dst_chain, amount: r.amount });
+    }
+
+    out.sort((a, b) => b.time - a.time);
+    return out.slice(0, limit);
+  }
+
+  /** One chain's capital. Agent, strategy and every provider are independent reads. */
+  private async chainAllocation(c: Chain) {
+    const agentAddr = c.manifest.contracts.ChainAgent;
+    const strategyAddr = c.manifest.contracts.Strategy;
+    const agent = new Contract(agentAddr, CHAIN_AGENT, c.provider);
+    const strategy = new Contract(strategyAddr, STRATEGY, c.provider);
+    const [idle, shares, addrs, total, healthy] = await Promise.all([
+      rpc(() => new Contract(c.entry.usdc, ERC20, c.provider).balanceOf(agentAddr) as Promise<bigint>),
+      rpc(() => agent.strategyShares() as Promise<bigint>),
+      rpc(() => strategy.getProviders() as Promise<string[]>),
+      rpc(() => strategy.totalAssets() as Promise<bigint>),
+      rpc(() => strategy.providersHealthy() as Promise<boolean>),
+    ]);
+    const value: bigint = shares > 0n ? await rpc(() => strategy.convertToAssets(shares) as Promise<bigint>) : 0n;
+    const providers = await Promise.all(
+      addrs.map(async (p) => {
+        const pc = new Contract(p, PROVIDER, c.provider);
+        // A provider whose view reverts is reported as zero rather than failing the whole read;
+        // `providersHealthy` is what tells a consumer that this happened.
+        const [balance, name, cap] = await Promise.all([
+          rpc(() => pc.getDepositBalance(strategyAddr, strategyAddr) as Promise<bigint>).catch(() => 0n),
+          rpc(() => pc.getIdentifier() as Promise<string>).catch(() => p),
+          rpc(() => strategy.getProviderCap(p) as Promise<bigint>).catch(() => 0n),
+        ]);
+        return {
+          address: p,
+          identifier: name,
+          label: providerLabel(c.entry, c.manifest.contracts, p),
+          capBps: Number(cap),
+          agentShare: total > 0n ? ((balance * value) / total).toString() : '0',
+        };
+      }),
+    );
+    return {
+      chainId: Number(c.chainId),
+      network: c.key,
+      role: c.entry.role,
+      agent: agentAddr,
+      idle: idle.toString(),
+      strategy: strategyAddr,
+      strategyValue: value.toString(),
+      providersHealthy: healthy,
+      providers,
+    };
+  }
+
+  async allocation() {
+    const chains = await Promise.all(this.chains.map((c) => this.chainAllocation(c)));
     const inFlight = this.transfers(500).filter((t) => t.state === 'in_flight');
     return { chains, inFlight };
   }
@@ -439,13 +616,18 @@ export function createServer(ix: Indexer, state: { lastSync: number; lastError: 
     try {
       const p = url.pathname;
       if (p === '/health') {
-        const healthy = state.lastError === '' && Date.now() - state.lastSync < 5 * 60_000;
+        // A sync counts as late only once it has missed its own cadence by a wide margin. The
+        // window used to be a flat five minutes, which made a deliberately slow poll (a gentle
+        // RPC budget) report an outage forever.
+        const windowMs = Math.max(5 * 60, POLL_SECONDS * 3) * 1000;
+        const healthy = state.lastError === '' && Date.now() - state.lastSync < windowMs;
         return send(healthy ? 200 : 503, { service: SERVICE, healthy, lastSync: new Date(state.lastSync).toISOString(), lastError: state.lastError, indexedTo: ix.lag() });
       }
       if (p === '/v1/vault') return send(200, await ix.vaultSummary());
       if (p === '/v1/epochs') return send(200, await ix.epochList(limit(20, 100)));
       if (p === '/v1/ticks') return send(200, ix.ticks(limit(200, 2000)));
       if (p === '/v1/transfers') return send(200, ix.transfers(limit(50, 500)));
+      if (p === '/v1/activity') return send(200, ix.activity(limit(50, 500)));
       if (p === '/v1/allocation') return send(200, await ix.allocation());
       let m = p.match(/^\/v1\/users\/(0x[0-9a-fA-F]{40})$/);
       if (m && isAddress(m[1])) return send(200, await ix.user(m[1]));
@@ -469,7 +651,7 @@ async function main() {
     const port = envNumber('PORT_INDEXER', 8085);
     createServer(ix, state).listen(port, () => log(SERVICE, `api on :${port}`));
   }
-  await loop(SERVICE, envNumber('INDEXER_POLL_SECONDS', 15) * 1000, async () => {
+  await loop(SERVICE, POLL_SECONDS * 1000, async () => {
     try {
       await ix.sync();
       state.lastSync = Date.now();
