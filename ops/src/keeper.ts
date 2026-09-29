@@ -14,6 +14,7 @@
 import { Contract } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, STRATEGY } from './abi';
 import { envNumber, hubOf, loadChains, signerFor } from './config';
+import { drainCursor } from './keeper-cursor';
 import { log, loop, scanMany, serveStatus } from './util';
 
 const SERVICE = 'keeper';
@@ -55,8 +56,16 @@ async function main() {
     try {
       await attempt('closeEpoch', 'closeEpoch');
       // clear every epoch that is ready, oldest first
-      while (await attempt('clearRedeems', 'clearRedeems'));
-      while (await attempt('clearDeposits', 'clearDeposits'));
+      await drainCursor(
+        () => attempt('clearRedeems', 'clearRedeems'),
+        async () => BigInt((await vault.cursors())[1]),
+        { label: 'clearRedeems' },
+      );
+      await drainCursor(
+        () => attempt('clearDeposits', 'clearDeposits'),
+        async () => BigInt((await vault.cursors())[0]),
+        { label: 'clearDeposits' },
+      );
 
       const [, nextRedeem, nextFund] = await vault.cursors();
       if (nextFund < nextRedeem) {
