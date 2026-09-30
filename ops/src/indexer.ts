@@ -10,6 +10,7 @@
  * Endpoints (JSON, amounts as decimal strings in asset/share base units):
  *   GET /health
  *   GET /v1/vault                     summary: rates, NAV, epoch timing, limits, APR
+ *   GET /v1/instant-remaining          SQLite-only instant-exit bucket estimate
  *   GET /v1/users/:address            share balance and every request with its derived status
  *   GET /v1/requests/:id
  *   GET /v1/epochs?limit=20
@@ -328,7 +329,6 @@ export class Indexer {
     const now = block!.timestamp;
     const e = await rpc(() => vault.getEpoch(current));
     const [cash, pending, liabilities, reserved] = acct;
-    const exits = (this.db.prepare('select time, assets from instants order by time').all() as { time: number; assets: string }[]).map((x) => ({ time: x.time, assets: BigInt(x.assets) }));
     const aprOver = (days: number) => {
       const row = this.db.prepare('select rate_bid, committed_at from ticks where status in (1,3) and committed_at <= ? order by committed_at desc limit 1').get(now - days * 86400) as { rate_bid: string; committed_at: number } | undefined;
       const first = row ?? (this.db.prepare('select rate_bid, committed_at from ticks where status in (1,3) order by committed_at asc limit 1').get() as { rate_bid: string; committed_at: number } | undefined);
@@ -384,11 +384,18 @@ export class Indexer {
         maxInstantWithdrawal: l.maxInstantWithdrawal.toString(),
         dailyInstantLimit: l.dailyInstantLimit.toString(),
         instantFee: l.instantFee.toString(),
-        instantRemainingEstimate: instantRemaining(BigInt(l.dailyInstantLimit), exits, now).toString(),
+        instantRemainingEstimate: this.instantRemainingEstimate(BigInt(l.dailyInstantLimit), now),
       },
       epochConfig: { minDuration: Number(ec.minDuration), maxDuration: Number(ec.maxDuration), minTicks: Number(ec.minTicks), maxClearingDelay: Number(ec.maxClearingDelay) },
       now,
     };
+  }
+
+  /** Cheap allocator read: the daily limit is already known on-chain by the caller. */
+  instantRemainingEstimate(dailyLimit: bigint, now = Math.floor(Date.now() / 1000)): string {
+    const exits = (this.db.prepare('select time, assets from instants order by time').all() as { time: number; assets: string }[])
+      .map((x) => ({ time: x.time, assets: BigInt(x.assets) }));
+    return instantRemaining(dailyLimit, exits, now).toString();
   }
 
   private async requestViews(rows: any[]) {
@@ -624,6 +631,11 @@ export function createServer(ix: Indexer, state: { lastSync: number; lastError: 
         return send(healthy ? 200 : 503, { service: SERVICE, healthy, lastSync: new Date(state.lastSync).toISOString(), lastError: state.lastError, indexedTo: ix.lag() });
       }
       if (p === '/v1/vault') return send(200, await ix.vaultSummary());
+      if (p === '/v1/instant-remaining') {
+        const value = url.searchParams.get('dailyLimit') ?? '';
+        if (!/^\d{1,78}$/.test(value)) return send(400, { error: 'dailyLimit must be an unsigned integer' });
+        return send(200, { instantRemainingEstimate: ix.instantRemainingEstimate(BigInt(value)) });
+      }
       if (p === '/v1/epochs') return send(200, await ix.epochList(limit(20, 100)));
       if (p === '/v1/ticks') return send(200, ix.ticks(limit(200, 2000)));
       if (p === '/v1/transfers') return send(200, ix.transfers(limit(50, 500)));
