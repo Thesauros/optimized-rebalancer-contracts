@@ -111,8 +111,8 @@ contract Rebalancer is
         $._asset = IERC20Metadata(asset_);
         $._underlyingDecimals = IERC20Metadata(asset_).decimals();
 
+        // also sets the entry provider to providers_[0]
         _setProviders(providers_);
-        _setEntryProvider(providers_[0]);
         _setTimelock(timelock_);
         _setTreasury(treasury_);
         _setManagementFee(managementFee_);
@@ -659,20 +659,26 @@ contract Rebalancer is
 
     /**
      * @notice Sets the list of providers for this vault.
-     * @param providers An array of provider contracts.
+     * @dev If the current entry provider is dropped from the list, the entry provider
+     * is reset to `providers[0]` and `EntryProviderUpdated` is emitted.
+     * @param providers A non-empty array of provider contracts.
      */
     function setProviders(IProvider[] memory providers) external onlyTimelock {
         _setProviders(providers);
     }
 
     /**
-     * @notice Sets the active provider for this vault.
+     * @notice Sets the provider that receives new deposits.
+     * @dev Callable by ADMIN_ROLE or EXECUTOR_ROLE. Both paths accept only a provider
+     * present in the current providers list (`_validateProvider`), so the executor can
+     * route deposits only where `rebalance` could already move funds.
      * @param entryProvider The contract of the new entry provider.
-     *
      */
-    function setEntryProvider(
-        IProvider entryProvider
-    ) external onlyRole(ADMIN_ROLE) {
+    function setEntryProvider(IProvider entryProvider) external {
+        address sender = _msgSender();
+        if (!hasRole(ADMIN_ROLE, sender) && !hasRole(EXECUTOR_ROLE, sender)) {
+            revert Unauthorized();
+        }
         _setEntryProvider(entryProvider);
     }
 
@@ -725,9 +731,15 @@ contract Rebalancer is
 
     /**
      * @dev Internal function to set the providers for this vault.
-     * @param providers An array of provider contracts.
+     * If the current entry provider is not in the new list (always the case during
+     * initialize), the entry falls back to `providers[0]`: deposits must never land at a
+     * provider that `totalAssets` and `_withdraw` no longer see.
+     * @param providers A non-empty array of provider contracts.
      */
     function _setProviders(IProvider[] memory providers) internal {
+        if (providers.length == 0) {
+            revert InvalidInput();
+        }
         RebalancerStorage storage $ = _getRebalancerStorage();
         for (uint256 i; i < providers.length; i++) {
             if (address(providers[i]) == address(0)) {
@@ -741,6 +753,10 @@ contract Rebalancer is
         $._providers = providers;
 
         emit ProvidersUpdated(providers);
+
+        if (!_validateProvider(address($._entryProvider))) {
+            _setEntryProvider(providers[0]);
+        }
     }
 
     /**
