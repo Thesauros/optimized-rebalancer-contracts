@@ -50,7 +50,7 @@ export function semaphore(size: number) {
  */
 function isTransient(e: unknown): boolean {
   const text = String((e as any)?.cause?.message ?? (e as any)?.shortMessage ?? (e as any)?.message ?? e);
-  return /socket disconnected|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|timeout|bad gateway|502|503|504|429/i.test(text);
+  return /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|timeout|bad gateway|409 conflict|error code: 1001|502|503|504|429/i.test(text);
 }
 
 /**
@@ -113,7 +113,9 @@ export async function scanMany(contract: Contract, eventNames: string[], fromBlo
     }
 
     const results = await Promise.allSettled(
-      ranges.map((range) => provider!.getLogs({ address, topics: [topics], fromBlock: range.from, toBlock: range.to })),
+      ranges.map((range) => retryTransient(
+        () => provider!.getLogs({ address, topics: [topics], fromBlock: range.from, toBlock: range.to }),
+      )),
     );
     const failed = results.findIndex((r) => r.status === 'rejected');
     if (failed >= 0) {

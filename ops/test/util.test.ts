@@ -83,6 +83,27 @@ test('scanMany bounds parallel log reads and keeps block-range order', async () 
   }
 });
 
+test('scanMany retries a dropped log request without restarting the scan', async () => {
+  let calls = 0;
+  const provider = {
+    async getLogs(f: { fromBlock: number }) {
+      calls++;
+      if (calls === 1) throw new Error('socket hang up');
+      return [{
+        address: ADDRESS,
+        blockNumber: f.fromBlock,
+        transactionHash: zeroPadValue(toBeHex(f.fromBlock + 1), 32),
+        index: 0,
+        ...iface.encodeEventLog('A', [f.fromBlock]),
+      }];
+    },
+  };
+  const c = new Contract(ADDRESS, ABI, provider as any);
+  const out = await scanMany(c, ['A'], 0, 99);
+  assert.equal(calls, 2);
+  assert.deepEqual(out.map((e) => e.blockNumber), [0]);
+});
+
 test('EventCache reads only the blocks it has not seen', async () => {
   const fake = fakeProvider([{ block: 5, name: 'A' }, { block: 60, name: 'B' }], 1000);
   const c = new Contract(ADDRESS, ABI, fake.provider as any);
