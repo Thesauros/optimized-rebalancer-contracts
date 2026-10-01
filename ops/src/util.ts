@@ -105,25 +105,36 @@ export async function scanMany(contract: Contract, eventNames: string[], fromBlo
   const address = await contract.getAddress();
   const provider = contract.runner?.provider ?? (contract.runner as unknown as Provider);
   const out: ScannedEvent[] = [];
+  const concurrency = Math.max(1, Number(process.env.LOG_CONCURRENCY ?? 1) || 1);
   for (let start = fromBlock; start <= toBlock; ) {
-    const end = Math.min(toBlock, start + logStep);
-    let logs: Log[];
-    try {
-      logs = await provider!.getLogs({ address, topics: [topics], fromBlock: start, toBlock: end });
-    } catch (e) {
-      const limit = providerRangeLimit(e);
-      const span = end - start;
-      if (limit === undefined || span === 0) throw e;
-      // trust the provider's stated limit when it is smaller; otherwise halve
+    const ranges: { from: number; to: number }[] = [];
+    for (let cursor = start; cursor <= toBlock && ranges.length < concurrency; cursor += logStep + 1) {
+      ranges.push({ from: cursor, to: Math.min(toBlock, cursor + logStep) });
+    }
+
+    const results = await Promise.allSettled(
+      ranges.map((range) => provider!.getLogs({ address, topics: [topics], fromBlock: range.from, toBlock: range.to })),
+    );
+    const failed = results.findIndex((r) => r.status === 'rejected');
+    if (failed >= 0) {
+      const error = (results[failed] as PromiseRejectedResult).reason;
+      const limit = providerRangeLimit(error);
+      const span = ranges[failed].to - ranges[failed].from;
+      if (limit === undefined || span === 0) throw error;
+      // Discard successful siblings and retry the batch at the smaller range.
+      // Re-reading an eth_getLogs range is harmless and keeps output ordered.
       logStep = limit > 0 && limit < span ? limit : Math.floor(span / 2);
-      continue; // retry the same start with the smaller range
+      continue;
     }
-    for (const l of logs) {
-      const parsed = contract.interface.parseLog(l);
-      if (!parsed) continue;
-      out.push({ eventName: parsed.name, args: parsed.args, blockNumber: l.blockNumber, transactionHash: l.transactionHash, logIndex: l.index });
+
+    for (const result of results as PromiseFulfilledResult<Log[]>[]) {
+      for (const l of result.value) {
+        const parsed = contract.interface.parseLog(l);
+        if (!parsed) continue;
+        out.push({ eventName: parsed.name, args: parsed.args, blockNumber: l.blockNumber, transactionHash: l.transactionHash, logIndex: l.index });
+      }
     }
-    start = end + 1;
+    start = ranges[ranges.length - 1].to + 1;
   }
   return out;
 }

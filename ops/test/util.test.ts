@@ -50,6 +50,39 @@ test('scanMany adapts to the provider range limit and returns every event in ord
   assert.equal(ok.length, 11, '1001 blocks in 100-block requests, both event kinds in one request each');
 });
 
+test('scanMany bounds parallel log reads and keeps block-range order', async () => {
+  const previous = process.env.LOG_CONCURRENCY;
+  process.env.LOG_CONCURRENCY = '4';
+  let active = 0;
+  let peak = 0;
+  const provider = {
+    async getLogs(f: { fromBlock: number; toBlock: number }) {
+      active++;
+      peak = Math.max(peak, active);
+      // Later ranges finish first, so ordering must come from the batch rather
+      // than RPC completion timing.
+      await new Promise((resolve) => setTimeout(resolve, f.fromBlock === 0 ? 8 : 1));
+      active--;
+      return [{
+        address: ADDRESS,
+        blockNumber: f.fromBlock,
+        transactionHash: zeroPadValue(toBeHex(f.fromBlock + 1), 32),
+        index: 0,
+        ...iface.encodeEventLog('A', [f.fromBlock]),
+      }];
+    },
+  };
+  try {
+    const c = new Contract(ADDRESS, ABI, provider as any);
+    const out = await scanMany(c, ['A'], 0, 399);
+    assert.deepEqual(out.map((e) => e.blockNumber), [0, 100, 200, 300]);
+    assert.equal(peak, 4);
+  } finally {
+    if (previous === undefined) delete process.env.LOG_CONCURRENCY;
+    else process.env.LOG_CONCURRENCY = previous;
+  }
+});
+
 test('EventCache reads only the blocks it has not seen', async () => {
   const fake = fakeProvider([{ block: 5, name: 'A' }, { block: 60, name: 'B' }], 1000);
   const c = new Contract(ADDRESS, ABI, fake.provider as any);
