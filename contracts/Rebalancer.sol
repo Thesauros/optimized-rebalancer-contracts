@@ -666,13 +666,17 @@ contract Rebalancer is
     }
 
     /**
-     * @notice Sets the active provider for this vault.
+     * @notice Sets the provider that receives new deposits.
+     * @dev Callable by ADMIN_ROLE or EXECUTOR_ROLE. Both paths accept only a provider
+     * present in the current providers list (`_validateProvider`), so the executor can
+     * route deposits only where `rebalance` could already move funds.
      * @param entryProvider The contract of the new entry provider.
-     *
      */
-    function setEntryProvider(
-        IProvider entryProvider
-    ) external onlyRole(ADMIN_ROLE) {
+    function setEntryProvider(IProvider entryProvider) external {
+        address sender = _msgSender();
+        if (!hasRole(ADMIN_ROLE, sender) && !hasRole(EXECUTOR_ROLE, sender)) {
+            revert Unauthorized();
+        }
         _setEntryProvider(entryProvider);
     }
 
