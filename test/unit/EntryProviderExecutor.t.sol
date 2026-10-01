@@ -114,6 +114,10 @@ contract EntryProviderExecutorTest is Test {
         vm.expectRevert(IRebalancer.InvalidInput.selector);
         vault.setEntryProvider(stray);
 
+        vm.prank(executor);
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vault.setEntryProvider(IProvider(address(0)));
+
         assertEq(address(vault.getEntryProvider()), address(providerA), "entry unchanged");
     }
 
@@ -184,41 +188,41 @@ contract EntryProviderExecutorTest is Test {
         assertEq(asset.balanceOf(alice), 500 * ONE, "alice paid in full");
     }
 
-    /// @dev Pins today's behaviour, unchanged by this PR: `setProviders` does not reset the
-    ///      entry provider, so a de-listed entry keeps receiving deposits that `totalAssets`
-    ///      no longer counts. The executor can now repoint it; nobody can re-select it.
-    function testSetProvidersDroppingEntryLeavesItStale() public {
+    /// @dev The executor can point the entry at a provider the timelock is about to remove
+    ///      (front-run or plain race). `setProviders` must then move the entry back into
+    ///      the list, or deposits would land where `totalAssets` and `_withdraw` cannot see.
+    function testSetProvidersDroppingEntryResetsItToHead() public {
         _deposit(alice, 1_000 * ONE); // lands at A
-
-        // move everything to B so the vault keeps non-zero assets after A is de-listed
-        uint256[] memory amounts = new uint256[](1);
-        IProvider[] memory from = new IProvider[](1);
-        IProvider[] memory to = new IProvider[](1);
-        amounts[0] = type(uint256).max;
-        from[0] = providerA;
-        to[0] = providerB;
         vm.prank(executor);
-        vault.rebalance(amounts, from, to);
+        vault.setEntryProvider(providerB);
 
-        IProvider[] memory onlyB = new IProvider[](1);
-        onlyB[0] = providerB;
-        vault.setProviders(onlyB);
-
-        assertEq(address(vault.getEntryProvider()), address(providerA), "entry left on a de-listed provider");
+        IProvider[] memory onlyA = new IProvider[](1);
+        onlyA[0] = providerA;
+        vm.expectEmit(true, true, true, true, address(vault));
+        emit IRebalancer.EntryProviderUpdated(providerA);
+        vault.setProviders(onlyA);
+        assertEq(address(vault.getEntryProvider()), address(providerA), "entry reset to providers[0]");
 
         uint256 assetsBefore = vault.totalAssets();
         _deposit(bob, 100 * ONE);
-        assertEq(sourceA.balanceOf(address(vault)), 100 * ONE, "deposit lands at the de-listed entry");
-        assertEq(vault.totalAssets(), assetsBefore, "and is not counted in totalAssets");
+        assertEq(sourceB.balanceOf(address(vault)), 0, "nothing lands at the de-listed provider");
+        assertEq(vault.totalAssets(), assetsBefore + 100 * ONE, "deposit is counted");
+    }
 
-        vm.prank(executor);
-        vm.expectRevert(IRebalancer.InvalidInput.selector);
-        vault.setEntryProvider(providerA);
-
+    function testSetProvidersKeepsListedEntry() public {
         vm.prank(executor);
         vault.setEntryProvider(providerB);
-        _deposit(bob, 100 * ONE);
-        assertEq(sourceB.balanceOf(address(vault)), assetsBefore + 100 * ONE, "deposit lands at the repointed entry");
-        assertEq(vault.totalAssets(), assetsBefore + 100 * ONE, "and is counted again");
+
+        IProvider[] memory same = new IProvider[](2);
+        same[0] = providerA;
+        same[1] = providerB;
+        vault.setProviders(same);
+
+        assertEq(address(vault.getEntryProvider()), address(providerB), "listed entry is kept");
+    }
+
+    function testSetProvidersRejectsEmptyList() public {
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vault.setProviders(new IProvider[](0));
     }
 }
