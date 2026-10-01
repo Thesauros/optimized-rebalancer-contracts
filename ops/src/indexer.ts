@@ -627,7 +627,9 @@ export function createServer(ix: Indexer, state: { lastSync: number; lastError: 
         // window used to be a flat five minutes, which made a deliberately slow poll (a gentle
         // RPC budget) report an outage forever.
         const windowMs = Math.max(5 * 60, POLL_SECONDS * 3) * 1000;
-        const healthy = state.lastError === '' && Date.now() - state.lastSync < windowMs;
+        // A single transient RPC failure must not invalidate a fresh cache. Keep reporting the
+        // error for diagnostics, and turn unhealthy only when successful syncs are actually stale.
+        const healthy = Date.now() - state.lastSync < windowMs;
         return send(healthy ? 200 : 503, { service: SERVICE, healthy, lastSync: new Date(state.lastSync).toISOString(), lastError: state.lastError, indexedTo: ix.lag() });
       }
       if (p === '/v1/vault') return send(200, await ix.vaultSummary());
