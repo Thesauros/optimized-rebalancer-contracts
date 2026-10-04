@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply queued Thesauros stand 5 percent buffer and allocate free cash
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/optimized-rebalancer-contracts
+ExecStart=/bin/bash /root/optimized-rebalancer-contracts/ops/scripts/execute-buffer-governance.sh sha256:781dae2d102d3cf06afaf861d011cabd302aa3a4bcbc98e4d865728295784844
+ExecStopPost=/usr/bin/docker start ops-operators-1
+TimeoutStartSec=10min
+UMask=0077
+

@@ -259,8 +259,8 @@ const HUB_BY_PROFILE = {
     limits: {
       minDeposit: USDC(1),
       maxEpochDeposits: USDC(500),
-      minimumBuffer: USDC(5),
-      minBufferRatio: 10n * 10n ** 16n, // 10%
+      minimumBuffer: USDC(0),
+      minBufferRatio: 5n * 10n ** 16n, // 5%; applied to the existing stand through Timelock
       maxInstantWithdrawal: USDC(25),
       dailyInstantLimit: USDC(50),
       instantFee: INSTANT_FEE,
