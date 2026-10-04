@@ -71,6 +71,22 @@ export async function retryTransient<T>(fn: () => Promise<T>, attempts = 3, base
   }
 }
 
+/**
+ * Adds headroom to an RPC gas estimate. L2 estimators can lag the sequencer state or omit
+ * enough forwarded-call overhead to make an otherwise valid transaction fail inside EIP-150.
+ */
+export function gasLimitWithMargin(estimate: bigint, marginBps = Number(process.env.TX_GAS_MARGIN_BPS ?? '2000')): bigint {
+  if (!Number.isFinite(marginBps) || marginBps < 0) throw new Error(`invalid TX_GAS_MARGIN_BPS: ${marginBps}`);
+  const bps = BigInt(Math.ceil(marginBps));
+  return (estimate * (10_000n + bps) + 9_999n) / 10_000n;
+}
+
+/** Estimate and send a contract method with the configured gas safety margin. */
+export async function sendWithGasMargin(contract: any, method: string, args: unknown[]): Promise<any> {
+  const estimate = BigInt(await contract[method].estimateGas(...args));
+  return contract[method](...args, { gasLimit: gasLimitWithMargin(estimate) });
+}
+
 /** A decoded log; the fields callers read from ethers' EventLog. */
 export interface ScannedEvent {
   eventName: string;

@@ -33,6 +33,7 @@
 import fs from 'fs';
 import { Contract, ContractTransactionResponse, Interface, NonceManager, Wallet, formatEther, formatUnits, id, parseUnits } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, STRATEGY, TICK_ACCOUNTANT } from './abi';
+import { sendWithGasMargin } from './util';
 import { Chain, hubOf, loadChains } from './config';
 import { openTransferIndex } from './snapshot';
 import { routeId } from '../../deploy/crosschain/registry';
@@ -103,7 +104,7 @@ async function write(label: string, c: Contract, method: string, params: unknown
     console.log(`  simulated OK: ${label} (dry run, add --yes to send)`);
     return undefined;
   }
-  const tx: ContractTransactionResponse = await c[method](...params);
+  const tx: ContractTransactionResponse = await sendWithGasMargin(c, method, params);
   console.log(`  sent ${label}: ${tx.hash}`);
   const r = await tx.wait();
   if (r?.status !== 1) throw new Error(`${label}: transaction failed ${tx.hash}`);

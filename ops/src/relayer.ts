@@ -14,7 +14,7 @@ import { CHAIN_AGENT } from './abi';
 import { Attested, attestLocally, fetchIris } from './cctp';
 import { Chain, envNumber, loadChains, signerFor } from './config';
 import { openTransferIndex } from './snapshot';
-import { log, loop, serveStatus, telegram } from './util';
+import { log, loop, sendWithGasMargin, serveStatus, telegram } from './util';
 
 const SERVICE = 'relayer';
 
@@ -73,7 +73,7 @@ async function main() {
           } else {
             const payload = AbiCoder.defaultAbiCoder().encode(['bytes', 'bytes'], [att.message, att.attestation]);
             await dstAgent.receiveBridge.staticCall(dst.manifest.contracts.CctpV2Adapter, payload);
-            const tx = await dstAgent.receiveBridge(dst.manifest.contracts.CctpV2Adapter, payload);
+            const tx = await sendWithGasMargin(dstAgent, 'receiveBridge', [dst.manifest.contracts.CctpV2Adapter, payload]);
             await tx.wait();
             delivered.set(id, tx.hash);
             pending.delete(id);

@@ -23,7 +23,7 @@ import { EPOCH_VAULT, TICK_ACCOUNTANT } from './abi';
 import { envNumber, hubOf, loadChains, signerFor } from './config';
 import { snapshotRefreshReason } from './nav-freshness';
 import { Built, Snapshot, buildSnapshot, committedSnapshot, offersOf, openTransferIndex } from './snapshot';
-import { log, loop, serveStatus, telegram } from './util';
+import { log, loop, sendWithGasMargin, serveStatus, telegram } from './util';
 
 const SERVICE = 'nav';
 const WAD = 10n ** 18n;
@@ -151,7 +151,7 @@ async function main() {
       }
 
       await accountant.commitTick.staticCall(built.snapshot, built.hubCheckpointIndex);
-      const tx = await accountant.commitTick(built.snapshot, built.hubCheckpointIndex);
+      const tx = await sendWithGasMargin(accountant, 'commitTick', [built.snapshot, built.hubCheckpointIndex]);
       const receipt = await tx.wait();
       const ev = receipt!.logs
         .map((l: any) => { try { return accountant.interface.parseLog(l); } catch { return null; } })

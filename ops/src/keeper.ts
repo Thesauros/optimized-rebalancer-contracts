@@ -15,7 +15,7 @@ import { Contract } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, STRATEGY } from './abi';
 import { envNumber, hubOf, loadChains, signerFor } from './config';
 import { drainCursor } from './keeper-cursor';
-import { log, loop, scanMany, serveStatus } from './util';
+import { log, loop, scanMany, sendWithGasMargin, serveStatus } from './util';
 
 const SERVICE = 'keeper';
 
@@ -45,7 +45,7 @@ async function main() {
     } catch {
       return false;
     }
-    const tx = await vault[fn](...args);
+    const tx = await sendWithGasMargin(vault, fn, args);
     await tx.wait();
     actions.push(`${new Date().toISOString()} ${label} ${tx.hash}`);
     log(SERVICE, label, { tx: tx.hash });
@@ -93,7 +93,7 @@ async function main() {
       const available = BigInt(await strategy.convertToAssets(await agent.strategyShares()));
       const pull = shortfall - idle < available ? shortfall - idle : available;
       if (pull > 0n) {
-        const tx = await agent.deallocate(pull);
+        const tx = await sendWithGasMargin(agent, 'deallocate', [pull]);
         await tx.wait();
         actions.push(`${new Date().toISOString()} deallocate ${pull} ${tx.hash}`);
         idle += pull;
@@ -101,7 +101,7 @@ async function main() {
     }
     const amount = idle < shortfall ? idle : shortfall;
     if (amount > 0n) {
-      const tx = await agent.returnToVault(amount);
+      const tx = await sendWithGasMargin(agent, 'returnToVault', [amount]);
       await tx.wait();
       actions.push(`${new Date().toISOString()} returnToVault ${amount} ${tx.hash}`);
       log(SERVICE, 'recalled hub liquidity', { amount, tx: tx.hash });

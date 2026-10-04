@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Contract, Interface, zeroPadValue, toBeHex } from 'ethers';
-import { EventCache, retryTransient, scanMany, semaphore } from '../src/util';
+import { EventCache, gasLimitWithMargin, retryTransient, scanMany, semaphore } from '../src/util';
 
 const ABI = ['event A(uint256 indexed n)', 'event B(uint256 indexed n)'];
 const iface = new Interface(ABI);
@@ -206,4 +206,11 @@ test('retryTransient retries transport failures and gives up on a real revert', 
     );
     assert.equal(attempts, 2, `${message} is transient`);
   }
+});
+
+test('gasLimitWithMargin adds rounded-up EIP-150 headroom', () => {
+  assert.equal(gasLimitWithMargin(453_206n, 2_000), 543_848n);
+  assert.equal(gasLimitWithMargin(1n, 1), 2n);
+  assert.equal(gasLimitWithMargin(100n, 0), 100n);
+  assert.throws(() => gasLimitWithMargin(100n, -1), /TX_GAS_MARGIN_BPS/);
 });
