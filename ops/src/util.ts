@@ -50,7 +50,7 @@ export function semaphore(size: number) {
  */
 function isTransient(e: unknown): boolean {
   const text = String((e as any)?.cause?.message ?? (e as any)?.shortMessage ?? (e as any)?.message ?? e);
-  return /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|timeout|bad gateway|409 conflict|error code: 1001|502|503|504|429/i.test(text);
+  return /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|connection is closed|timeout|timed out|bad gateway|not valid json|rate limit exceeded|409 conflict|error code: 1001|502|503|504|429/i.test(text);
 }
 
 /**

@@ -188,4 +188,22 @@ test('retryTransient retries transport failures and gives up on a real revert', 
     /timeout/,
   );
   assert.equal(timeouts, 3, 'a timeout is transient, so it exhausts the budget');
+
+  for (const message of [
+    'server response 500 Internal Server Error: Connection is closed.',
+    'upstream command timed out',
+    'response body is not valid JSON',
+    'rate limit exceeded maximum retry limit',
+  ]) {
+    let attempts = 0;
+    await assert.rejects(
+      () =>
+        retryTransient(async () => {
+          attempts++;
+          throw new Error(message);
+        }, 2, 1),
+      new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+    );
+    assert.equal(attempts, 2, `${message} is transient`);
+  }
 });

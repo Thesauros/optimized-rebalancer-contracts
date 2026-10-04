@@ -15,7 +15,7 @@
 import fs from 'fs';
 import path from 'path';
 import { JsonRpcPayload, JsonRpcProvider, JsonRpcResult, NonceManager, Wallet } from 'ethers';
-import { onError } from './util';
+import { onError, retryTransient } from './util';
 import { NETWORKS, NetworkEntry } from '../../deploy/crosschain/registry';
 
 export interface Manifest {
@@ -65,7 +65,14 @@ export function rpcUrl(key: string): string {
  * into the sequencer; everything else stays on the provider with the limits and
  * archive data we need.
  */
-export class RoutedProvider extends JsonRpcProvider {
+/** Read provider with bounded retries for transient upstream and transport failures. */
+export class RetryJsonRpcProvider extends JsonRpcProvider {
+  async _send(payload: JsonRpcPayload | Array<JsonRpcPayload>): Promise<Array<JsonRpcResult>> {
+    return retryTransient(() => super._send(payload));
+  }
+}
+
+export class RoutedProvider extends RetryJsonRpcProvider {
   readonly sender: JsonRpcProvider;
 
   constructor(readUrl: string, sendUrl: string, chainId: number) {
@@ -84,7 +91,7 @@ export function providerFor(key: string, chainId: bigint): JsonRpcProvider {
   const send = process.env[`RPC_SEND_${key.toUpperCase()}`];
   const read = rpcUrl(key);
   if (send && send !== read) return new RoutedProvider(read, send, Number(chainId));
-  return new JsonRpcProvider(read, Number(chainId), { staticNetwork: true, batchMaxCount: 1 });
+  return new RetryJsonRpcProvider(read, Number(chainId), { staticNetwork: true, batchMaxCount: 1 });
 }
 
 export function loadChains(): Chain[] {
