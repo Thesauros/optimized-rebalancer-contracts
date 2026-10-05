@@ -4,6 +4,9 @@
  * as the Thesauros-Rebalance-Engine alert manager).
  */
 import http from 'http';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { Contract, Log, Provider } from 'ethers';
 
 export function log(service: string, msg: string, extra?: unknown): void {
@@ -174,18 +177,50 @@ export async function scanEvents(contract: Contract, eventName: string, fromBloc
  * it has not seen, instead of re-reading history on every pass.
  */
 export class EventCache {
-  private readonly state = new Map<string, { to: number; events: ScannedEvent[] }>();
+  private readonly state = new Map<string, { from: number; to: number; events: ScannedEvent[] }>();
+
+  constructor(private readonly directory?: string, private readonly rewind = 5_000) {}
 
   async get(key: string, contract: Contract, eventNames: string[], fromBlock: number, head: number): Promise<ScannedEvent[]> {
-    const s = this.state.get(key) ?? { to: fromBlock - 1, events: [] };
-    this.state.set(key, s);
-    if (head > s.to) {
-      await scanMany(contract, eventNames, Math.max(fromBlock, s.to + 1), head, (batch, through) => {
-        s.events.push(...batch);
-        s.to = through;
+    const provider = contract.runner?.provider ?? (contract.runner as unknown as Provider);
+    const identity = `${key}:${await contract.getAddress()}:${eventNames.join(',')}:${this.directory ? (await provider.getNetwork()).chainId : ''}`;
+    const file = this.directory && path.join(this.directory, createHash('sha256').update(identity).digest('hex') + '.json');
+    let s = this.state.get(identity);
+    if (!s && file) {
+      try {
+        const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+        if (saved.identity === identity && saved.from <= fromBlock && saved.to <= head) {
+          const through = Math.max(saved.from - 1, saved.to - this.rewind);
+          const events = saved.events.filter((e: any) => e.blockNumber <= through).map((e: any) => ({
+            eventName: e.eventName,
+            args: contract.interface.decodeEventLog(e.eventName, e.data, e.topics),
+            blockNumber: e.blockNumber, transactionHash: e.transactionHash, logIndex: e.logIndex,
+          }));
+          s = { from: saved.from, to: through, events };
+        }
+      } catch { /* Missing or invalid cache: replay from the requested start. */ }
+    }
+    if (!s || s.from > fromBlock || s.to > head) s = { from: fromBlock, to: fromBlock - 1, events: [] };
+    this.state.set(identity, s);
+    const state = s;
+    if (head > state.to) {
+      await scanMany(contract, eventNames, Math.max(fromBlock, state.to + 1), head, async (batch, through) => {
+        state.events.push(...batch);
+        state.to = through;
+        if (file) {
+          await fs.mkdir(path.dirname(file), { recursive: true });
+          const events = state.events.map((e) => ({
+            eventName: e.eventName, blockNumber: e.blockNumber,
+            transactionHash: e.transactionHash, logIndex: e.logIndex,
+            ...contract.interface.encodeEventLog(e.eventName, Array.from(e.args)),
+          }));
+          const tmp = `${file}.${process.pid}.tmp`;
+          await fs.writeFile(tmp, JSON.stringify({ identity, from: state.from, to: through, events }), { mode: 0o600 });
+          await fs.rename(tmp, file);
+        }
       });
     }
-    return s.events;
+    return state.events;
   }
 }
 

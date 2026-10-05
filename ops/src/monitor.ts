@@ -14,16 +14,17 @@
  * MONITOR_REPEAT_MINUTES (default 30) while a check stays critical.
  */
 import { Contract, formatUnits } from 'ethers';
+import path from 'node:path';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from './abi';
 import { Chain, envNumber, hubOf, identities, loadChains } from './config';
 import { checkDeployment } from './checks/deployment';
-import { TransferIndex, openTransferIndex, verifyTick } from './snapshot';
+import { TRANSFER_INDEX_FILE, TransferIndex, openTransferIndex, verifyTick } from './snapshot';
 import { routeId } from '../../deploy/crosschain/registry';
 import { EventCache, log, loop, serveStatus, telegram } from './util';
 
 // governance history is read once and then incrementally: a provider that caps
 // eth_getLogs at 100 blocks would otherwise need thousands of requests per pass
-const events = new EventCache();
+const events = new EventCache(process.env.MONITOR_EVENT_CACHE_DIR ?? path.join(path.dirname(TRANSFER_INDEX_FILE), 'monitor-events'));
 
 const SERVICE = 'monitor';
 type Severity = 'ok' | 'warn' | 'crit';

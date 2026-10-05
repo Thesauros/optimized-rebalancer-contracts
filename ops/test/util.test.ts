@@ -1,4 +1,7 @@
 import { test } from 'node:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import { Contract, Interface, zeroPadValue, toBeHex } from 'ethers';
 import { EventCache, gasLimitWithMargin, retryTransient, scanMany, semaphore } from '../src/util';
@@ -263,4 +266,23 @@ test('gasLimitWithMargin adds rounded-up EIP-150 headroom', () => {
   assert.equal(gasLimitWithMargin(1n, 1), 2n);
   assert.equal(gasLimitWithMargin(100n, 0), 100n);
   assert.throws(() => gasLimitWithMargin(100n, -1), /TX_GAS_MARGIN_BPS/);
+});
+
+
+test('EventCache persists decoded events across restart and rewinds the saved suffix', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'event-cache-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const fake = fakeProvider([{ block: 5, name: 'A' }, { block: 205, name: 'B' }], 100);
+  const provider = { ...fake.provider, getNetwork: async () => ({ chainId: 8453n }) };
+  const c = new Contract(ADDRESS, ABI, provider as any);
+  const first = new EventCache(dir, 50);
+  await first.get('history', c, ['A', 'B'], 0, 249);
+  fake.calls.length = 0;
+  const second = new EventCache(dir, 50);
+  const events = await second.get('history', c, ['A', 'B'], 0, 299);
+  assert.deepEqual(fake.calls, [[200, 299]], 'only rewound suffix and new blocks are read');
+  assert.deepEqual(events.map((e) => [e.blockNumber, e.args.n]), [[5, 5n], [205, 205n]], 'named bigint args survive and suffix is not duplicated');
+  fake.calls.length = 0;
+  await new EventCache(dir, 50).get('history', new Contract('0x00000000000000000000000000000000000000bb', ABI, provider as any), ['A', 'B'], 0, 99);
+  assert.deepEqual(fake.calls, [[0, 99]], 'cache cannot cross deployments');
 });
