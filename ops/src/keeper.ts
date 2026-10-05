@@ -15,7 +15,8 @@ import { Contract } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, STRATEGY } from './abi';
 import { envNumber, hubOf, loadChains, signerFor } from './config';
 import { drainCursor } from './keeper-cursor';
-import { log, loop, scanMany, sendWithGasMargin, serveStatus } from './util';
+import { RequestCursor } from './keeper-requests';
+import { log, loop, sendWithGasMargin, serveStatus } from './util';
 
 const SERVICE = 'keeper';
 
@@ -28,8 +29,8 @@ async function main() {
   const autofund = process.env.KEEPER_AUTOFUND === 'true';
   const executor = autofund ? signerFor(hub, 'EXECUTOR_PRIVATE_KEY') : undefined;
 
-  const openRequests = new Set<string>();
-  let scannedTo = hub.manifest.startBlock - 1;
+  const requests = new RequestCursor();
+  const openRequests = requests.pending;
   let lastError = '';
   let lastPass = 0;
   const actions: string[] = [];
@@ -110,13 +111,7 @@ async function main() {
   }
 
   async function claims() {
-    const head = await hub.provider.getBlockNumber();
-    if (head > scannedTo) {
-      await scanMany(vault, ['DepositRequested', 'RedeemRequested'], scannedTo + 1, head, (batch, through) => {
-        for (const e of batch) openRequests.add(e.args.requestId.toString());
-        scannedTo = through;
-      });
-    }
+    await requests.scan(async (id) => vault.getRequest(id));
     for (const id of [...openRequests]) {
       const r = await vault.getRequest(id);
       if (Number(r.status) !== 1) {
