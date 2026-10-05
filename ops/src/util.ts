@@ -119,7 +119,7 @@ function providerRangeLimit(e: unknown): number | undefined {
  * block range: a topic-0 OR filter instead of one request per event name.
  * Log order matters to callers that replay state (a cancel after its request).
  */
-export async function scanMany(contract: Contract, eventNames: string[], fromBlock: number, toBlock: number): Promise<ScannedEvent[]> {
+export async function scanMany(contract: Contract, eventNames: string[], fromBlock: number, toBlock: number, onBatch?: (events: ScannedEvent[], through: number) => Promise<void> | void): Promise<ScannedEvent[]> {
   const topics = eventNames.map((n) => contract.interface.getEvent(n)!.topicHash);
   const address = await contract.getAddress();
   const provider = contract.runner?.provider ?? (contract.runner as unknown as Provider);
@@ -148,14 +148,18 @@ export async function scanMany(contract: Contract, eventNames: string[], fromBlo
       continue;
     }
 
+    const batch: ScannedEvent[] = [];
     for (const result of results as PromiseFulfilledResult<Log[]>[]) {
       for (const l of result.value) {
         const parsed = contract.interface.parseLog(l);
         if (!parsed) continue;
-        out.push({ eventName: parsed.name, args: parsed.args, blockNumber: l.blockNumber, transactionHash: l.transactionHash, logIndex: l.index });
+        batch.push({ eventName: parsed.name, args: parsed.args, blockNumber: l.blockNumber, transactionHash: l.transactionHash, logIndex: l.index });
       }
     }
-    start = ranges[ranges.length - 1].to + 1;
+    const through = ranges[ranges.length - 1].to;
+    if (onBatch) await onBatch(batch, through);
+    else out.push(...batch);
+    start = through + 1;
   }
   return out;
 }
@@ -174,11 +178,13 @@ export class EventCache {
 
   async get(key: string, contract: Contract, eventNames: string[], fromBlock: number, head: number): Promise<ScannedEvent[]> {
     const s = this.state.get(key) ?? { to: fromBlock - 1, events: [] };
-    if (head > s.to) {
-      s.events.push(...(await scanMany(contract, eventNames, Math.max(fromBlock, s.to + 1), head)));
-      s.to = head;
-    }
     this.state.set(key, s);
+    if (head > s.to) {
+      await scanMany(contract, eventNames, Math.max(fromBlock, s.to + 1), head, (batch, through) => {
+        s.events.push(...batch);
+        s.to = through;
+      });
+    }
     return s.events;
   }
 }

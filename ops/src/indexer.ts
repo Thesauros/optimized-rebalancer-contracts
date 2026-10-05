@@ -223,9 +223,14 @@ export class Indexer {
       const head = (await c.provider.getBlockNumber()) - conf;
       const from = (this.meta(`block:${c.key}`) ?? c.manifest.startBlock - 1) + 1;
       if (from > head) continue;
-      if (c === this.hub) await this.syncHub(from, head);
-      await this.syncAgent(c, from, head);
-      this.setMeta(`block:${c.key}`, head);
+      // Checkpoint complete chunks so an upstream failure cannot discard hours
+      // of catch-up. Advance only after BOTH hub and agent streams are indexed.
+      for (let start = from; start <= head; start += 10_000) {
+        const end = Math.min(head, start + 9_999);
+        if (c === this.hub) await this.syncHub(start, end);
+        await this.syncAgent(c, start, end);
+        this.setMeta(`block:${c.key}`, end);
+      }
     }
   }
 

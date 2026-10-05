@@ -9,7 +9,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, SNAPSHOT_TUPLE, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, hubOf } from './config';
-import { blockAtOrBefore, scanMany } from './util';
+import { blockAtOrBefore, scanMany, semaphore } from './util';
 
 export const KIND_IDLE = 0;
 export const KIND_STRATEGY_SHARES = 1;
@@ -149,6 +149,7 @@ export class TransferIndex {
   readonly sent = new Map<string, TransferEvent & { dstChainId: bigint; minReceive: bigint }>();
   readonly received = new Map<string, TransferEvent>();
   private scanned = new Map<string, number>();
+  private readonly syncGate = semaphore(1);
 
   /**
    * @param file Optional path to persist to. Without it the index lives in memory
@@ -221,35 +222,41 @@ export class TransferIndex {
   }
 
   async sync(chains: Chain[], upTo?: Map<string, number>): Promise<void> {
+    return this.syncGate(() => this.syncRanges(chains, upTo));
+  }
+
+  private async syncRanges(chains: Chain[], upTo?: Map<string, number>): Promise<void> {
     for (const c of chains) {
       const agent = new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider);
       const head = upTo?.get(c.key) ?? (await c.provider.getBlockNumber());
       const from = (this.scanned.get(c.key) ?? c.manifest.startBlock - 1) + 1;
       if (from > head) continue;
-      for (const e of await scanMany(agent, ['BridgeOut', 'BridgeIn'], from, head)) {
-        if (e.eventName === 'BridgeIn') {
-          this.received.set(e.args.transferId, {
+      await scanMany(agent, ['BridgeOut', 'BridgeIn'], from, head, async (batch, through) => {
+        for (const e of batch) {
+          if (e.eventName === 'BridgeIn') {
+            this.received.set(e.args.transferId, {
+              transferId: e.args.transferId,
+              chainKey: c.key,
+              block: e.blockNumber,
+              txHash: e.transactionHash,
+              amount: e.args.amount,
+            });
+            continue;
+          }
+          this.sent.set(e.args.transferId, {
             transferId: e.args.transferId,
             chainKey: c.key,
             block: e.blockNumber,
             txHash: e.transactionHash,
             amount: e.args.amount,
+            dstChainId: e.args.dstChainId,
+            minReceive: e.args.minReceive,
           });
-          continue;
         }
-        this.sent.set(e.args.transferId, {
-          transferId: e.args.transferId,
-          chainKey: c.key,
-          block: e.blockNumber,
-          txHash: e.transactionHash,
-          amount: e.args.amount,
-          dstChainId: e.args.dstChainId,
-          minReceive: e.args.minReceive,
-        });
-      }
-      this.scanned.set(c.key, head);
+        this.scanned.set(c.key, through);
+        await this.save();
+      });
     }
-    await this.save();
   }
 }
 
@@ -263,6 +270,8 @@ export class TransferIndex {
  * The persisted state is bound to the agent addresses it was built from, so state
  * left behind by a fork rehearsal or by the stand cannot be loaded by production.
  */
+const sharedIndexes = new Map<string, Promise<TransferIndex>>();
+
 export async function openTransferIndex(chains: Chain[], file: string = TRANSFER_INDEX_FILE): Promise<TransferIndex> {
   const fingerprint = keccak256(
     Buffer.from(
@@ -272,9 +281,18 @@ export async function openTransferIndex(chains: Chain[], file: string = TRANSFER
         .join('|'),
     ),
   );
-  const index = new TransferIndex(file, fingerprint);
-  await index.load();
-  return index;
+  const key = `${path.resolve(file)}:${fingerprint}`;
+  let pending = sharedIndexes.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const index = new TransferIndex(file, fingerprint);
+      await index.load();
+      return index;
+    })();
+    sharedIndexes.set(key, pending);
+    pending.catch(() => sharedIndexes.delete(key));
+  }
+  return pending;
 }
 
 /**
@@ -415,6 +433,8 @@ export async function buildSnapshot(allChains: Chain[], index: TransferIndex, pr
   const chains = allChains.filter((c) => onChain.includes(c.chainId));
   const missing = onChain.filter((id) => !chains.some((c) => c.chainId === id));
   if (missing.length) throw new Error(`accountant tracks chains not configured here: ${missing.join(',')}`);
+  // Catch up before selecting the short-lived hub reference.
+  await index.sync(chains);
   const heads = new Map<string, number>();
   for (const c of chains) heads.set(c.key, await c.provider.getBlockNumber());
 

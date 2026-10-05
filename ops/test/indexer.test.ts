@@ -75,3 +75,24 @@ test('provider labels distinguish the Morpho vaults that share one identifier', 
   assert.equal(providerLabel(entry, contracts, '0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33'), 'Strategy');
   assert.equal(providerLabel(entry, contracts, '0x0000000000000000000000000000000000000001'), null, 'unknown address stays unnamed');
 });
+test('indexer checkpoints only chunks whose hub and agent streams both succeeded', async () => {
+  const { Indexer } = await import('../src/indexer');
+  const indexer: any = Object.create(Indexer.prototype);
+  const chain = { key: 'test', entry: { confirmations: 0 }, manifest: { startBlock: 1 }, provider: { getBlockNumber: async () => 25_000 } };
+  indexer.chains = [chain];
+  indexer.hub = chain;
+  let cursor = 0;
+  indexer.meta = () => cursor;
+  indexer.setMeta = (_key: string, block: number) => { cursor = block; };
+  const starts: number[] = [];
+  indexer.syncHub = async (from: number) => { starts.push(from); };
+  indexer.syncAgent = async (_chain: unknown, from: number) => {
+    if (from > 10_000) throw new Error('upstream failure');
+  };
+  await assert.rejects(indexer.sync());
+  assert.equal(cursor, 10_000);
+  indexer.syncAgent = async () => {};
+  await indexer.sync();
+  assert.deepEqual(starts, [1, 10_001, 10_001, 20_001]);
+  assert.equal(cursor, 25_000);
+});

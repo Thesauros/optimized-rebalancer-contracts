@@ -138,6 +138,24 @@ test('rate limits do not shrink log ranges or cause a retry storm', async () => 
   assert.deepEqual(calls, [[0, 99], [100, 199]], 'the next scan retains 100-block ranges');
 });
 
+test('EventCache resumes after the last complete batch when a later batch fails', async () => {
+  const fake = fakeProvider([{ block: 5, name: 'A' }, { block: 205, name: 'B' }], 100);
+  const original = fake.provider.getLogs;
+  let fail = true;
+  fake.provider.getLogs = async (filter) => {
+    if (fail && filter.fromBlock >= 100) throw new Error('upstream unavailable');
+    return original(filter);
+  };
+  const cache = new EventCache();
+  const c = new Contract(ADDRESS, ABI, fake.provider as any);
+  await assert.rejects(cache.get('k', c, ['A', 'B'], 0, 299));
+  fail = false;
+  fake.calls.length = 0;
+  const events = await cache.get('k', c, ['A', 'B'], 0, 299);
+  assert.deepEqual(fake.calls, [[100, 199], [200, 299]]);
+  assert.deepEqual(events.map((e) => e.blockNumber), [5, 205]);
+});
+
 test('retryTransient sees upstream failure detail behind ethers shortMessage', async () => {
   let attempts = 0;
   await assert.rejects(retryTransient(async () => {

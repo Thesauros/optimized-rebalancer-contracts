@@ -112,8 +112,10 @@ async function main() {
   async function claims() {
     const head = await hub.provider.getBlockNumber();
     if (head > scannedTo) {
-      for (const e of await scanMany(vault, ['DepositRequested', 'RedeemRequested'], scannedTo + 1, head)) openRequests.add(e.args.requestId.toString());
-      scannedTo = head;
+      await scanMany(vault, ['DepositRequested', 'RedeemRequested'], scannedTo + 1, head, (batch, through) => {
+        for (const e of batch) openRequests.add(e.args.requestId.toString());
+        scannedTo = through;
+      });
     }
     for (const id of [...openRequests]) {
       const r = await vault.getRequest(id);

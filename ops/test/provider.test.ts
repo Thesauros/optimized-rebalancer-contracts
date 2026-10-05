@@ -6,6 +6,21 @@ import { AddressInfo } from 'node:net';
 import { NonceManager, Wallet, parseEther } from 'ethers';
 import { RoutedProvider } from '../src/config';
 
+test('HTTP 429 retries are bounded and do not invoke ethers hidden retry loop', async (t) => {
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    requests++;
+    res.writeHead(429, { 'content-type': 'application/json' });
+    res.end('{"message":"Rate limit exceeded"}');
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const provider = new RoutedProvider(url, url, 31337);
+  t.after(() => { provider.destroy(); provider.sender.destroy(); server.close(); });
+  await assert.rejects(provider.send('eth_blockNumber', []), /429/);
+  assert.equal(requests, 3);
+});
+
 const hasAnvil = spawnSync('anvil', ['--version']).status === 0;
 
 /** Forwards JSON-RPC to `target` and records every method it sees. */

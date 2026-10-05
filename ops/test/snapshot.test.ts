@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AbiCoder, keccak256, zeroPadValue, toBeHex } from 'ethers';
-import { Snapshot, TransferIndex, consistentCut, hashSnapshot, sortPositions, totals } from '../src/snapshot';
+import { Snapshot, TransferIndex, openTransferIndex, consistentCut, hashSnapshot, sortPositions, totals } from '../src/snapshot';
 import { transferIdOf, sourceDomainOf } from '../src/cctp';
 
 const b32 = (n: number) => zeroPadValue(toBeHex(n), 32);
@@ -130,4 +130,32 @@ test('CCTP helpers read our hookData and the source domain from a V2 message', (
   const msg = '0x' + Buffer.from(header).toString('hex') + Buffer.from(body).toString('hex') + hook.slice(2);
   assert.equal(transferIdOf(msg), keccak256('0x1234'));
   assert.equal(sourceDomainOf(msg), 6);
+});
+
+
+test('shared transfer scans checkpoint completed pages and resume after failure', async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-resume-')), 'index.json');
+  const calls: number[] = [];
+  let fail = true;
+  const chain: any = {
+    key: 'base', chainId: 8453n, manifest: { startBlock: 1, contracts: { ChainAgent: addr(1) } },
+    provider: {
+      getBlockNumber: async () => 300,
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: number; toBlock: number }) => {
+        if (toBlock - fromBlock >= 100) throw new Error('Exceeded maximum block range: 100');
+        calls.push(fromBlock);
+        if (fail && fromBlock >= 101) throw new Error('upstream unavailable');
+        return [];
+      },
+    },
+  };
+  const [a, b] = await Promise.all([openTransferIndex([chain], file), openTransferIndex([chain], file)]);
+  assert.equal(a, b, 'operators share one index and one sync lock');
+  await assert.rejects(a.sync([chain]));
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).scanned.base, 100);
+  fail = false;
+  calls.length = 0;
+  await Promise.all([a.sync([chain]), b.sync([chain])]);
+  assert.deepEqual(calls, [101, 201], 'no duplicate scan by concurrent consumers');
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).scanned.base, 300);
 });
