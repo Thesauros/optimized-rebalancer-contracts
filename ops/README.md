@@ -67,3 +67,11 @@ and rewinds `INDEX_REWIND_BLOCKS` (default 5000) on load as reorg insurance.
 
 Tests: `npm test` (unit tests + ABI drift guard; run `npx hardhat compile` in the
 repo root first). The full rehearsal on local forks is `ops/rehearsal/run.sh`.
+# RPC rate budget
+
+`RPC_REQUESTS_PER_SECOND` spaces read requests across every provider and chain in
+one process (default 5/s). Compose assigns operators 10/s and monitor 3/s, leaving
+room for the indexer and allocator on a shared 25/s RPC account. Account for other
+clients before increasing these limits. Read requests time out after 15 seconds;
+transport retries consume the same budget. A rate-limit response never reduces
+the log block range. Only explicit log-range/result-size limits do so.

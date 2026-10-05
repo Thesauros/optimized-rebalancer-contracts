@@ -117,6 +117,38 @@ test('EventCache reads only the blocks it has not seen', async () => {
   assert.equal(fake.calls.length, before + 1, 'no request when the head has not moved');
 });
 
+test('rate limits do not shrink log ranges or cause a retry storm', async () => {
+  const calls: [number, number][] = [];
+  let throttled = true;
+  const provider = {
+    async getLogs(f: { fromBlock: number; toBlock: number }) {
+      calls.push([f.fromBlock, f.toBlock]);
+      if (throttled) throw Object.assign(new Error('exceeded maximum retry limit'), {
+        info: { responseBody: '{"message":"Rate limit exceeded"}' },
+      });
+      return [];
+    },
+  };
+  const c = new Contract(ADDRESS, ABI, provider as any);
+  await assert.rejects(scanMany(c, ['A'], 0, 99), /retry limit/);
+  assert.deepEqual(calls, [[0, 99], [0, 99], [0, 99]], 'only bounded retries, no range splitting');
+  throttled = false;
+  calls.length = 0;
+  await scanMany(c, ['A'], 0, 199);
+  assert.deepEqual(calls, [[0, 99], [100, 199]], 'the next scan retains 100-block ranges');
+});
+
+test('retryTransient sees upstream failure detail behind ethers shortMessage', async () => {
+  let attempts = 0;
+  await assert.rejects(retryTransient(async () => {
+    attempts++;
+    throw Object.assign(new Error('server response 500'), {
+      shortMessage: 'server response 500', info: { responseBody: 'Connection is closed.' },
+    });
+  }, 2, 1));
+  assert.equal(attempts, 2);
+});
+
 test('semaphore bounds concurrent work and preserves input order', async () => {
   let active = 0;
   let peak = 0;

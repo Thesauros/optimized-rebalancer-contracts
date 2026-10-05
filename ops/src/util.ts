@@ -49,7 +49,7 @@ export function semaphore(size: number) {
  * revert or a bad argument, because those are deterministic and retrying only wastes the budget.
  */
 function isTransient(e: unknown): boolean {
-  const text = String((e as any)?.cause?.message ?? (e as any)?.shortMessage ?? (e as any)?.message ?? e);
+  const text = [(e as any)?.cause?.message, (e as any)?.shortMessage, (e as any)?.message, (e as any)?.info?.responseBody, (e as any)?.error?.message, String(e)].join(' ');
   return /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|connection is closed|timeout|timed out|bad gateway|not valid json|rate limit exceeded|409 conflict|error code: 1001|502|503|504|429/i.test(text);
 }
 
@@ -105,7 +105,10 @@ let logStep = Number(process.env.LOG_RANGE ?? 9_000);
 
 function providerRangeLimit(e: unknown): number | undefined {
   const text = String((e as any)?.info?.responseBody ?? (e as any)?.error?.message ?? (e as any)?.message ?? e);
-  if (!/range|limit|too many|10000 results/i.test(text)) return undefined;
+  // Rate/quota/transport failures must never shrink block ranges: doing so
+  // turns throttling into a permanent one-block scan and multiplies RPC load.
+  if (/429|rate limit|too many requests|retry limit|quota|compute units/i.test(text)) return undefined;
+  if (!/block range|range[^.]*blocks|too many (?:logs|results)|(?:query|response)[^.]* (?:size|results)|10000 results/i.test(text)) return undefined;
   const m = text.match(/(?:block range|range)[^0-9]{0,40}(\d{2,7})/i);
   const n = m ? Number(m[1]) : undefined;
   return n && n > 1 ? n - 1 : 0;

@@ -14,8 +14,9 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { JsonRpcPayload, JsonRpcProvider, JsonRpcResult, NonceManager, Wallet } from 'ethers';
-import { onError, retryTransient } from './util';
+import { FetchRequest, JsonRpcPayload, JsonRpcProvider, JsonRpcResult, NonceManager, Wallet } from 'ethers';
+import { onError, retryTransient, semaphore } from './util';
+import { RequestPacer } from './rpc-pacer';
 import { NETWORKS, NetworkEntry } from '../../deploy/crosschain/registry';
 
 export interface Manifest {
@@ -65,10 +66,24 @@ export function rpcUrl(key: string): string {
  * into the sequencer; everything else stays on the provider with the limits and
  * archive data we need.
  */
+// One budget across all chains and provider instances in this process (including
+// NAV + keeper + relayer). Split the upstream account budget between processes.
+const readGate = semaphore(4);
+const readPacer = new RequestPacer(Number(process.env.RPC_REQUESTS_PER_SECOND ?? 5));
+
+function readRequest(url: string): FetchRequest {
+  const request = new FetchRequest(url);
+  request.timeout = 15_000;
+  // Ethers' hidden 429 retries otherwise bypass our budget and can block for minutes.
+  request.retryFunc = async () => false;
+  request.preflightFunc = async (req) => { await readPacer.acquire(); return req; };
+  return request;
+}
+
 /** Read provider with bounded retries for transient upstream and transport failures. */
 export class RetryJsonRpcProvider extends JsonRpcProvider {
   async _send(payload: JsonRpcPayload | Array<JsonRpcPayload>): Promise<Array<JsonRpcResult>> {
-    return retryTransient(() => super._send(payload));
+    return retryTransient(() => readGate(() => super._send(payload)), 3, 1_000);
   }
 }
 
@@ -76,7 +91,7 @@ export class RoutedProvider extends RetryJsonRpcProvider {
   readonly sender: JsonRpcProvider;
 
   constructor(readUrl: string, sendUrl: string, chainId: number) {
-    super(readUrl, chainId, { staticNetwork: true, batchMaxCount: 1 });
+    super(readRequest(readUrl), chainId, { staticNetwork: true, batchMaxCount: 1 });
     this.sender = new JsonRpcProvider(sendUrl, chainId, { staticNetwork: true, batchMaxCount: 1 });
   }
 
@@ -91,7 +106,7 @@ export function providerFor(key: string, chainId: bigint): JsonRpcProvider {
   const send = process.env[`RPC_SEND_${key.toUpperCase()}`];
   const read = rpcUrl(key);
   if (send && send !== read) return new RoutedProvider(read, send, Number(chainId));
-  return new RetryJsonRpcProvider(read, Number(chainId), { staticNetwork: true, batchMaxCount: 1 });
+  return new RetryJsonRpcProvider(readRequest(read), Number(chainId), { staticNetwork: true, batchMaxCount: 1 });
 }
 
 export function loadChains(): Chain[] {

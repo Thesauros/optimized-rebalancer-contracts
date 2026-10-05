@@ -41,6 +41,8 @@ services:
   # one nonce counter (ops/src/operators.ts)
   operators:
     <<: *signing
+    environment:
+      RPC_REQUESTS_PER_SECOND: "${OPERATORS_RPC_REQUESTS_PER_SECOND:-10}"
     command: ["src/operators.ts"]
     profiles: [stand]
     ports: ["127.0.0.1:8081:8081", "127.0.0.1:8082:8082", "127.0.0.1:8083:8083"]
@@ -71,6 +73,8 @@ services:
   # read-only services: no keys in their environment
   monitor:
     <<: *common
+    environment:
+      RPC_REQUESTS_PER_SECOND: "${MONITOR_RPC_REQUESTS_PER_SECOND:-3}"
     command: ["src/monitor.ts"]
     profiles: [stand, production]
     depends_on:
