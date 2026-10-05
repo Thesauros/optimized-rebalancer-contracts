@@ -14,7 +14,7 @@ Timelock ETA: **2026-10-05 22:04:01 UTC**.
 Server timer `xc-buffer-5pct.timer`: **2026-10-05 22:05:00 UTC**, persistent across reboot.
 
 The timer invokes `ops/scripts/execute-buffer-governance.sh` with the immutable image
-`sha256:781dae2d102d3cf06afaf861d011cabd302aa3a4bcbc98e4d865728295784844`.
+`sha256:26ac621dfb8146898a6a630c37c41bbf4c9e62ef157cc356f80a7f952765b0dd`.
 Do not prune this image before the operation completes.
 It stops operators while using the shared signer and restarts them afterwards, even on
 failure. Keys remain in `ops/.env.keys`; Docker supplies them as environment variables.
