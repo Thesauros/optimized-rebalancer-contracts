@@ -16,7 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { FetchRequest, JsonRpcPayload, JsonRpcProvider, JsonRpcResult, NonceManager, Wallet } from 'ethers';
 import { onError, retryTransient, semaphore } from './util';
-import { RequestPacer } from './rpc-pacer';
+import { RequestPacer, rpcWeight } from './rpc-pacer';
 import { NETWORKS, NetworkEntry } from '../../deploy/crosschain/registry';
 
 export interface Manifest {
@@ -69,14 +69,21 @@ export function rpcUrl(key: string): string {
 // One budget across all chains and provider instances in this process (including
 // NAV + keeper + relayer). Split the upstream account budget between processes.
 const readGate = semaphore(4);
-const readPacer = new RequestPacer(Number(process.env.RPC_REQUESTS_PER_SECOND ?? 5));
+const readPacer = new RequestPacer(Number(process.env.RPC_REQUESTS_PER_SECOND ?? 10));
+const computePacer = new RequestPacer(Number(process.env.RPC_COMPUTE_UNITS_PER_SECOND ?? 24));
 
 function readRequest(url: string): FetchRequest {
   const request = new FetchRequest(url);
   request.timeout = 15_000;
   // Ethers' hidden 429 retries otherwise bypass our budget and can block for minutes.
   request.retryFunc = async () => false;
-  request.preflightFunc = async (req) => { await readPacer.acquire(); return req; };
+  request.preflightFunc = async (req) => {
+    const payload = JSON.parse(Buffer.from(req.body!).toString('utf8'));
+    const calls = Array.isArray(payload) ? payload : [payload];
+    await computePacer.acquire(calls.reduce((sum, p) => sum + rpcWeight(p.method, p.params), 0));
+    await readPacer.acquire();
+    return req;
+  };
   return request;
 }
 

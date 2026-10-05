@@ -69,9 +69,18 @@ Tests: `npm test` (unit tests + ABI drift guard; run `npx hardhat compile` in th
 repo root first). The full rehearsal on local forks is `ops/rehearsal/run.sh`.
 # RPC rate budget
 
-`RPC_REQUESTS_PER_SECOND` spaces read requests across every provider and chain in
-one process (default 5/s). Compose assigns operators 10/s and monitor 3/s, leaving
-room for the indexer and allocator on a shared 25/s RPC account. Account for other
-clients before increasing these limits. Read requests time out after 15 seconds;
-transport retries consume the same budget. A rate-limit response never reduces
-the log block range. Only explicit log-range/result-size limits do so.
+All read providers in one process share `RPC_REQUESTS_PER_SECOND` (default 10)
+and `RPC_COMPUTE_UNITS_PER_SECOND` (default 24). Compose assigns operators
+40 CU/s and monitor 12 CU/s. The systemd indexer uses 24 CU/s, leaving headroom
+for the allocator and CLI on a 100 CU/s node. Each retry uses the same budgets.
+Read requests time out after 15 seconds; ethers' hidden 429 retries are disabled.
+
+Moralis charges `eth_getLogs` and archive calls at 12 CU, versus 3 CU for most
+live reads. The weighted limiter lets live reads proceed faster without letting
+history scans consume the full node budget. Adjust the combined budgets for the
+actual plan and other clients; these are per-process limits, not a shared quota.
+See https://docs.moralis.com/rpc-nodes/pricing for current RPC weights.
+
+Only explicit log-range/result-size limits reduce scan ranges. Throttling never
+shrinks them. Completed scan batches survive later request failures, and NAV
+catches up its transfer index before choosing its short-lived reference block.
