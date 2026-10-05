@@ -43,17 +43,32 @@ or frontend code changed. Env files remain untracked with mode 600.
   Base 8453 hub and Arbitrum 42161 spoke.
 - Frontend `/live`: 200 with both expected headings.
 - NAV, keeper, relayer and allocator health: 200; operators container healthy.
-- Monitor is still rebuilding governance/verification history and reports 503
-  during that work. It must not be reported as healthy until a complete pass.
+- At 17:49 UTC all six health endpoints (8081–8085, 8090) returned 200;
+  operators and monitor containers healthy. Monitor independently reproduced
+  the last 50 ticks (`tick.verify=ok`). Only expected standMode warnings and the
+  pending authorized buffer timelock warning remain.
+- Independent CLI verification: `tick 114: REPRODUCED`.
+- Further accepted ticks: 115 at 13:13, 116 at 14:14, 117 at 15:14,
+  118 at 16:15, 119 at 17:15 UTC. The hourly cadence is now observed.
+  Tick 119 rateBid: 1.000245728099267242 USDC/share, NAV 11.002666 USDC.
+  Transaction: `0x13e2c0297dfec7f82f26e1900a357bff4b8b0ceba034dd2c5e3dfd1a45dd0174`.
 
 Post-tick `exec status`: accepted 114, frozen=false, quarantined=false,
 hub sends allowed=true. Vault cash/free/buffer 5 USDC, pending deposits,
 liabilities and reserves zero, shares 10.999963. Base strategy 4.001487 USDC,
 Arbitrum strategy 2.001075 USDC; both providers healthy, both agents idle zero.
 Signer ETH: Base **0.00563894662870676**, Arbitrum **0.00438507593645782**.
-No operator iteration failures observed after the weighted-budget deployment
-at 12:49 UTC through acceptance checks. Hourly recurrence has not yet been
-observed for a full hour; do not infer it from one successful publication.
+No NAV/RPC iteration failures observed after the weighted-budget deployment
+through 17:49 UTC. Keeper had three `transaction execution reverted` failures:
+`0x88417d127b24679dfee206fd998747e98a033e8f2f88fec228e6072345f4e581`,
+`0x5a2904b172525b5cae25fffb550df7106a6a1857d5f9b9474cc38fb2b318bc80`,
+`0xee707e18e4fe7c0a2cfa3eb725f2ea66f9360c0984250ab737b3389ea27d01f9`.
+The last is `clearDeposits`: gas limit 99502, gas used 97853. Read-only replay
+at block 52215605 fails with that gas limit and succeeds with twice the gas.
+Stand `TX_GAS_MARGIN_BPS` was raised to 10000 (2x the RPC estimate). This
+increases the allowed gas, not the amount spent on a successful execution.
+The keeper recovered after those failures; no pending deposits/liabilities
+remained at the acceptance check.
 
 ## Already scheduled buffer change
 
