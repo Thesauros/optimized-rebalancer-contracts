@@ -159,3 +159,18 @@ test('shared transfer scans checkpoint completed pages and resume after failure'
   assert.deepEqual(calls, [101, 201], 'no duplicate scan by concurrent consumers');
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).scanned.base, 300);
 });
+
+
+test('read-only transfer consumers cannot overwrite operator scan progress', async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-readonly-')), 'index.json');
+  const writer = new TransferIndex(file, 'same-deployment');
+  writer.sent.set('0x01', { transferId: '0x01', chainKey: 'base', block: 120, txHash: '0xaa', amount: 5n, dstChainId: 42161n, minReceive: 4n });
+  await writer.save();
+  const before = readFileSync(file, 'utf8');
+  const reader = new TransferIndex(file, 'same-deployment', true);
+  await reader.load();
+  assert.equal(reader.sent.size, 1);
+  reader.sent.clear();
+  await reader.save();
+  assert.equal(readFileSync(file, 'utf8'), before);
+});

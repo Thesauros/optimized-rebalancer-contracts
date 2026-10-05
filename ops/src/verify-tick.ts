@@ -18,7 +18,7 @@ async function main() {
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
   const ids = process.argv.slice(2).filter((a) => /^\d+$/.test(a)).map(BigInt);
   if (ids.length === 0) ids.push(BigInt(await accountant.lastAcceptedTickId()));
-  const index = await openTransferIndex(chains);
+  const index = await openTransferIndex(chains, undefined, true);
   let failed = 0;
   for (const id of ids) {
     const r = await verifyTick(chains, index, id);

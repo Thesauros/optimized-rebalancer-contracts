@@ -160,7 +160,7 @@ export class TransferIndex {
    *   makes every commit revert `InvalidHubReference`, ticks stop, and all
    *   settlement and instant exits halt with it.
    */
-  constructor(readonly file?: string, readonly fingerprint?: string) {}
+  constructor(readonly file?: string, readonly fingerprint?: string, readonly readOnly = false) {}
 
   async load(): Promise<void> {
     if (!this.file) return;
@@ -204,7 +204,7 @@ export class TransferIndex {
 
   /** Written through a temp file and renamed, so a reader never sees a partial state. */
   async save(): Promise<void> {
-    if (!this.file) return;
+    if (!this.file || this.readOnly) return;
     const json = JSON.stringify(
       {
         fingerprint: this.fingerprint,
@@ -272,7 +272,7 @@ export class TransferIndex {
  */
 const sharedIndexes = new Map<string, Promise<TransferIndex>>();
 
-export async function openTransferIndex(chains: Chain[], file: string = TRANSFER_INDEX_FILE): Promise<TransferIndex> {
+export async function openTransferIndex(chains: Chain[], file: string = TRANSFER_INDEX_FILE, readOnly = false): Promise<TransferIndex> {
   const fingerprint = keccak256(
     Buffer.from(
       chains
@@ -281,11 +281,11 @@ export async function openTransferIndex(chains: Chain[], file: string = TRANSFER
         .join('|'),
     ),
   );
-  const key = `${path.resolve(file)}:${fingerprint}`;
+  const key = `${path.resolve(file)}:${fingerprint}:${readOnly}`;
   let pending = sharedIndexes.get(key);
   if (!pending) {
     pending = (async () => {
-      const index = new TransferIndex(file, fingerprint);
+      const index = new TransferIndex(file, fingerprint, readOnly);
       await index.load();
       return index;
     })();

@@ -261,7 +261,7 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
 
 async function main() {
   const chains = loadChains();
-  const index = await openTransferIndex(chains);
+  const index = await openTransferIndex(chains, undefined, true);
   const verified = new Map<string, boolean>();
   let checks: Check[] = [];
   let lastPass = 0;
