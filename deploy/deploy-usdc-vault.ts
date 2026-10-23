@@ -19,6 +19,10 @@ import { verify } from '../utils/verify';
 const deployUsdcVault: DeployFunction = async function (
   hre: HardhatRuntimeEnvironment,
 ) {
+  const dryRun = hre.network.name === 'hardhat';
+  if (process.env.DRY_RUN === '1' && !dryRun) {
+    throw new Error('DRY_RUN=1 requires --network hardhat (local fork); refusing deployment');
+  }
   // @ts-ignore
   const { getNamedAccounts, deployments } = hre;
   const { deploy, log } = deployments;
@@ -39,7 +43,6 @@ const deployUsdcVault: DeployFunction = async function (
   }
   // A forked run reaches a live chain id but must neither wait for
   // confirmations that never come nor submit anything to a block explorer.
-  const dryRun = hre.network.name === 'hardhat' || process.env.DRY_RUN === '1';
   const isLive =
     !dryRun &&
     (chainId === MAINNET_CHAIN_ID ||

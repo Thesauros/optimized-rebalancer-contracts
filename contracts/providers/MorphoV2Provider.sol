@@ -24,6 +24,7 @@ contract MorphoV2Provider is IProvider {
     uint256 private constant WAD = 1e18;
     uint256 private constant WAD_TO_RAY = 1e9;
     uint256 private constant YEAR = 365 days;
+    uint256 private constant ADAPTER_RATE_CALL_GAS = 3_000_000;
 
     IMorphoVaultV2 public immutable morphoVault;
     address private immutable _asset;
@@ -77,18 +78,31 @@ contract MorphoV2Provider is IProvider {
         uint256 count = morphoVault.adaptersLength();
         uint256 assets = morphoVault.totalAssets();
         if (assets == 0) return 0;
+        uint256 rateCap = uint256(morphoVault.maxRate()) * YEAR * WAD_TO_RAY;
 
         for (uint256 i; i < count; ++i) {
             address adapter = morphoVault.adapters(i);
-            uint256 adapterAssets = IMorphoV2Adapter(adapter).realAssets();
-            if (adapterAssets == 0) continue;
-            rate += Math.mulDiv(_adapterRate(adapter), adapterAssets, assets);
+            // An external boundary catches failures anywhere in the contribution,
+            // including decoding and code in the inner try's success body.
+            try this.getAdapterRateContribution{gas: ADAPTER_RATE_CALL_GAS}(adapter, assets) returns (
+                uint256 contribution
+            ) {
+                // Saturate before adding so extreme rates cannot overflow the sum.
+                rate += Math.min(contribution, rateCap - rate);
+            } catch {}
         }
 
-        rate = Math.min(rate, uint256(morphoVault.maxRate()) * YEAR * WAD_TO_RAY);
         rate = Math.mulDiv(rate, WAD - morphoVault.performanceFee(), WAD);
         uint256 managementRate = uint256(morphoVault.managementFee()) * YEAR * WAD_TO_RAY;
         rate = rate > managementRate ? rate - managementRate : 0;
+    }
+
+    /// @notice Weighted adapter APR contribution in ray, before the V2 vault's fees.
+    /// @dev External boundary for getDepositRate's bounded try/catch. Direct calls
+    ///      may revert for unsupported adapters or an invalid total-assets input.
+    function getAdapterRateContribution(address adapter, uint256 totalAssets) external view returns (uint256) {
+        uint256 assets = IMorphoV2Adapter(adapter).realAssets();
+        return assets == 0 ? 0 : Math.mulDiv(_adapterRate(adapter), assets, totalAssets);
     }
 
     function _adapterRate(address adapter) private view returns (uint256) {

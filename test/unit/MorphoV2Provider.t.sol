@@ -148,6 +148,24 @@ contract V2VaultAdapter {
     }
 }
 
+/// @dev A different adapter family may expose morpho() without the market ABI.
+contract V2IncompleteMarketAdapter {
+    address public immutable morpho;
+    uint256 public constant realAssets = 100e6;
+
+    constructor(address morpho_) {
+        morpho = morpho_;
+    }
+}
+
+contract V2GasBurningRateAdapter {
+    uint256 public constant realAssets = 100e6;
+
+    function morpho() external pure returns (address) {
+        while (true) {}
+    }
+}
+
 contract V2MarketAdapter {
     address public immutable morpho;
     bytes32[] public marketIds;
@@ -396,6 +414,75 @@ contract MorphoV2ProviderTest is Test {
         assertEq(provider.getDepositRate(vault), expected);
         source.setFees(0.2e18, uint96(uint256(0.2e18) / YEAR));
         assertEq(provider.getDepositRate(vault), 0);
+    }
+
+    function _healthyWeightedRate() internal returns (uint256) {
+        source.setAssets(1_000e6);
+        _addMarketAdapter(900e6, 2_000e6, 1_000e6, 0, irm);
+        return provider.getDepositRate(vault);
+    }
+
+    function testRateIsolatesIncompleteMarketAdapter() public {
+        uint256 expected = _healthyWeightedRate();
+        source.addAdapter(address(new V2IncompleteMarketAdapter(morpho)));
+        assertEq(provider.getDepositRate(vault), expected);
+        assertTrue(vault.providersHealthy());
+    }
+
+    function testRateIsolatesIncompleteVaultV1Adapter() public {
+        uint256 expected = _healthyWeightedRate();
+        source.addAdapter(address(new V2VaultAdapter(address(usdc), 100e6)));
+        assertEq(provider.getDepositRate(vault), expected);
+    }
+
+    function testRateIsolatesMalformedAdapterMetadata() public {
+        uint256 expected = _healthyWeightedRate();
+        address adapter = address(new V2IncompleteMarketAdapter(morpho));
+        source.addAdapter(adapter);
+        vm.mockCall(adapter, abi.encodeWithSignature("morpho()"), hex"01");
+        assertEq(provider.getDepositRate(vault), expected);
+    }
+
+    function testRateIsolatesRevertingAdapterAssets() public {
+        uint256 expected = _healthyWeightedRate();
+        address adapter = address(new V2UnknownAdapter(100e6));
+        source.addAdapter(adapter);
+        vm.mockCallRevert(adapter, abi.encodeWithSignature("realAssets()"), "broken rate assets");
+        assertEq(provider.getDepositRate(vault), expected);
+    }
+
+    function testRateIsolatesRevertingIrm() public {
+        uint256 expected = _healthyWeightedRate();
+        address badIrm = makeAddr("bad-irm");
+        _addMarketAdapter(100e6, 2_000e6, 1_000e6, 0, badIrm);
+        vm.mockCallRevert(
+            badIrm,
+            abi.encodeWithSignature(
+                "borrowRateView((address,address,address,address,uint256),(uint128,uint128,uint128,uint128,uint128,uint128))"
+            ),
+            "broken irm"
+        );
+        assertEq(provider.getDepositRate(vault), expected);
+    }
+
+    function testRateIsolatesGasExhaustingAdapter() public {
+        uint256 expected = _healthyWeightedRate();
+        source.addAdapter(address(new V2GasBurningRateAdapter()));
+        // A bad adapter must leave enough gas to process healthy ones after it.
+        _addMarketAdapter(100e6, 2_000e6, 1_000e6, 0, irm);
+        assertEq(provider.getDepositRate{gas: 4_000_000}(vault), expected + expected / 9);
+    }
+
+    function testRateIsolatesWeightedContributionOverflow() public {
+        uint256 expected = _healthyWeightedRate();
+        _addMarketAdapter(type(uint256).max, 2_000e6, 1_000e6, 0, irm);
+        assertEq(provider.getDepositRate(vault), expected);
+    }
+
+    function testRatePropagatesNativeValuationFailure() public {
+        vm.mockCallRevert(address(source), abi.encodeWithSignature("totalAssets()"), "native valuation failed");
+        vm.expectRevert("native valuation failed");
+        provider.getDepositRate(vault);
     }
 
     function testZeroRateForIdleEmptyAndZeroBorrowMarkets() public {

@@ -33,8 +33,10 @@ No V2 source is configured for Arbitrum, Plasma or Monad.
   even if a fee recipient is temporarily gated.
 - Rate look-through covers `MorphoVaultV1Adapter` and `MorphoMarketV1AdapterV2`.
   Other adapter families contribute zero estimated yield while their assets remain
-  in the denominator. Known adapter/source failures propagate; native V2 valuation
-  failures are handled by Rebalancer's existing provider health checks.
+  in the denominator. Each adapter's full weighted rate calculation runs through
+  an external view call with a 3,000,000 gas allowance; unsupported ABI, malformed
+  metadata, reverts or exhausted gas contribute zero estimated yield. Native V2
+  valuation failures still propagate to Rebalancer's provider health checks.
 
 See [Morpho's integration guide](https://docs.morpho.org/developers/earn/tutorials/assets-flow/)
 and the [Vault V2 source](https://github.com/morpho-org/vault-v2/blob/main/src/VaultV2.sol).
@@ -52,6 +54,10 @@ npx hardhat deploy --deploy-scripts deploy/providers --tags gauntlet-v2-provider
 ```
 
 This deploys/verifies a provider; it does not register it or move existing funds.
+`DRY_RUN=1` is accepted only with the in-process `--network hardhat` network;
+other networks are rejected before RPC or signer access, including networks named
+`localhost` or `baseLocal`. This guard applies to both deployment scripts. To
+rehearse, use a local Hardhat fork with `FORK_CHAIN_ID` identifying the source chain.
 The explicit script directory avoids loading the repository's independent
 cross-chain operational scripts. With recent Foundry versions, use
 `FOUNDRY_AUTO_DETECT_REMAPPINGS=false` if hardhat-foundry rejects automatically
@@ -73,6 +79,7 @@ the previous entry provider and rebalance out before removing the V2 provider.
 forge test --match-path test/unit/MorphoV2Provider.t.sol -vv
 forge test --match-path test/forking/GauntletV2MorphoProvider.t.sol -vv
 forge test --no-match-path 'test/forking/**'
+npm run test:deploy
 ```
 
 The fork tests require `BASE_RPC_URL` and `ETHEREUM_RPC_URL`. They cover native

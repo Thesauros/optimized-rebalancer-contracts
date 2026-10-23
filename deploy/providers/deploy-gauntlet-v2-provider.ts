@@ -5,6 +5,10 @@ import { verify } from '../../utils/verify';
 
 /** Deploy only the V2 providers; existing vault registration is a separate governance action. */
 const deployGauntletV2Provider: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
+  const dryRun = hre.network.name === 'hardhat';
+  if (process.env.DRY_RUN === '1' && !dryRun) {
+    throw new Error('DRY_RUN=1 requires --network hardhat (local fork); refusing deployment');
+  }
   const { ethers, deployments, getNamedAccounts } = hre;
   const chainId =
     hre.network.name === 'hardhat' && process.env.FORK_CHAIN_ID
@@ -17,7 +21,6 @@ const deployGauntletV2Provider: DeployFunction = async function (hre: HardhatRun
   }
 
   const { deployer } = await getNamedAccounts();
-  const dryRun = hre.network.name === 'hardhat' || process.env.DRY_RUN === '1';
   for (const { strategy, vaultAddress } of strategies) {
     const source = await ethers.getContractAt('IMorphoVaultV2', vaultAddress);
     if ((await source.asset()).toLowerCase() !== config.asset.toLowerCase()) {
