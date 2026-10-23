@@ -132,10 +132,11 @@ const deployUsdcVault: DeployFunction = async function (
   log('----------------------------------------------------');
   log('Deploying Morpho providers...');
 
-  for (const { strategy, vaultAddress } of chainConfig.morphoVaults) {
+  for (const { strategy, vaultAddress, version = 1 } of chainConfig.morphoVaults) {
+    const contract = version === 2 ? 'MorphoV2Provider' : 'MorphoProvider';
     const deploymentName = `${strategy}MorphoProvider`;
     const provider = await deploy(deploymentName, {
-      contract: 'MorphoProvider',
+      contract,
       from: deployer,
       args: [vaultAddress],
       log: true,
@@ -143,7 +144,7 @@ const deployUsdcVault: DeployFunction = async function (
     });
 
     log('----------------------------------------------------');
-    log(`MorphoProvider for ${strategy} strategy at ${provider.address}`);
+    log(`${contract} for ${strategy} strategy at ${provider.address}`);
 
     providers.push(provider.address);
 
