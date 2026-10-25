@@ -43,6 +43,11 @@ and the [Vault V2 source](https://github.com/morpho-org/vault-v2/blob/main/src/V
 
 ## Deployment and activation
 
+The [deployment runbook](gauntlet-v2-deployment-runbook.md) covers the read-only
+preparation bundle, unsigned requests, funding checks and future execution steps.
+Run `npm run prepare:gauntlet-v2 -- --network all --deployer PUBLIC_ADDRESS` to
+prepare without signing or broadcasting. This command cannot deploy.
+
 New full-vault deployments select `MorphoV2Provider` for configuration entries
 with `version: 2`; entries without a version retain `MorphoProvider`.
 

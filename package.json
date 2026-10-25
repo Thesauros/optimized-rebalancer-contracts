@@ -1,7 +1,8 @@
 {
   "name": "thesauros-optimized-rebalancer",
   "scripts": {
-    "test:deploy": "FOUNDRY_AUTO_DETECT_REMAPPINGS=false node --require ts-node/register/transpile-only --test test/deploy/*.test.ts"
+    "test:deploy": "FOUNDRY_AUTO_DETECT_REMAPPINGS=false node --require ts-node/register/transpile-only --test test/deploy/*.test.ts",
+    "prepare:gauntlet-v2": "node --require ts-node/register/transpile-only scripts/prepare-gauntlet-v2-deploy.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-foundry": "^1.2.1",
