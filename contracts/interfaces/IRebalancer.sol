@@ -19,6 +19,7 @@ interface IRebalancer is IERC4626 {
     error ProviderCapExceeded(address provider);
     error ProviderUnavailable();
     error ProviderHasAssets(address provider, uint256 assets);
+    error ProviderHasReceiptShares(address provider, uint256 shares);
     error DuplicateProviderSource();
     error ProviderSourceChanged();
     error SecurityAccountingNotInitialized();

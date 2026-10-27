@@ -16,6 +16,7 @@ the completed source audit and explicit user selection, not a new product idea.
 ## Required behavior
 
 1. Unknown provider NAV fails closed in conversions, fee settlement and exits.
+   Complete NAV includes idle underlying, which is used before provider actions.
    When NAV is known, failed/short withdrawal actions are isolated and actual
    receipts determine remaining liquidity; insufficient liquidity reverts atomically.
 2. Performance fees accrue only above a per-share high-water mark after management
@@ -28,8 +29,9 @@ the completed source audit and explicit user selection, not a new product idea.
    upgradeAndCall runs with ProxyAdmin as sender. Migration waives uncrystallized
    legacy fees and restarts the clock.
 4. Providers and economic source addresses must be unique contracts. Removal
-   requires a readable zero position, including dust. Saved source identity is
-   pinned and is used for approval cleanup. An immediate registry mutation cannot
+   requires a readable zero position and no nonzero ERC20-like receipt claim,
+   including dust and future recovery claims at zero NAV. Source identity is
+   pinned and used for approval cleanup. An immediate registry mutation cannot
    silently change the price/asset boundary. New registry entries are write-once;
    migrations deploy a new registry/adapter and use the vault timelock.
 5. Every ordinary deployment network uses atomic VaultFactory initialization.

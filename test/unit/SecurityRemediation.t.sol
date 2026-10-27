@@ -25,6 +25,7 @@ import {FeeCapAsset, FeeCapSource} from "./PerformanceFeeCap.t.sol";
 
 contract RemediationSource is FeeCapSource {
     bool public viewFails;
+    bool public quoteZero;
     bool public withdrawalFails;
     uint256 public shortBy;
     constructor(IERC20 a) FeeCapSource(a) {}
@@ -37,7 +38,12 @@ contract RemediationSource is FeeCapSource {
 
     function reported(address who) external view returns (uint256) {
         require(!viewFails, "view unavailable");
+        if (quoteZero) return 0;
         return balances[who];
+    }
+
+    function setQuoteZero(bool value) external {
+        quoteZero = value;
     }
 
     function release(address who, uint256 amount) external {
@@ -210,6 +216,8 @@ contract SecurityRemediationTest is Test {
 
     function testFundedUnknownNavBlocksConversionsFeesAndAllSettlements() public {
         _move(400 * ONE);
+        // Cash alone must not bypass complete-NAV pricing while a funded view fails.
+        asset.mint(address(vault), 100 * ONE);
         uint256 supply = vault.totalSupply();
         uint256 baseline = vault.getLastTotalAssets();
         uint256 hwm = vault.getHighWaterMark();
@@ -249,6 +257,41 @@ contract SecurityRemediationTest is Test {
         vault.withdraw(100 * ONE, alice, alice);
         assertEq(asset.balanceOf(alice), 100 * ONE);
         assertEq(sourceB.balanceOf(address(vault)), 500 * ONE);
+    }
+
+    function testIdleCashIsValuedForHwmAndPaysDespiteIlliquidProviders() public {
+        vault.setPerformanceFee(25e16);
+        asset.mint(address(vault), 100 * ONE);
+        assertEq(vault.totalAssets(), 1101 * ONE);
+        vault.applyFees();
+        assertGt(vault.balanceOf(treasury), 0, "real new cash value participates in fee accounting");
+        assertGt(vault.getHighWaterMark(), 1e18);
+        sourceA.configure(false, true, 0);
+        sourceB.configure(false, true, 0);
+        vm.prank(alice);
+        vault.withdraw(50 * ONE, alice, alice);
+        assertEq(asset.balanceOf(alice), 50 * ONE);
+        assertEq(asset.balanceOf(address(vault)), 50 * ONE);
+        assertEq(sourceA.balanceOf(address(vault)), 1001 * ONE);
+        assertEq(vault.totalAssets(), 1051 * ONE);
+    }
+
+    function testZeroProviderAssetsCanRecoverAsCashWithoutRecoveryFeeAndRedeem() public {
+        vault.setPerformanceFee(25e16);
+        sourceA.debitAndSend(address(vault), 1001 * ONE, address(this));
+        assertEq(vault.totalAssets(), 0);
+        vault.applyFees();
+        asset.transfer(address(vault), 1001 * ONE);
+        assertEq(vault.totalAssets(), 1001 * ONE);
+        vault.applyFees();
+        assertEq(vault.balanceOf(treasury), 0, "recovered principal is not new performance");
+        assertEq(vault.getHighWaterMark(), 1e18);
+        vm.prank(alice);
+        uint256 paid = vault.redeem(100 * ONE, alice, alice);
+        assertEq(paid, 100 * ONE);
+        assertEq(asset.balanceOf(alice), 100 * ONE);
+        assertEq(sourceA.balanceOf(address(vault)), 0);
+        assertEq(sourceB.balanceOf(address(vault)), 0);
     }
 
     function testMeasuredShortReceiptUsesOtherProviderAndInsufficientLiquidityIsAtomic() public {
@@ -338,6 +381,22 @@ contract SecurityRemediationTest is Test {
         vault.setProviders(_providers());
         assertEq(vault.getPinnedProviderSource(providerA), address(sourceA));
         assertEq(asset.allowance(address(vault), address(replacement)), 0);
+    }
+
+    function testZeroNavReceiptClaimCannotBeDropped() public {
+        _move(100 * ONE);
+        sourceB.setQuoteZero(true);
+        assertTrue(vault.providersHealthy());
+        assertEq(vault.totalAssets(), 901 * ONE);
+        IProvider[] memory onlyA = new IProvider[](1);
+        onlyA[0] = providerA;
+        vm.expectRevert(
+            abi.encodeWithSelector(IRebalancer.ProviderHasReceiptShares.selector, address(providerB), 100 * ONE)
+        );
+        vault.setProviders(onlyA);
+        assertEq(vault.getProviders().length, 2);
+        sourceB.setQuoteZero(false);
+        assertEq(vault.totalAssets(), 1001 * ONE, "recovery remains attributable to original holders");
     }
 
     function testRegistrySourceIsWriteOnceAndIdempotentForBothMaps() public {

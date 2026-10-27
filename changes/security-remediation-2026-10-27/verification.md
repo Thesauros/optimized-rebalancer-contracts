@@ -14,7 +14,7 @@ is e603e9a3d05369ff8f139179c516bfc1d9e8452f; dev baseline is
 No original checkout changes, production environment/keys, RPC, deployment or push.
 
 Native solc0.8.33 and Foundry1.8.6 executed real local EVM tests, not mathematical
-substitutes: main166/166, dev39/39; twelve dedicated security tests in each branch.
+substitutes: main169/169, dev42/42; fifteen dedicated security tests in each branch.
 Main's six grouped crosschain invariants passed64runs,8192calls (depth128).
 Existing main deployment/preparation Node tests passed23/23 under an isolated
 Hardhat config with no fork/network/environment loading. All-network factory
@@ -35,6 +35,12 @@ initialization, preserve one-unit funded positions, require zero before approval
 cleanup, detect old mutable source retargeting, and reject public/low-HWM/repeated
 migration initialization. Fifty-year fee settlement and subsequent fee changes,
 deposits and treasury withdrawal remain defined with a positive denominator.
+
+Independent cross-review follow-ups also preserve nonzero receipt claims whose
+NAV rounds to zero, include idle underlying in NAV/HWM and withdrawal liquidity,
+and allow cash recovery after all provider assets were lost without charging a
+recovery performance fee. Even sufficient idle cash cannot bypass an unknown
+funded provider's strict valuation gate.
 
 ## Future production migration (not executed)
 

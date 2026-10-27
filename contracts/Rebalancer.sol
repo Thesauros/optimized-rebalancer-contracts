@@ -388,7 +388,8 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         _burn(owner, shares);
 
         RebalancerStorage storage $ = _getRebalancerStorage();
-        uint256 assetsLeft = assets;
+        uint256 idleAssets = $._asset.balanceOf(address(this));
+        uint256 assetsLeft = assets > idleAssets ? assets - idleAssets : 0;
         uint256 count = $._providers.length;
         for (uint256 i; i < count && assetsLeft > 0; i++) {
             IProvider provider = $._providers[i];
@@ -733,6 +734,18 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
             (uint256 assets, bool ok) = _safeGetDepositBalance(oldProviders[i]);
             if (!ok) revert ProviderUnavailable();
             if (assets != 0) revert ProviderHasAssets(address(oldProviders[i]), assets);
+            // A zero recoverable/dust quote can still represent receipt shares
+            // and a future recovery claim. ERC20-like sources must be empty too;
+            // non-token sources (e.g. Aave Pool) use the provider's zero proof.
+            (bool readable, bytes memory receipt) = $._providerSources[address(
+                    oldProviders[i]
+                )].staticcall{gas: PROVIDER_VIEW_CALL_GAS}(
+                abi.encodeWithSignature("balanceOf(address)", address(this))
+            );
+            if (readable && receipt.length == 32) {
+                uint256 shares = abi.decode(receipt, (uint256));
+                if (shares != 0) revert ProviderHasReceiptShares(address(oldProviders[i]), shares);
+            }
         }
         for (uint256 i; i < oldProviders.length; i++) {
             address provider = address(oldProviders[i]);
@@ -919,6 +932,7 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
     /// @dev Sum of provider balances; `healthy` is false if any view failed.
     function _totalAssetsWithHealth() internal view returns (uint256 total, bool healthy) {
         RebalancerStorage storage $ = _getRebalancerStorage();
+        total = $._asset.balanceOf(address(this));
         uint256 count = $._providers.length;
         healthy = true;
         for (uint256 i; i < count; i++) {
