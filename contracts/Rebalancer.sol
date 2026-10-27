@@ -712,8 +712,8 @@ contract Rebalancer is
 
     /**
      * @notice Sets the list of providers for this vault.
-     * @dev If the current entry provider is dropped from the list, the entry provider
-     * is reset to `providers[0]` and `EntryProviderUpdated` is emitted.
+     * @dev The current entry provider must remain listed. A removed provider must
+     * have a readable, zero deposit balance so its assets cannot disappear from NAV.
      * @param providers A non-empty array of provider contracts.
      */
     function setProviders(IProvider[] memory providers) external onlyTimelock {
@@ -784,9 +784,8 @@ contract Rebalancer is
 
     /**
      * @dev Internal function to set the providers for this vault.
-     * If the current entry provider is not in the new list (always the case during
-     * initialize), the entry falls back to `providers[0]`: deposits must never land at a
-     * provider that `totalAssets` and `_withdraw` no longer see.
+     * During initialize the entry is set to `providers[0]`. Subsequent updates must
+     * retain the current entry and may remove only providers proven to be empty.
      * @param providers A non-empty array of provider contracts.
      */
     function _setProviders(IProvider[] memory providers) internal {
@@ -802,6 +801,17 @@ contract Rebalancer is
         }
 
         IProvider[] memory oldProviders = $._providers;
+        // Validate removals before changing approvals or the provider list. A failed
+        // balance read is not proof of emptiness: dropping it would enable entries
+        // against an incomplete NAV once the provider is no longer checked for health.
+        for (uint256 i; i < oldProviders.length; i++) {
+            IProvider provider = oldProviders[i];
+            if (_isInList(address(provider), providers)) continue;
+            (uint256 assets, bool ok) = _safeGetDepositBalance(provider);
+            if (!ok) revert ProviderUnavailable();
+            if (assets != 0) revert ProviderHasAssets(address(provider), assets);
+        }
+
         for (uint256 i; i < providers.length; i++) {
             if (address(providers[i]) == address(0)) {
                 revert AddressZero();
@@ -812,8 +822,8 @@ contract Rebalancer is
             );
         }
 
-        // a removed provider's source must not keep an unlimited allowance;
-        // a broken provider cannot block its own removal
+        // Revoke stale allowances. Once the position is proven empty, a failing
+        // source lookup or approval revocation does not block its removal.
         for (uint256 i; i < oldProviders.length; i++) {
             if (_isInList(address(oldProviders[i]), providers)) continue;
             try this.revokeStaleApproval(oldProviders[i]) {} catch {

@@ -16,6 +16,7 @@ interface IRebalancer is IERC4626 {
     error InvalidProvider();
     error InsufficientLiquidity();
     error EntryProviderNotInProviders();
+    error ProviderHasAssets(address provider, uint256 assets);
     error ProviderCapExceeded(address provider);
     error ProviderUnavailable();
 

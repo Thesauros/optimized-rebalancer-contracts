@@ -188,25 +188,141 @@ contract EntryProviderExecutorTest is Test {
         assertEq(asset.balanceOf(alice), 500 * ONE, "alice paid in full");
     }
 
-    /// @dev The executor can point the entry at a provider the timelock is about to remove
-    ///      (front-run or plain race). `setProviders` must then move the entry back into
-    ///      the list, or deposits would land where `totalAssets` and `_withdraw` cannot see.
-    function testSetProvidersDroppingEntryResetsItToHead() public {
+    /// @dev Removing the current entry is rejected, even when it is empty.
+    function testSetProvidersRejectsDroppingCurrentEntry() public {
         _deposit(alice, 1_000 * ONE); // lands at A
         vm.prank(executor);
         vault.setEntryProvider(providerB);
 
         IProvider[] memory onlyA = new IProvider[](1);
         onlyA[0] = providerA;
-        vm.expectEmit(true, true, true, true, address(vault));
-        emit IRebalancer.EntryProviderUpdated(providerA);
+        vm.expectRevert(IRebalancer.EntryProviderNotInProviders.selector);
         vault.setProviders(onlyA);
-        assertEq(address(vault.getEntryProvider()), address(providerA), "entry reset to providers[0]");
+        assertEq(address(vault.getEntryProvider()), address(providerB), "entry unchanged");
+        assertEq(vault.getProviders().length, 2, "provider list unchanged");
 
         uint256 assetsBefore = vault.totalAssets();
         _deposit(bob, 100 * ONE);
-        assertEq(sourceB.balanceOf(address(vault)), 0, "nothing lands at the de-listed provider");
+        assertEq(sourceB.balanceOf(address(vault)), 100 * ONE, "entry remains listed and receives deposits");
         assertEq(vault.totalAssets(), assetsBefore + 100 * ONE, "deposit is counted");
+    }
+
+    function testSetProvidersRemovesEmptyProviderAfterSwitchingEntry() public {
+        vm.prank(executor);
+        vault.setEntryProvider(providerB);
+        vault.setEntryProvider(providerA);
+
+        IProvider[] memory onlyA = new IProvider[](1);
+        onlyA[0] = providerA;
+        vm.expectEmit(true, true, true, true, address(vault));
+        emit IRebalancer.ProvidersUpdated(onlyA);
+        vault.setProviders(onlyA);
+
+        assertEq(vault.getProviders().length, 1);
+        assertEq(address(vault.getEntryProvider()), address(providerA));
+        assertEq(asset.allowance(address(vault), address(sourceB)), 0);
+        _deposit(bob, 100 * ONE);
+        assertEq(sourceB.balanceOf(address(vault)), 0);
+        assertEq(vault.totalAssets(), MIN_ASSETS + 100 * ONE);
+
+        vm.prank(executor);
+        vm.expectRevert(IRebalancer.InvalidInput.selector);
+        vault.setEntryProvider(providerB);
+    }
+
+    function testSetProvidersCannotHideAssetsAndDiluteExistingDepositor() public {
+        vm.prank(executor);
+        vault.setEntryProvider(providerB);
+        _deposit(alice, 1_000 * ONE);
+        vault.setEntryProvider(providerA);
+
+        IProvider[] memory onlyA = new IProvider[](1);
+        onlyA[0] = providerA;
+        vm.expectRevert(abi.encodeWithSelector(
+            IRebalancer.ProviderHasAssets.selector, address(providerB), 1_000 * ONE
+        ));
+        vault.setProviders(onlyA);
+
+        assertEq(vault.totalAssets(), MIN_ASSETS + 1_000 * ONE, "all assets remain in NAV");
+        assertEq(vault.getProviders().length, 2, "funded provider stays listed");
+        assertEq(asset.allowance(address(vault), address(sourceB)), type(uint256).max);
+
+        // Before the fix this deposit bought 1,001 shares and later redeemed for 501 USDC.
+        _deposit(bob, ONE);
+        assertEq(vault.balanceOf(bob), ONE, "no shares minted against an incomplete NAV");
+        IProvider[] memory both = new IProvider[](2);
+        both[0] = providerA;
+        both[1] = providerB;
+        vault.setProviders(both);
+        uint256 bobShares = vault.balanceOf(bob);
+        vm.prank(bob);
+        vault.redeem(bobShares, bob, bob);
+        assertEq(asset.balanceOf(bob), ONE, "no profit from provider list changes");
+        assertEq(vault.convertToAssets(vault.balanceOf(alice)), 1_000 * ONE);
+    }
+
+    function testFuzzSetProvidersRejectsRemovalWithAssets(uint96 amount) public {
+        uint256 assets = bound(uint256(amount), MIN_ASSETS, 1e24);
+        vm.prank(executor);
+        vault.setEntryProvider(providerB);
+        _deposit(alice, assets);
+        vault.setEntryProvider(providerA);
+
+        IProvider[] memory onlyA = new IProvider[](1);
+        onlyA[0] = providerA;
+        vm.expectRevert(abi.encodeWithSelector(
+            IRebalancer.ProviderHasAssets.selector, address(providerB), assets
+        ));
+        vault.setProviders(onlyA);
+        assertEq(vault.totalAssets(), MIN_ASSETS + assets);
+        assertEq(vault.balanceOf(alice), assets);
+    }
+
+    function testSetProvidersRejectsRemovalWithOneUnitOfDust() public {
+        asset.mint(address(this), 1);
+        asset.approve(address(sourceB), 1);
+        sourceB.simulateYield(address(vault), 1);
+
+        IProvider[] memory onlyA = new IProvider[](1);
+        onlyA[0] = providerA;
+        vm.expectRevert(abi.encodeWithSelector(
+            IRebalancer.ProviderHasAssets.selector, address(providerB), 1
+        ));
+        vault.setProviders(onlyA);
+        assertEq(vault.totalAssets(), MIN_ASSETS + 1);
+    }
+
+    function testSetProvidersAllowsRemovalAfterRebalancingAllAssets() public {
+        vm.prank(executor);
+        vault.setEntryProvider(providerB);
+        _deposit(alice, 1_000 * ONE);
+        vault.setEntryProvider(providerA);
+
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = type(uint256).max;
+        IProvider[] memory from = new IProvider[](1);
+        from[0] = providerB;
+        IProvider[] memory to = new IProvider[](1);
+        to[0] = providerA;
+        vm.prank(executor);
+        vault.rebalance(amounts, from, to);
+
+        assertEq(sourceB.balanceOf(address(vault)), 0);
+        vault.setProviders(to);
+        assertEq(vault.totalAssets(), MIN_ASSETS + 1_000 * ONE);
+        assertEq(asset.allowance(address(vault), address(sourceB)), 0);
+        vm.prank(alice);
+        vault.withdraw(1_000 * ONE, alice, alice);
+        assertEq(asset.balanceOf(alice), 1_000 * ONE);
+        assertEq(vault.totalAssets(), MIN_ASSETS);
+    }
+
+    function testExecutorCannotChangeProviderList() public {
+        IProvider[] memory onlyA = new IProvider[](1);
+        onlyA[0] = providerA;
+        vm.prank(executor);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.setProviders(onlyA);
     }
 
     function testSetProvidersKeepsListedEntry() public {

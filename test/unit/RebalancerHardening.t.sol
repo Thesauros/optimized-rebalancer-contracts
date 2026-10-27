@@ -92,11 +92,20 @@ contract BrokenProvider is IProvider {
         revert("broken");
     }
 
-    function getDepositBalance(address, IRebalancer) external pure returns (uint256) {
+    function getDepositBalance(address, IRebalancer) external pure virtual returns (uint256) {
         revert("broken");
     }
 
     function getDepositRate(IRebalancer) external pure returns (uint256) {
+        return 0;
+    }
+}
+
+/// @notice Its position is provably empty even though approval-source lookup fails on removal.
+contract EmptyBrokenSourceProvider is BrokenProvider {
+    constructor(address source_) BrokenProvider(source_, true) {}
+
+    function getDepositBalance(address, IRebalancer) external pure override returns (uint256) {
         return 0;
     }
 }
@@ -310,9 +319,34 @@ contract RebalancerHardeningTest is Test {
         vault.setProviders(ps);
     }
 
-    function testBrokenProviderCanStillBeRemoved() public {
+    function testCannotRemoveProviderWhoseBalanceIsUnavailable() public {
         FeeCapSource sourceC = new FeeCapSource(IERC20(address(asset)));
-        BrokenProvider broken = new BrokenProvider(address(sourceC), true);
+        BrokenProvider broken = new BrokenProvider(address(sourceC), false);
+        IProvider[] memory ps = new IProvider[](3);
+        ps[0] = providerA;
+        ps[1] = providerB;
+        ps[2] = broken;
+        vault.setProviders(ps);
+
+        // The unreadable provider can still hold real assets; a failed view is not zero.
+        asset.mint(address(this), 10 * ONE);
+        asset.approve(address(sourceC), 10 * ONE);
+        sourceC.simulateYield(address(vault), 10 * ONE);
+
+        IProvider[] memory back = new IProvider[](2);
+        back[0] = providerA;
+        back[1] = providerB;
+        vm.expectRevert(IRebalancer.ProviderUnavailable.selector);
+        vault.setProviders(back);
+        assertEq(vault.getProviders().length, 3);
+        assertFalse(vault.providersHealthy(), "entries remain blocked on incomplete NAV");
+        assertEq(sourceC.balanceOf(address(vault)), 10 * ONE);
+        assertEq(asset.allowance(address(vault), address(sourceC)), type(uint256).max);
+    }
+
+    function testEmptyProviderWithBrokenSourceCanStillBeRemoved() public {
+        FeeCapSource sourceC = new FeeCapSource(IERC20(address(asset)));
+        EmptyBrokenSourceProvider broken = new EmptyBrokenSourceProvider(address(sourceC));
         IProvider[] memory ps = new IProvider[](3);
         ps[0] = providerA;
         ps[1] = providerB;
