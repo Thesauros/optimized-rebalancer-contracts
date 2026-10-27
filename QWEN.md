@@ -65,3 +65,37 @@ Full autonomy granted:
 ## Language
 
 User communicates in informal Russian. Respond in Russian unless asked otherwise. Keep code, paths, commands in English.
+
+## Orchestrator Skill
+
+This project uses the Orchestrator skill at `.orchestrator-skill/`.
+
+- On session start: read `.orchestrator-skill/SKILL.md` for orchestrator persona and workflows.
+- ALWAYS read `.orchestrator-skill/data/state/` first to understand current project position.
+- Follow `.orchestrator-skill/AGENT_INSTRUCTIONS.md` for full operating rules.
+- Use templates from `.orchestrator-skill/templates/` for documents.
+- Update state in `.orchestrator-skill/data/state/` after every significant event.
+- Before ending: `cd .orchestrator-skill && git add data/ && git commit -m "[<change-name>] Update orchestration state" -m "Change: <change-name>" && git push`
+
+## Product Squad Skill
+
+This project uses the Product Squad skill at `.product-squad-skill/`.
+
+- On session start: read `.product-squad-skill/SKILL.md` for product persona and workflows.
+- Load relevant context from `.product-squad-skill/data/` (lazy — only what's needed).
+- Follow `.product-squad-skill/AGENT_INSTRUCTIONS.md` for full operating rules.
+- Run the mandatory SDD Opportunity Research Subcycle before a material task enters sprint planning or CTO implementation.
+- Use templates from `.product-squad-skill/templates/` for documents.
+- Write durable decisions/context to `.product-squad-skill/data/`.
+- Before ending: `cd .product-squad-skill && git add data/ && git commit -m "[<change-name>] Update product context" -m "Change: <change-name>" && git push`
+
+## Security Engineer Skill
+
+This project uses the Security Engineer skill at `.security-engineer-skill/`.
+
+- On session start: read `.security-engineer-skill/SKILL.md` for security persona and workflows.
+- Load relevant context from `.security-engineer-skill/data/` (lazy — only what's needed).
+- Follow `.security-engineer-skill/AGENT_INSTRUCTIONS.md` for full operating rules.
+- Use templates from `.security-engineer-skill/templates/` for documents.
+- Write findings/reviews to `.security-engineer-skill/data/`.
+- Before ending: `cd .security-engineer-skill && git add data/ && git commit -m "[<change-name>] Update security context" -m "Change: <change-name>" && git push`

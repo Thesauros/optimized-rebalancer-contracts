@@ -48,23 +48,39 @@
 | USDCRebalancerImplementation | `0x44eC9D49196749Cf647339350d381302af4a3d60` |
 | vault(USDCRebalancerProxy) | `0x40F1fBf6a92155a6D321c09936234BFEb9Ec4760` |
 
-## Ethereum (legacy, do not use)
+## Ethereum
 
-Previous vault generation, still live on Ethereum mainnet and deliberately left
-untouched (decision 2026-09-12). Recorded so it is never confused with the
-current deployment.
+Deployed 2026-09-21 from `dev` @ `b0066f1` (v0.9.3 plus the 25% performance fee
+cap). The proxy was created and initialized in a single transaction by
+`VaultFactory`, so there was never an uninitialized proxy on chain. Total cost
+13.26M gas / 0.005904 ETH. All eleven contracts are verified on Etherscan.
 
 | Contract | Address |
 |---|---|
-| vault(Rebalancer, legacy) | `0x839E57080C18195D8D343a02c2f623b5916f7383` |
+| AaveV3Provider | `0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941` |
+| CompoundV3Provider | `0x902F8Ba5872A15d84193A5DEbf8A74d90BEF08e7` |
+| GauntletPrimeMorphoProvider | `0xBC64abbCa87289746f2B01C8ab02A78c9fC92B89` |
+| ProviderManager | `0xDDce69b66E9DD56c506918Dd347f32A78002C7b6` |
+| ProxyAdmin | `0xc7A782F99b55B41AfcE64b562691e49C4A3c9e37` |
+| SmokehouseMorphoProvider | `0x2fe36048F394A0732E8F28C43DbF351F0253C6E5` |
+| SteakhouseMorphoProvider | `0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622` |
+| Timelock | `0xB7d7e747b583bDE56f5277a6E4820Cfec7e0f587` |
+| USDCRebalancerImplementation | `0x048C31D6ED2e4f04ADadB4F61116Ae3971EC7547` |
+| VaultFactory | `0xb8637850cd66EC9E72058d7fEBb89e146a59b307` |
+| vault(USDCRebalancerProxy) | `0xc3156Da39EeEa9De80F1d74b497C0E4A7030Aae3` |
 
-State as of 2026-09-12: `Thesauros USDC Vault` / `tUSDC`, compiled with solc
-0.8.23 and missing the current getters (`getTimelock`, `getTreasury`,
-`getManagementFee`, `getPerformanceFee`, `getMinAssets`, `getEntryProvider` all
-revert). Seven Morpho providers, no Aave or Compound. ADMIN_ROLE belongs to the
-deployer EOA `0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D`, not to the treasury.
-`totalAssets` 9.188829 USDC against `totalSupply` 8.989841 tUSDC: the deployer
-holds 4.998819, the vault itself 1.0 (seed), and four unrelated addresses hold
-2.991022 combined.
+`ProxyAdmin` has no `deployments/mainnet/*.json` record because `VaultFactory`
+creates it inside `deployAndInitialize`; read it from the ERC-1967 admin slot of
+the proxy. Its owner, the vault `ADMIN_ROLE`, the vault treasury, and the owner
+of both `Timelock` and `ProviderManager` are all the deployer EOA
+`0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D` — a deliberate interim state, to be
+repointed once the partner's treasury address is available. Fees launched at 0/0
+against caps of 5% management and 25% performance.
+
+An earlier generation at `0x839E57080C18195D8D343a02c2f623b5916f7383` is still
+live on this chain under the identical `Thesauros USDC Vault` / `tUSDC` name and
+symbol, reporting 9.197858 USDC of total assets, of which 2.991022 tUSDC sit
+with addresses other than the deployer and the seed. Select Ethereum contracts
+by address, never by name or symbol.
 
 Addresses are stored per contract in `deployments/<network>/<Contract>.json` (field `address`, plus ABI and constructor `args`).

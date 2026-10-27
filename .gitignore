@@ -35,9 +35,20 @@ lcov.info
 script
 broadcast
 .qa-skill/
-/scripts
 .biz-dev-skill/
 .orchestrator-skill/
 .product-squad-skill/
 .security-engineer-skill/
 SECURITY_AUDIT.md
+thesauros_tick_epoch_prompt_ru.md
+
+# ops caches: rebuildable, and state written against a fork or the stand must
+# never be committed or reused (TRANSFER_INDEX_FILE / INDEXER_DB override both)
+crosschain-transfer-index.json
+crosschain-transfer-index.json.*.tmp
+crosschain-indexer.sqlite
+crosschain-indexer.sqlite-*
+
+# ops server secrets (templates: ops/.env.server.example, ops/.env.keys.example)
+ops/.env.server
+ops/.env.keys

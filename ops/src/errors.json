@@ -1,0 +1,513 @@
+[
+ {
+  "inputs": [],
+  "name": "ActionNotPaused",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ActionPaused",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "target",
+    "type": "address"
+   }
+  ],
+  "name": "AddressEmptyCode",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "AddressZero",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "AlreadyReceived",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ArrayMismatch",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "AssetsBelowMin",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ChainSetMismatch",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint8",
+    "name": "domain",
+    "type": "uint8"
+   }
+  ],
+  "name": "DomainPaused",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ECDSAInvalidSignature",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint256",
+    "name": "length",
+    "type": "uint256"
+   }
+  ],
+  "name": "ECDSAInvalidSignatureLength",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "bytes32",
+    "name": "s",
+    "type": "bytes32"
+   }
+  ],
+  "name": "ECDSAInvalidSignatureS",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "EntryProviderNotInProviders",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "EpochNotClosable",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "spender",
+    "type": "address"
+   },
+   {
+    "internalType": "uint256",
+    "name": "allowance",
+    "type": "uint256"
+   },
+   {
+    "internalType": "uint256",
+    "name": "needed",
+    "type": "uint256"
+   }
+  ],
+  "name": "ERC20InsufficientAllowance",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "sender",
+    "type": "address"
+   },
+   {
+    "internalType": "uint256",
+    "name": "balance",
+    "type": "uint256"
+   },
+   {
+    "internalType": "uint256",
+    "name": "needed",
+    "type": "uint256"
+   }
+  ],
+  "name": "ERC20InsufficientBalance",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "approver",
+    "type": "address"
+   }
+  ],
+  "name": "ERC20InvalidApprover",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "receiver",
+    "type": "address"
+   }
+  ],
+  "name": "ERC20InvalidReceiver",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "sender",
+    "type": "address"
+   }
+  ],
+  "name": "ERC20InvalidSender",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "spender",
+    "type": "address"
+   }
+  ],
+  "name": "ERC20InvalidSpender",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint256",
+    "name": "deadline",
+    "type": "uint256"
+   }
+  ],
+  "name": "ERC2612ExpiredSignature",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "signer",
+    "type": "address"
+   },
+   {
+    "internalType": "address",
+    "name": "owner",
+    "type": "address"
+   }
+  ],
+  "name": "ERC2612InvalidSigner",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "FailedCall",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "HubStateMismatch",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InsufficientFreeCash",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InsufficientIdle",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InsufficientLiquidity",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "account",
+    "type": "address"
+   },
+   {
+    "internalType": "uint256",
+    "name": "currentNonce",
+    "type": "uint256"
+   }
+  ],
+  "name": "InvalidAccountNonce",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidConfig",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidCount",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidHubReference",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidInitialization",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidInput",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidMessage",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidProvider",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidTickId",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidTime",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidValue",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "LimitExceeded",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NativeFeeNotAccepted",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NotAccountant",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NothingToClear",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NotHub",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NotHubAgent",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NotInitializing",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NotQuarantined",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "NotRequestOwner",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "provider",
+    "type": "address"
+   }
+  ],
+  "name": "ProviderCapExceeded",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ProviderUnavailable",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ReceiveFailed",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ReentrancyGuardReentrantCall",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "RequestNotCancellable",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "RequestNotClaimable",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "RouteDisabled",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "uint8",
+    "name": "bits",
+    "type": "uint8"
+   },
+   {
+    "internalType": "uint256",
+    "name": "value",
+    "type": "uint256"
+   }
+  ],
+  "name": "SafeCastOverflowedUintDowncast",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "token",
+    "type": "address"
+   }
+  ],
+  "name": "SafeERC20FailedOperation",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "SendsHalted",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "SlippageExceeded",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "StrategyNotEmpty",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "TickNotUsable",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "TooSoon",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "Unauthorized",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnexpectedTokenAmount",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnknownAdapter",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnknownAgent",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnknownChain",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnknownKind",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnknownPeer",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnknownRemote",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnknownTransfer",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnsortedChains",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnsortedInFlight",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnsortedPositions",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "UnsupportedVersion",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "VaultAlreadySet",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "ZeroShares",
+  "type": "error"
+ }
+]

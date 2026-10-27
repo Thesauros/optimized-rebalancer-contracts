@@ -1,0 +1,18 @@
+{
+  "network": "base",
+  "vault": "0x3C7739173cca612B6394EE57131458185A5beC44",
+  "block": 53073177,
+  "blockHash": "0xeade0dbd9dafc2ac5dc3ebc0db1c6b6a4d264ce006a170a4bd89a79daf654d4e",
+  "role": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "candidates": [
+    {
+      "address": "0x3CDD947001afBa4C334D49125fd4bac3E4a3bfF1",
+      "hasAdminRole": true
+    },
+    {
+      "address": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+      "hasAdminRole": false
+    }
+  ],
+  "mode": "READ_ONLY_NO_SIGNING_NO_BROADCAST"
+}
