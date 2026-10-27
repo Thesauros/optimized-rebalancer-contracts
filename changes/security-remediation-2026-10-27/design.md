@@ -28,6 +28,9 @@ registry drift into a visible failure rather than silent valuation substitution.
 Write-once registries require explicit new-adapter migrations instead of hot edits.
 
 Provider removal needs a known zero position, not a caught-error zero. Check the
+receipt balance for ERC20-like sources as well: zero recoverable NAV can still
+represent a claim on future recovery. Idle underlying is part of NAV and pays
+withdrawals first, without bypassing any provider health requirement. Check the
 entire new list and all removals before approvals or state changes, then revoke
 saved old source approvals and grant new ones. Aliases cannot revoke retained
 source allowance because they are rejected. Reordering remains supported.
