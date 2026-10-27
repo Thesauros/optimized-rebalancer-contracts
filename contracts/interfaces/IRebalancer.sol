@@ -18,6 +18,12 @@ interface IRebalancer is IERC4626 {
     error EntryProviderNotInProviders();
     error ProviderCapExceeded(address provider);
     error ProviderUnavailable();
+    error ProviderHasAssets(address provider, uint256 assets);
+    error DuplicateProviderSource();
+    error ProviderSourceChanged();
+    error SecurityAccountingNotInitialized();
+
+    event SecurityAccountingInitialized(uint256 highWaterMark);
 
     /**
      * @notice Emitted when a provider's exposure cap changes.
@@ -92,10 +98,7 @@ interface IRebalancer is IERC4626 {
      * @param managementFeeShares The amount of shares minted as management fee.
      */
     event FeesApplied(
-        uint256 lastTotalBalance,
-        uint256 currentTotalBalance,
-        uint256 performanceFeeShares,
-        uint256 managementFeeShares
+        uint256 lastTotalBalance, uint256 currentTotalBalance, uint256 performanceFeeShares, uint256 managementFeeShares
     );
 
     /**
@@ -105,11 +108,7 @@ interface IRebalancer is IERC4626 {
      * @param from The provider from which assets are rebalanced.
      * @param to The provider to which assets are rebalanced.
      */
-    event RebalanceExecuted(
-        uint256 assets,
-        address indexed from,
-        address indexed to
-    );
+    event RebalanceExecuted(uint256 assets, address indexed from, address indexed to);
 
     /**
      * @notice Performs rebalancing of the vault by moving funds across providers.
@@ -117,9 +116,7 @@ interface IRebalancer is IERC4626 {
      * @param sources An array of providers holding the assets.
      * @param destinations An array of providers receiving the assets.
      */
-    function rebalance(
-        uint256[] memory amounts,
-        IProvider[] memory sources,
-        IProvider[] memory destinations
-    ) external returns (bool);
+    function rebalance(uint256[] memory amounts, IProvider[] memory sources, IProvider[] memory destinations)
+        external
+        returns (bool);
 }

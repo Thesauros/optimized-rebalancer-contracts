@@ -188,20 +188,19 @@ contract EntryProviderExecutorTest is Test {
         assertEq(asset.balanceOf(alice), 500 * ONE, "alice paid in full");
     }
 
-    /// @dev The executor can point the entry at a provider the timelock is about to remove
-    ///      (front-run or plain race). `setProviders` must then move the entry back into
-    ///      the list, or deposits would land where `totalAssets` and `_withdraw` cannot see.
-    function testSetProvidersDroppingEntryResetsItToHead() public {
+    /// @dev Removing the entry requires an explicit safe entry change first.
+    function testSetProvidersDroppingEntryRequiresExplicitEntryChange() public {
         _deposit(alice, 1_000 * ONE); // lands at A
         vm.prank(executor);
         vault.setEntryProvider(providerB);
 
         IProvider[] memory onlyA = new IProvider[](1);
         onlyA[0] = providerA;
-        vm.expectEmit(true, true, true, true, address(vault));
-        emit IRebalancer.EntryProviderUpdated(providerA);
+        vm.expectRevert(IRebalancer.EntryProviderNotInProviders.selector);
         vault.setProviders(onlyA);
-        assertEq(address(vault.getEntryProvider()), address(providerA), "entry reset to providers[0]");
+        vault.setEntryProvider(providerA);
+        vault.setProviders(onlyA);
+        assertEq(address(vault.getEntryProvider()), address(providerA), "explicit entry is retained");
 
         uint256 assetsBefore = vault.totalAssets();
         _deposit(bob, 100 * ONE);

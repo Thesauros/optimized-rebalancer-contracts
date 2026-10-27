@@ -635,10 +635,8 @@ contract PerformanceFeeCapTest is Test {
         );
     }
 
-    /// @dev Rolling-baseline semantics: `_applyFees` resets `_lastTotalAssets` to the
-    ///      post-loss figure, so a recovery back to the old peak is charged again.
-    ///      Pinned here because it is the behaviour the 25% cap now amplifies.
-    function testPerformanceFeeAtCapUsesRollingBaselineNotHighWaterMark() public {
+    /// @dev A settled loss cannot turn recovered principal into fee performance.
+    function testPerformanceFeeAtCapPreservesHighWaterMarkOnRecovery() public {
         s.vault.setPerformanceFee(uint96(MAX_PERFORMANCE_FEE));
         _deposit(s, alice, 1_000 * ONE);
 
@@ -668,13 +666,13 @@ contract PerformanceFeeCapTest is Test {
             "no fee is charged on the loss itself"
         );
 
-        // +100 recovery back to the previous peak: charged again at 25%.
+        // +100 recovery back to the previous peak: no second performance fee.
         _simulateYield(s, 100 * ONE);
         s.vault.applyFees();
-        assertGt(
+        assertEq(
             s.vault.balanceOf(treasury),
             firstFee,
-            "recovery to the same peak is fee'd a second time"
+            "recovery to the same peak preserves principal"
         );
     }
 }
