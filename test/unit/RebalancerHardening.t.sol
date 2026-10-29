@@ -262,15 +262,17 @@ contract RebalancerHardeningTest is Test {
                     BROKEN PROVIDERS DO NOT FREEZE THE VAULT
     //////////////////////////////////////////////////////////////*/
 
-    function testBrokenProviderDoesNotFreezeNavOrExits() public {
-        BrokenProvider broken = new BrokenProvider(address(sourceB), false);
+    function testBrokenProviderFailsClosedForNavAndExits() public {
+        FeeCapSource sourceC = new FeeCapSource(IERC20(address(asset)));
+        BrokenProvider broken = new BrokenProvider(address(sourceC), false);
         IProvider[] memory ps = new IProvider[](3);
         ps[0] = providerA;
         ps[1] = providerB;
         ps[2] = broken;
         vault.setProviders(ps);
 
-        assertEq(vault.totalAssets(), 1_001 * ONE, "broken provider reads as zero, NAV still computes");
+        vm.expectRevert(IRebalancer.ProviderUnavailable.selector);
+        vault.totalAssets();
         assertFalse(vault.providersHealthy());
 
         // entries would be priced against an incomplete NAV: refused
@@ -283,10 +285,11 @@ contract RebalancerHardeningTest is Test {
         vault.mint(10 * ONE, bob);
         vm.stopPrank();
 
-        // exits still work (under-stated NAV is the safe side for them)
+        // Unknown NAV cannot permanently destroy the holder's missing claim.
         vm.prank(alice);
+        vm.expectRevert(IRebalancer.ProviderUnavailable.selector);
         vault.withdraw(100 * ONE, alice, alice);
-        assertEq(asset.balanceOf(alice), 100 * ONE);
+        assertEq(asset.balanceOf(alice), 0);
 
         uint256[] memory amounts = new uint256[](1);
         IProvider[] memory f = new IProvider[](1);
@@ -319,7 +322,7 @@ contract RebalancerHardeningTest is Test {
         vault.setProviders(ps);
     }
 
-    function testCannotRemoveProviderWhoseBalanceIsUnavailable() public {
+    function testUnreadableProviderCannotBeRemovedWithoutProofOfZero() public {
         FeeCapSource sourceC = new FeeCapSource(IERC20(address(asset)));
         BrokenProvider broken = new BrokenProvider(address(sourceC), false);
         IProvider[] memory ps = new IProvider[](3);
@@ -356,10 +359,9 @@ contract RebalancerHardeningTest is Test {
         IProvider[] memory back = new IProvider[](2);
         back[0] = providerA;
         back[1] = providerB;
-        vm.expectEmit(true, false, false, false);
-        emit IRebalancer.StaleApprovalRevokeFailed(address(broken));
+        vm.expectRevert(IRebalancer.ProviderUnavailable.selector);
         vault.setProviders(back);
-        assertEq(vault.getProviders().length, 2);
+        assertEq(vault.getProviders().length, 3);
     }
 
     function testRevokeStaleApprovalIsSelfOnly() public {

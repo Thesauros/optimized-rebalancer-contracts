@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
-import {ERC20PermitUpgradeable, ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
+import {
+    ERC20PermitUpgradeable,
+    ERC20Upgradeable
+} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {AccessManager} from "./access/AccessManager.sol";
 import {PausableActions} from "./utils/PausableActions.sol";
 import {IPausableActions} from "./interfaces/IPausableActions.sol";
@@ -19,13 +23,7 @@ import "./libraries/Constants.sol";
 /**
  * @title Rebalancer
  */
-contract Rebalancer is
-    ERC20PermitUpgradeable,
-    AccessManager,
-    PausableActions,
-    ReentrancyGuardUpgradeable,
-    IRebalancer
-{
+contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, ReentrancyGuardUpgradeable, IRebalancer {
     using Math for uint256;
     using Address for address;
     using SafeCast for uint256;
@@ -53,6 +51,9 @@ contract Rebalancer is
         // risk (appended; existing field offsets unchanged for deployed proxies)
         // provider => max share of totalAssets in bps; 0 means uncapped
         mapping(address provider => uint256) _providerCapBps;
+        // Append-only security accounting; never insert before legacy fields.
+        uint256 _highWaterMark;
+        mapping(address provider => address source) _providerSources;
     }
 
     // keccak256(abi.encode(uint256(keccak256("thesauros.storage.Rebalancer")) - 1)) & ~bytes32(uint256(0xff))
@@ -63,17 +64,13 @@ contract Rebalancer is
 
     /**
      * @dev Gas forwarded to `IProvider.getDepositBalance` from `_safeGetDepositBalance`,
-     *      so one broken provider cannot DoS NAV, withdrawals or rebalancing for the
-     *      others. `MorphoProvider` loops over its withdraw queue and was measured at up
+     *      to bound health-check gas. Unknown NAV blocks financial settlement;
+     *      action illiquidity is isolated when NAV is known. `MorphoProvider` was measured at up
      *      to ~1.1M gas on a Base fork (crosschain-sandbox, 2026-08-13); this is ~2.7x that.
      */
     uint256 internal constant PROVIDER_VIEW_CALL_GAS = 3_000_000;
 
-    function _getRebalancerStorage()
-        private
-        pure
-        returns (RebalancerStorage storage $)
-    {
+    function _getRebalancerStorage() private pure returns (RebalancerStorage storage $) {
         assembly {
             $.slot := RebalancerStorageLocation
         }
@@ -140,6 +137,32 @@ contract Rebalancer is
         // requires a non-trivial initial deposit to mitigate inflation attacks.
         // the appropriate amount depends on the underlying asset’s decimals.
         _deposit(_msgSender(), address(this), minAssets_, minAssets_);
+        $._highWaterMark = SCALE;
+    }
+
+    /// @notice Bootstrap an upgraded legacy proxy in the upgrade transaction.
+    /// @dev Governance must attest historic PPS and the currently configured
+    /// sources. Unsettled legacy fees are waived; no historic peak is guessed.
+    function initializeSecurityAccounting(uint256 historicalHighWaterMark) external reinitializer(2) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        // upgradeAndCall preserves ProxyAdmin as msg.sender. Its owner already
+        // controls implementation upgrades; accepting that actual admin permits
+        // atomic migration without opening a public initialization window.
+        if (_msgSender() != $._timelock && _msgSender() != ERC1967Utils.getAdmin()) revert Unauthorized();
+        if ($._highWaterMark != 0) revert InvalidInput();
+        _setProviders($._providers);
+        uint256 assets = totalAssets();
+        uint256 supply = totalSupply();
+        if (
+            supply == 0 || historicalHighWaterMark == 0
+                || historicalHighWaterMark < assets.mulDiv(SCALE, supply, Math.Rounding.Ceil)
+        ) {
+            revert InvalidInput();
+        }
+        $._highWaterMark = historicalHighWaterMark;
+        $._lastTotalAssets = assets;
+        $._lastTimestamp = block.timestamp.toUint64();
+        emit SecurityAccountingInitialized(historicalHighWaterMark);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -172,18 +195,14 @@ contract Rebalancer is
     /**
      * @inheritdoc IERC4626
      */
-    function convertToShares(
-        uint256 assets
-    ) public view override returns (uint256 shares) {
+    function convertToShares(uint256 assets) public view override returns (uint256 shares) {
         return _convertToShares(assets, Math.Rounding.Floor);
     }
 
     /**
      * @inheritdoc IERC4626
      */
-    function convertToAssets(
-        uint256 shares
-    ) public view override returns (uint256 assets) {
+    function convertToAssets(uint256 shares) public view override returns (uint256 assets) {
         return _convertToAssets(shares, Math.Rounding.Floor);
     }
 
@@ -210,54 +229,38 @@ contract Rebalancer is
     /**
      * @inheritdoc IERC4626
      */
-    function previewDeposit(
-        uint256 assets
-    ) public view override returns (uint256) {
+    function previewDeposit(uint256 assets) public view override returns (uint256) {
         return _convertToShares(assets, Math.Rounding.Floor);
     }
 
     /**
      * @inheritdoc IERC4626
      */
-    function previewMint(
-        uint256 shares
-    ) public view override returns (uint256) {
+    function previewMint(uint256 shares) public view override returns (uint256) {
         return _convertToAssets(shares, Math.Rounding.Ceil);
     }
 
     /**
      * @inheritdoc IERC4626
      */
-    function previewWithdraw(
-        uint256 assets
-    ) public view override returns (uint256) {
+    function previewWithdraw(uint256 assets) public view override returns (uint256) {
         return _convertToShares(assets, Math.Rounding.Ceil);
     }
 
     /**
      * @inheritdoc IERC4626
      */
-    function previewRedeem(
-        uint256 shares
-    ) public view override returns (uint256) {
+    function previewRedeem(uint256 shares) public view override returns (uint256) {
         return _convertToAssets(shares, Math.Rounding.Floor);
     }
 
     /**
      * @inheritdoc IERC4626
      */
-    function deposit(
-        uint256 assets,
-        address receiver
-    ) public override nonReentrant returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) public override nonReentrant returns (uint256 shares) {
         uint256 totalManagedAssets = _applyFeesRequiringHealthyProviders();
 
-        shares = _convertToSharesWithTotals(
-            assets,
-            totalSupply(),
-            totalManagedAssets,
-            Math.Rounding.Floor
-        );
+        shares = _convertToSharesWithTotals(assets, totalSupply(), totalManagedAssets, Math.Rounding.Floor);
         _validateDeposit(receiver, assets, shares);
 
         _deposit(_msgSender(), receiver, assets, shares);
@@ -266,18 +269,10 @@ contract Rebalancer is
     /**
      * @inheritdoc IERC4626
      */
-    function mint(
-        uint256 shares,
-        address receiver
-    ) public override nonReentrant returns (uint256 assets) {
+    function mint(uint256 shares, address receiver) public override nonReentrant returns (uint256 assets) {
         uint256 totalManagedAssets = _applyFeesRequiringHealthyProviders();
 
-        assets = _convertToAssetsWithTotals(
-            shares,
-            totalSupply(),
-            totalManagedAssets,
-            Math.Rounding.Ceil
-        );
+        assets = _convertToAssetsWithTotals(shares, totalSupply(), totalManagedAssets, Math.Rounding.Ceil);
         _validateDeposit(receiver, assets, shares);
 
         _deposit(_msgSender(), receiver, assets, shares);
@@ -286,19 +281,15 @@ contract Rebalancer is
     /**
      * @inheritdoc IERC4626
      */
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    ) public override nonReentrant returns (uint256 shares) {
+    function withdraw(uint256 assets, address receiver, address owner)
+        public
+        override
+        nonReentrant
+        returns (uint256 shares)
+    {
         uint256 totalManagedAssets = _applyFees();
 
-        shares = _convertToSharesWithTotals(
-            assets,
-            totalSupply(),
-            totalManagedAssets,
-            Math.Rounding.Ceil
-        );
+        shares = _convertToSharesWithTotals(assets, totalSupply(), totalManagedAssets, Math.Rounding.Ceil);
         _validateWithdraw(assets, shares, _msgSender(), receiver, owner);
 
         _withdraw(_msgSender(), receiver, owner, assets, shares);
@@ -307,62 +298,38 @@ contract Rebalancer is
     /**
      * @inheritdoc IERC4626
      */
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    ) public override nonReentrant returns (uint256 assets) {
+    function redeem(uint256 shares, address receiver, address owner)
+        public
+        override
+        nonReentrant
+        returns (uint256 assets)
+    {
         uint256 totalManagedAssets = _applyFees();
 
-        assets = _convertToAssetsWithTotals(
-            shares,
-            totalSupply(),
-            totalManagedAssets,
-            Math.Rounding.Floor
-        );
+        assets = _convertToAssetsWithTotals(shares, totalSupply(), totalManagedAssets, Math.Rounding.Floor);
         _validateWithdraw(assets, shares, _msgSender(), receiver, owner);
 
         _withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
     /// @dev Converts assets to shares equivalent, with support for rounding direction.
-    function _convertToShares(
-        uint256 assets,
-        Math.Rounding rounding
-    ) internal view returns (uint256 shares) {
+    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view returns (uint256 shares) {
         uint256 totalManagedAssets = totalAssets();
-        (
-            uint256 performanceFeeShares,
-            uint256 managementFeeShares
-        ) = _accruedFees(totalManagedAssets);
+        (uint256 performanceFeeShares, uint256 managementFeeShares) = _accruedFees(totalManagedAssets);
 
-        return
-            _convertToSharesWithTotals(
-                assets,
-                totalSupply() + performanceFeeShares + managementFeeShares,
-                totalManagedAssets,
-                rounding
-            );
+        return _convertToSharesWithTotals(
+            assets, totalSupply() + performanceFeeShares + managementFeeShares, totalManagedAssets, rounding
+        );
     }
 
     /// @dev Converts shares to assets equivalent, with support for rounding direction.
-    function _convertToAssets(
-        uint256 shares,
-        Math.Rounding rounding
-    ) internal view returns (uint256 assets) {
+    function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view returns (uint256 assets) {
         uint256 totalManagedAssets = totalAssets();
-        (
-            uint256 performanceFeeShares,
-            uint256 managementFeeShares
-        ) = _accruedFees(totalManagedAssets);
+        (uint256 performanceFeeShares, uint256 managementFeeShares) = _accruedFees(totalManagedAssets);
 
-        return
-            _convertToAssetsWithTotals(
-                shares,
-                totalSupply() + performanceFeeShares + managementFeeShares,
-                totalManagedAssets,
-                rounding
-            );
+        return _convertToAssetsWithTotals(
+            shares, totalSupply() + performanceFeeShares + managementFeeShares, totalManagedAssets, rounding
+        );
     }
 
     /// @dev Converts assets to shares equivalent using provided total supply and total assets, with support for rounding direction.
@@ -373,10 +340,7 @@ contract Rebalancer is
         uint256 totalManagedAssets,
         Math.Rounding rounding
     ) internal pure returns (uint256 shares) {
-        return
-            (assets == 0 || totalSupply == 0)
-                ? assets
-                : assets.mulDiv(totalSupply, totalManagedAssets, rounding);
+        return (assets == 0 || totalSupply == 0) ? assets : assets.mulDiv(totalSupply, totalManagedAssets, rounding);
     }
 
     /// @dev Converts shares to assets equivalent using provided total supply and total assets, with support for rounding direction.
@@ -386,10 +350,7 @@ contract Rebalancer is
         uint256 totalManagedAssets,
         Math.Rounding rounding
     ) internal pure returns (uint256 assets) {
-        return
-            (totalSupply == 0)
-                ? shares
-                : shares.mulDiv(totalManagedAssets, totalSupply, rounding);
+        return (totalSupply == 0) ? shares : shares.mulDiv(totalManagedAssets, totalSupply, rounding);
     }
 
     /**
@@ -399,12 +360,7 @@ contract Rebalancer is
      * @param assets The amount transferred during this deposit.
      * @param shares The amount minted to receiver.
      */
-    function _deposit(
-        address caller,
-        address receiver,
-        uint256 assets,
-        uint256 shares
-    ) internal {
+    function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal {
         RebalancerStorage storage $ = _getRebalancerStorage();
         IProvider entryProvider = $._entryProvider;
         // defense in depth: never route deposits to a provider NAV does not track
@@ -428,46 +384,33 @@ contract Rebalancer is
      * @param assets The amount of assets being withdrawn from the vault.
      * @param shares The amount of shares being burned during this withdrawal.
      */
-    function _withdraw(
-        address caller,
-        address receiver,
-        address owner,
-        uint256 assets,
-        uint256 shares
-    ) internal {
+    function _withdraw(address caller, address receiver, address owner, uint256 assets, uint256 shares) internal {
         _burn(owner, shares);
 
         RebalancerStorage storage $ = _getRebalancerStorage();
-        uint256 assetsLeft = assets;
+        uint256 idleAssets = $._asset.balanceOf(address(this));
+        uint256 assetsLeft = assets > idleAssets ? assets - idleAssets : 0;
         uint256 count = $._providers.length;
         for (uint256 i; i < count && assetsLeft > 0; i++) {
             IProvider provider = $._providers[i];
-            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance(
-                provider
-            );
+            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance(provider);
 
-            // a provider whose view fails is skipped like an empty one
-            if (!ok || assetsAtProvider == 0) continue;
+            // Unknown value must never be confused with an empty position.
+            if (!ok) revert ProviderUnavailable();
+            if (assetsAtProvider == 0) continue;
 
-            uint256 amount = (assetsAtProvider >= assetsLeft)
-                ? assetsLeft
-                : assetsAtProvider;
+            uint256 amount = (assetsAtProvider >= assetsLeft) ? assetsLeft : assetsAtProvider;
 
             // continue to next provider instead of reverting the entire tx.
             uint256 balBefore = $._asset.balanceOf(address(this));
-            (bool success, ) = address(provider).delegatecall(
-                abi.encodeWithSignature(
-                    "withdraw(uint256,address)",
-                    amount,
-                    address(this)
-                )
-            );
+            (bool success,) = address(provider)
+                .delegatecall(abi.encodeWithSignature("withdraw(uint256,address)", amount, address(this)));
             if (success) {
-            // Same measured-amount idiom as ChainAgent: the delta across the provider
-            // call is the value that actually arrived, under `nonReentrant`.
-            // slither-disable-next-line reentrancy-balance
+                // Same measured-amount idiom as ChainAgent: the delta across the provider
+                // call is the value that actually arrived, under `nonReentrant`.
+                // slither-disable-next-line reentrancy-balance
                 uint256 received = $._asset.balanceOf(address(this)) - balBefore;
-                assetsLeft -= received;
+                assetsLeft = received >= assetsLeft ? 0 : assetsLeft - received;
             }
         }
 
@@ -488,11 +431,11 @@ contract Rebalancer is
      * @param assets The amount of assets being deposited.
      * @param shares The amount of shares being minted for the receiver.
      */
-    function _validateDeposit(
-        address receiver,
-        uint256 assets,
-        uint256 shares
-    ) internal view whenNotPaused(Actions.Deposit) {
+    function _validateDeposit(address receiver, uint256 assets, uint256 shares)
+        internal
+        view
+        whenNotPaused(Actions.Deposit)
+    {
         RebalancerStorage storage $ = _getRebalancerStorage();
         if (receiver == address(0)) {
             revert AddressZero();
@@ -513,13 +456,10 @@ contract Rebalancer is
      * @param receiver The address to which the assets will be transferred.
      * @param owner The address whose shares will be burned.
      */
-    function _validateWithdraw(
-        uint256 assets,
-        uint256 shares,
-        address caller,
-        address receiver,
-        address owner
-    ) internal whenNotPaused(Actions.Withdraw) {
+    function _validateWithdraw(uint256 assets, uint256 shares, address caller, address receiver, address owner)
+        internal
+        whenNotPaused(Actions.Withdraw)
+    {
         if (receiver == address(0) || owner == address(0)) {
             revert AddressZero();
         }
@@ -536,11 +476,12 @@ contract Rebalancer is
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IRebalancer
-    function rebalance(
-        uint256[] memory amounts,
-        IProvider[] memory sources,
-        IProvider[] memory destinations
-    ) external onlyRole(EXECUTOR_ROLE) nonReentrant returns (bool) {
+    function rebalance(uint256[] memory amounts, IProvider[] memory sources, IProvider[] memory destinations)
+        external
+        onlyRole(EXECUTOR_ROLE)
+        nonReentrant
+        returns (bool)
+    {
         uint256 count = amounts.length;
         if (count == 0) {
             revert InvalidCount();
@@ -554,10 +495,7 @@ contract Rebalancer is
             IProvider from = sources[i];
             IProvider to = destinations[i];
 
-            if (
-                !_validateProvider(address(from)) ||
-                !_validateProvider(address(to))
-            ) {
+            if (!_validateProvider(address(from)) || !_validateProvider(address(to))) {
                 revert InvalidProvider();
             }
 
@@ -594,20 +532,22 @@ contract Rebalancer is
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mints accrued fee shares and updates fee snapshots.
-    function applyFees() external {
+    function applyFees() external nonReentrant {
         _applyFees();
     }
 
     /// @dev Internal function for fee application.
     function _applyFees() internal returns (uint256 totalManagedAssets) {
-        (totalManagedAssets, ) = _totalAssetsWithHealth();
+        bool healthy;
+        (totalManagedAssets, healthy) = _totalAssetsWithHealth();
+        if (!healthy) revert ProviderUnavailable();
         _settleFees(totalManagedAssets);
     }
 
     /**
      * @dev Entry paths use this variant. When a provider's balance view fails it
-     *      reads as zero, which under-states NAV: harmless for exits, but it would
-     *      mint excess shares to depositors, so deposits wait for all providers.
+     *      cannot be priced safely. Both entry and exit settlement require the
+     *      complete NAV; no holder forfeits an unknown position on redemption.
      */
     function _applyFeesRequiringHealthyProviders() internal returns (uint256 totalManagedAssets) {
         bool healthy;
@@ -617,19 +557,11 @@ contract Rebalancer is
     }
 
     function _settleFees(uint256 totalManagedAssets) internal {
-        (
-            uint256 performanceFeeShares,
-            uint256 managementFeeShares
-        ) = _accruedFees(totalManagedAssets);
+        (uint256 performanceFeeShares, uint256 managementFeeShares) = _accruedFees(totalManagedAssets);
 
         RebalancerStorage storage $ = _getRebalancerStorage();
 
-        emit FeesApplied(
-            $._lastTotalAssets,
-            totalManagedAssets,
-            performanceFeeShares,
-            managementFeeShares
-        );
+        emit FeesApplied($._lastTotalAssets, totalManagedAssets, performanceFeeShares, managementFeeShares);
 
         $._lastTotalAssets = totalManagedAssets;
 
@@ -641,59 +573,45 @@ contract Rebalancer is
             _mint(treasury, managementFeeShares);
         }
 
+        uint256 supply = totalSupply();
+        if (supply != 0) {
+            uint256 netPrice = totalManagedAssets.mulDiv(SCALE, supply, Math.Rounding.Ceil);
+            if (netPrice > $._highWaterMark) $._highWaterMark = netPrice;
+        }
+
         $._lastTimestamp = block.timestamp.toUint64();
     }
 
     /// @dev Computes accrued fee shares.
     /// @dev The management fee is not tied to yield (profits or losses) and may reduce share price.
     /// @dev Both fees are rounded down, so treasury could receive less than expected.
-    function _accruedFees(
-        uint256 totalManagedAssets
-    )
+    function _accruedFees(uint256 totalManagedAssets)
         internal
         view
         returns (uint256 performanceFeeShares, uint256 managementFeeShares)
     {
         RebalancerStorage storage $ = _getRebalancerStorage();
 
-        uint256 lastTotalAssets = $._lastTotalAssets;
+        if ($._highWaterMark == 0) revert SecurityAccountingNotInitialized();
         uint96 managementFee = $._managementFee;
         uint96 performanceFee = $._performanceFee;
-
+        uint256 supply = totalSupply();
+        if (totalManagedAssets == 0 || supply == 0) return (0, 0);
         uint256 dt = block.timestamp - $._lastTimestamp;
+        uint256 managementFeeAssets = totalManagedAssets.mulDiv(uint256(managementFee) * dt, 365 days * SCALE);
+        if (managementFeeAssets >= totalManagedAssets) managementFeeAssets = totalManagedAssets - 1;
+        uint256 highWaterAssets = $._highWaterMark.mulDiv(supply, SCALE, Math.Rounding.Ceil);
+        uint256 performanceFeeAssets;
+        if (totalManagedAssets - managementFeeAssets > highWaterAssets && performanceFee != 0) {
+            uint256 gain = totalManagedAssets - managementFeeAssets - highWaterAssets;
+            performanceFeeAssets = gain.mulDiv(performanceFee, SCALE);
+        }
+        uint256 remaining = totalManagedAssets - managementFeeAssets;
+        if (performanceFeeAssets >= remaining) performanceFeeAssets = remaining - 1;
+        uint256 totalAssetsWithoutFees = totalManagedAssets - managementFeeAssets - performanceFeeAssets;
 
-        uint256 yield = totalManagedAssets > lastTotalAssets
-            ? totalManagedAssets - lastTotalAssets
-            : 0;
-
-        // may be rounded down to 0 if yield * fee < SCALE.
-        uint256 performanceFeeAssets = yield > 0 && performanceFee > 0
-            ? yield.mulDiv(performanceFee, SCALE, Math.Rounding.Floor)
-            : 0;
-
-        uint256 managementFeeAssets = dt > 0 && managementFee > 0
-            ? (totalManagedAssets * dt).mulDiv(
-                managementFee,
-                365 days * SCALE,
-                Math.Rounding.Floor
-            )
-            : 0;
-
-        // assumes the vault should be interacted with periodically; fees must remain < total assets
-        uint256 totalAssetsWithoutFees = totalManagedAssets -
-            managementFeeAssets -
-            performanceFeeAssets;
-
-        performanceFeeShares = performanceFeeAssets.mulDiv(
-            totalSupply(),
-            totalAssetsWithoutFees,
-            Math.Rounding.Floor
-        );
-        managementFeeShares = managementFeeAssets.mulDiv(
-            totalSupply(),
-            totalAssetsWithoutFees,
-            Math.Rounding.Floor
-        );
+        performanceFeeShares = performanceFeeAssets.mulDiv(supply, totalAssetsWithoutFees, Math.Rounding.Floor);
+        managementFeeShares = managementFeeAssets.mulDiv(supply, totalAssetsWithoutFees, Math.Rounding.Floor);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -712,8 +630,9 @@ contract Rebalancer is
 
     /**
      * @notice Sets the list of providers for this vault.
-     * @dev The current entry provider must remain listed. A removed provider must
-     * have a readable, zero deposit balance so its assets cannot disappear from NAV.
+     * @dev Change the entry explicitly before removing it. Every removed position
+     * must be provably empty, including any receipt shares; unknown value and
+     * accounting aliases are rejected.
      * @param providers A non-empty array of provider contracts.
      */
     function setProviders(IProvider[] memory providers) external onlyTimelock {
@@ -756,9 +675,7 @@ contract Rebalancer is
      * @notice Sets the management fee percentage for this vault.
      * @param managementFee The new management fee percentage.
      */
-    function setManagementFee(
-        uint96 managementFee
-    ) external onlyRole(ADMIN_ROLE) {
+    function setManagementFee(uint96 managementFee) external onlyRole(ADMIN_ROLE) {
         _applyFees();
         _setManagementFee(managementFee);
     }
@@ -767,9 +684,7 @@ contract Rebalancer is
      * @notice Sets the performance fee percentage for this vault.
      * @param performanceFee The new performance fee percentage.
      */
-    function setPerformanceFee(
-        uint96 performanceFee
-    ) external onlyRole(ADMIN_ROLE) {
+    function setPerformanceFee(uint96 performanceFee) external onlyRole(ADMIN_ROLE) {
         _applyFees();
         _setPerformanceFee(performanceFee);
     }
@@ -784,8 +699,8 @@ contract Rebalancer is
 
     /**
      * @dev Internal function to set the providers for this vault.
-     * During initialize the entry is set to `providers[0]`. Subsequent updates must
-     * retain the current entry and may remove only providers proven to be empty.
+     * During initialization entry defaults to providers[0]. Subsequent updates
+     * retain the current entry and require known-empty removed positions.
      * @param providers A non-empty array of provider contracts.
      */
     function _setProviders(IProvider[] memory providers) internal {
@@ -801,34 +716,48 @@ contract Rebalancer is
         }
 
         IProvider[] memory oldProviders = $._providers;
-        // Validate removals before changing approvals or the provider list. A failed
-        // balance read is not proof of emptiness: dropping it would enable entries
-        // against an incomplete NAV once the provider is no longer checked for health.
-        for (uint256 i; i < oldProviders.length; i++) {
-            IProvider provider = oldProviders[i];
-            if (_isInList(address(provider), providers)) continue;
-            (uint256 assets, bool ok) = _safeGetDepositBalance(provider);
-            if (!ok) revert ProviderUnavailable();
-            if (assets != 0) revert ProviderHasAssets(address(provider), assets);
-        }
-
+        address[] memory sources = new address[](providers.length);
+        // Validate every source and alias before any approval/state mutation.
         for (uint256 i; i < providers.length; i++) {
-            if (address(providers[i]) == address(0)) {
-                revert AddressZero();
+            address provider = address(providers[i]);
+            if (provider.code.length == 0) revert InvalidProvider();
+            address source = providers[i].getSource(asset(), address(this), address(0));
+            if (source.code.length == 0) revert InvalidProvider();
+            address pinned = $._providerSources[provider];
+            if (pinned != address(0) && pinned != source) revert ProviderSourceChanged();
+            for (uint256 j; j < i; j++) {
+                if (providers[j] == providers[i] || sources[j] == source) revert DuplicateProviderSource();
             }
-            $._asset.forceApprove(
-                providers[i].getSource(asset(), address(this), address(0)),
-                type(uint256).max
-            );
+            sources[i] = source;
         }
-
-        // Revoke stale allowances. Once the position is proven empty, a failing
-        // source lookup or approval revocation does not block its removal.
+        // Prove removed positions empty before changing approvals or the list.
         for (uint256 i; i < oldProviders.length; i++) {
             if (_isInList(address(oldProviders[i]), providers)) continue;
-            try this.revokeStaleApproval(oldProviders[i]) {} catch {
-                emit StaleApprovalRevokeFailed(address(oldProviders[i]));
+            (uint256 assets, bool ok) = _safeGetDepositBalance(oldProviders[i]);
+            if (!ok) revert ProviderUnavailable();
+            if (assets != 0) revert ProviderHasAssets(address(oldProviders[i]), assets);
+            // A zero recoverable/dust quote can still represent receipt shares
+            // and a future recovery claim. ERC20-like sources must be empty too;
+            // non-token sources (e.g. Aave Pool) use the provider's zero proof.
+            (bool readable, bytes memory receipt) = $._providerSources[address(
+                    oldProviders[i]
+                )].staticcall{gas: PROVIDER_VIEW_CALL_GAS}(
+                abi.encodeWithSignature("balanceOf(address)", address(this))
+            );
+            if (readable && receipt.length == 32) {
+                uint256 shares = abi.decode(receipt, (uint256));
+                if (shares != 0) revert ProviderHasReceiptShares(address(oldProviders[i]), shares);
             }
+        }
+        for (uint256 i; i < oldProviders.length; i++) {
+            address provider = address(oldProviders[i]);
+            if (_isInList(provider, providers)) continue;
+            $._asset.forceApprove($._providerSources[provider], 0);
+            delete $._providerSources[provider];
+        }
+        for (uint256 i; i < providers.length; i++) {
+            $._providerSources[address(providers[i])] = sources[i];
+            $._asset.forceApprove(sources[i], type(uint256).max);
         }
         $._providers = providers;
 
@@ -938,16 +867,13 @@ contract Rebalancer is
     }
 
     /**
-     * @dev Self-call target so `_setProviders` can isolate a revert in a removed
-     *      provider's `getSource` or the token's `approve` with try/catch.
+     * @dev Legacy ABI-compatible self-call target; revokes the saved source rather
+     *      than resolving a possibly retargeted registry. Removal now fails closed.
      */
     function revokeStaleApproval(IProvider provider) external {
         if (_msgSender() != address(this)) revert Unauthorized();
         RebalancerStorage storage $ = _getRebalancerStorage();
-        $._asset.forceApprove(
-            provider.getSource(asset(), address(this), address(0)),
-            0
-        );
+        $._asset.forceApprove($._providerSources[address(provider)], 0);
     }
 
     /// @dev Reverts if `provider` holds more than its cap of total assets.
@@ -955,16 +881,13 @@ contract Rebalancer is
         RebalancerStorage storage $ = _getRebalancerStorage();
         uint256 capBps = $._providerCapBps[address(provider)];
         if (capBps == 0) return;
-        (uint256 atProvider, ) = _safeGetDepositBalance(provider);
+        (uint256 atProvider,) = _safeGetDepositBalance(provider);
         if (atProvider * BPS > totalAssets() * capBps) {
             revert ProviderCapExceeded(address(provider));
         }
     }
 
-    function _isInList(
-        address provider,
-        IProvider[] memory list
-    ) private pure returns (bool) {
+    function _isInList(address provider, IProvider[] memory list) private pure returns (bool) {
         for (uint256 i; i < list.length; i++) {
             if (address(list[i]) == provider) return true;
         }
@@ -989,16 +912,13 @@ contract Rebalancer is
      * @param actionName The identifier of the method to call.
      * @param provider The provider contract to which the action is delegated.
      */
-    function _delegateActionToProvider(
-        uint256 assets,
-        string memory actionName,
-        IProvider provider
-    ) internal {
-        bytes memory data = abi.encodeWithSignature(
-            string(abi.encodePacked(actionName, "(uint256,address)")),
-            assets,
-            address(this)
-        );
+    function _delegateActionToProvider(uint256 assets, string memory actionName, IProvider provider) internal {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        if (provider.getSource(asset(), address(this), address(0)) != $._providerSources[address(provider)]) {
+            revert ProviderSourceChanged();
+        }
+        bytes memory data =
+            abi.encodeWithSignature(string(abi.encodePacked(actionName, "(uint256,address)")), assets, address(this));
         address(provider).functionDelegateCall(data);
     }
 
@@ -1006,18 +926,19 @@ contract Rebalancer is
      * @dev Returns the total assets of this vault across all listed providers.
      */
     function _totalAssetsAtProviders() internal view returns (uint256 total) {
-        (total, ) = _totalAssetsWithHealth();
+        bool healthy;
+        (total, healthy) = _totalAssetsWithHealth();
+        if (!healthy) revert ProviderUnavailable();
     }
 
     /// @dev Sum of provider balances; `healthy` is false if any view failed.
     function _totalAssetsWithHealth() internal view returns (uint256 total, bool healthy) {
         RebalancerStorage storage $ = _getRebalancerStorage();
+        total = $._asset.balanceOf(address(this));
         uint256 count = $._providers.length;
         healthy = true;
         for (uint256 i; i < count; i++) {
-            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance(
-                $._providers[i]
-            );
+            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance($._providers[i]);
             if (ok) {
                 total += assetsAtProvider;
             } else {
@@ -1029,18 +950,21 @@ contract Rebalancer is
     /**
      * @dev `getDepositBalance` under a bounded gas stipend; never reverts. A failing
      *      provider reads as (0, false): its funds are temporarily not counted.
-     *      That under-states NAV, which is safe for exits; entries are refused
-     *      meanwhile (`_applyFeesRequiringHealthyProviders`).
+     *      The false health bit is mandatory: settlement and public NAV readers
+     *      reject incomplete totals rather than irreversibly pricing from zero.
      */
-    function _safeGetDepositBalance(
-        IProvider provider
-    ) internal view returns (uint256 balance, bool ok) {
-        try
-            provider.getDepositBalance{gas: PROVIDER_VIEW_CALL_GAS}(
-                address(this),
-                this
-            )
-        returns (uint256 bal) {
+    function _safeGetDepositBalance(IProvider provider) internal view returns (uint256 balance, bool ok) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        address pinned = $._providerSources[address(provider)];
+        if (pinned == address(0)) return (0, false);
+        try provider.getSource{gas: PROVIDER_VIEW_CALL_GAS}(asset(), address(this), address(0)) returns (
+            address current
+        ) {
+            if (current != pinned) return (0, false);
+        } catch {
+            return (0, false);
+        }
+        try provider.getDepositBalance{gas: PROVIDER_VIEW_CALL_GAS}(address(this), this) returns (uint256 bal) {
             return (bal, true);
         } catch {
             return (0, false);
@@ -1051,9 +975,7 @@ contract Rebalancer is
      * @dev Returns true if the specified provider is in the list of providers.
      * @param provider The address of the provider to validate.
      */
-    function _validateProvider(
-        address provider
-    ) internal view returns (bool valid) {
+    function _validateProvider(address provider) internal view returns (bool valid) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         uint256 count = $._providers.length;
         for (uint256 i; i < count; i++) {
@@ -1138,5 +1060,13 @@ contract Rebalancer is
     function getMinAssets() public view returns (uint256) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._minAssets;
+    }
+
+    function getHighWaterMark() external view returns (uint256) {
+        return _getRebalancerStorage()._highWaterMark;
+    }
+
+    function getPinnedProviderSource(IProvider provider) external view returns (address) {
+        return _getRebalancerStorage()._providerSources[address(provider)];
     }
 }
