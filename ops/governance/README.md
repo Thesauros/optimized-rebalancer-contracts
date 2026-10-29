@@ -1,4 +1,16 @@
-# Stand buffer change, 2026-10-04
+# Current preparation: 10% buffer, 2026-10-29
+
+The new **unsigned, not queued or executed** proposal removes only the fixed
+5 USDC floor and retains the on-chain 10% ratio. See
+[review and signing instructions](base-buffer-10pct-20261029.md) and
+[public transaction requests](base-buffer-10pct-20261029.json).
+
+The historical 5% operation below is still marked queued but **expired on
+2026-10-19 at 22:04:01 UTC** (verified on Base block 53252084). Do not revive its
+timer or use its signer-enabled CLI for the new proposal. Its original JSON,
+runtime files, timer and operator configuration have not been changed.
+
+# Historical stand buffer change, 2026-10-04
 
 Owner-approved target: fixed buffer 0 USDC, proportional buffer 5% of accepted NAV.
 This targets approximately 95% utilization when there are no pending withdrawals.
