@@ -141,6 +141,46 @@ test('rate limits do not shrink log ranges or cause a retry storm', async () => 
   assert.deepEqual(calls, [[0, 99], [100, 199]], 'the next scan retains 100-block ranges');
 });
 
+test('a lagging RPC head retries the same log range and recovers without losing events', async () => {
+  const fake = fakeProvider([{ block: 5, name: 'A' }, { block: 105, name: 'B' }], 100);
+  const original = fake.provider.getLogs;
+  const calls: [number, number][] = [];
+  fake.provider.getLogs = async (filter) => {
+    calls.push([filter.fromBlock, filter.toBlock]);
+    if (calls.length === 1) throw Object.assign(new Error('could not coalesce error'), {
+      error: { code: -32602, message: 'block range extends beyond current head block' },
+    });
+    return original(filter);
+  };
+  const c = new Contract(ADDRESS, ABI, fake.provider as any);
+  const out = await scanMany(c, ['A', 'B'], 0, 199);
+  assert.deepEqual(calls, [[0, 99], [0, 99], [100, 199]]);
+  assert.deepEqual(out.map((event) => [event.blockNumber, event.eventName]), [[5, 'A'], [105, 'B']]);
+});
+
+test('persistent RPC head lag preserves scan progress and the range size for later passes', async () => {
+  const fake = fakeProvider([{ block: 5, name: 'A' }, { block: 205, name: 'B' }], 100);
+  const original = fake.provider.getLogs;
+  const calls: [number, number][] = [];
+  let lagging = true;
+  fake.provider.getLogs = async (filter) => {
+    calls.push([filter.fromBlock, filter.toBlock]);
+    if (lagging && filter.toBlock >= 100) throw Object.assign(new Error('bad response'), {
+      info: { responseBody: '{"code":-32602,"message":"block range extends beyond current head block"}' },
+    });
+    return original(filter);
+  };
+  const c = new Contract(ADDRESS, ABI, fake.provider as any);
+  const cache = new EventCache();
+  await assert.rejects(cache.get('head-lag', c, ['A', 'B'], 0, 299));
+  assert.deepEqual(calls, [[0, 99], [100, 199], [100, 199], [100, 199]], 'bounded retries keep the full range');
+  lagging = false;
+  calls.length = 0;
+  const out = await cache.get('head-lag', c, ['A', 'B'], 0, 299);
+  assert.deepEqual(calls, [[100, 199], [200, 299]], 'resume after the last successful batch without skipping blocks');
+  assert.deepEqual(out.map((event) => event.blockNumber), [5, 205]);
+});
+
 test('EventCache resumes after the last complete batch when a later batch fails', async () => {
   const fake = fakeProvider([{ block: 5, name: 'A' }, { block: 205, name: 'B' }], 100);
   const original = fake.provider.getLogs;
