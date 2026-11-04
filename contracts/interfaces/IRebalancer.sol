@@ -8,14 +8,6 @@ import {IProvider} from "./IProvider.sol";
  * @title IRebalancer
  */
 interface IRebalancer is IERC4626 {
-    error ProviderUnavailable();
-    error ProviderHasAssets(address provider, uint256 assets);
-    error ProviderHasReceiptShares(address provider, uint256 shares);
-    error DuplicateProviderSource();
-    error ProviderSourceChanged();
-    error SecurityAccountingNotInitialized();
-    error EntryProviderNotInProviders();
-    event SecurityAccountingInitialized(uint256 highWaterMark);
     error AddressZero();
     error InvalidInput();
     error AssetsBelowMin();
@@ -23,6 +15,31 @@ interface IRebalancer is IERC4626 {
     error ArrayMismatch();
     error InvalidProvider();
     error InsufficientLiquidity();
+    error EntryProviderNotInProviders();
+    error ProviderHasAssets(address provider, uint256 assets);
+    error ProviderCapExceeded(address provider);
+    error ProviderUnavailable();
+    error ProviderHasReceiptShares(address provider, uint256 shares);
+    error DuplicateProviderSource();
+    error ProviderSourceChanged();
+    error SecurityAccountingNotInitialized();
+
+    event SecurityAccountingInitialized(uint256 highWaterMark);
+
+    /**
+     * @notice Emitted when a provider's exposure cap changes.
+     *
+     * @param provider The provider.
+     * @param capBps The new cap in bps of total assets (0 = uncapped).
+     */
+    event ProviderCapUpdated(address indexed provider, uint256 capBps);
+
+    /**
+     * @notice Emitted when revoking a removed provider's approval failed.
+     *
+     * @param provider The removed provider.
+     */
+    event StaleApprovalRevokeFailed(address indexed provider);
 
     /**
      * @notice Emitted when the timelock contract is changed.

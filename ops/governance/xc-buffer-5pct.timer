@@ -1,0 +1,11 @@
+[Unit]
+Description=Execute Thesauros buffer change after the 24 hour timelock
+
+[Timer]
+OnCalendar=2026-10-05 22:05:00 UTC
+Persistent=true
+AccuracySec=1s
+Unit=xc-buffer-5pct.service
+
+[Install]
+WantedBy=timers.target

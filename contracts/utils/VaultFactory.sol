@@ -62,6 +62,9 @@ contract VaultFactory {
         vault = address(proxy);
 
         // initialize() transfers minAssets from its own msg.sender, which is this contract.
+        // `seedOwner_` is pinned to msg.sender by the NotSeedOwner check above, so the
+        // `from` of this pull is always the caller.
+        // slither-disable-next-line arbitrary-send-erc20
         asset_.safeTransferFrom(seedOwner_, address(this), seedAmount_);
         asset_.forceApprove(vault, seedAmount_);
 

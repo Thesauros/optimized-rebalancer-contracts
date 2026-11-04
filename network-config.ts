@@ -23,9 +23,25 @@ export const PLASMA_URL = process.env.PLASMA_RPC_URL ?? 'https://rpc.plasma.to';
 
 export const MONAD_URL = process.env.MONAD_RPC_URL ?? 'https://rpc.monad.xyz';
 
+// Local forks for cross-chain deployment rehearsals (ops/rehearsal/run.sh).
+// They never read DEPLOYER_PRIVATE_KEY: only REHEARSAL_DEPLOYER_KEY (an anvil key).
+const REHEARSAL_ACCOUNTS = process.env.REHEARSAL_DEPLOYER_KEY
+  ? [process.env.REHEARSAL_DEPLOYER_KEY]
+  : [];
+
 export const networkConfig = {
   localhost: {
     chainId: 31337,
+  },
+  baseLocal: {
+    url: process.env.LOCAL_BASE_RPC ?? 'http://127.0.0.1:8545',
+    chainId: 8453,
+    accounts: REHEARSAL_ACCOUNTS,
+  },
+  arbitrumLocal: {
+    url: process.env.LOCAL_ARBITRUM_RPC ?? 'http://127.0.0.1:8546',
+    chainId: 42161,
+    accounts: REHEARSAL_ACCOUNTS,
   },
   hardhat: {
     forking: {

@@ -6,12 +6,12 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {AccessManager} from "./access/AccessManager.sol";
 import {PausableActions} from "./utils/PausableActions.sol";
 import {IPausableActions} from "./interfaces/IPausableActions.sol";
@@ -48,7 +48,10 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         uint64 _lastTimestamp;
         // operational
         uint256 _minAssets;
-        // Append-only security accounting; existing dev offsets stay unchanged.
+        // risk (appended; existing field offsets unchanged for deployed proxies)
+        // provider => max share of totalAssets in bps; 0 means uncapped
+        mapping(address provider => uint256) _providerCapBps;
+        // Append-only security accounting; never insert before legacy fields.
         uint256 _highWaterMark;
         mapping(address provider => address source) _providerSources;
     }
@@ -57,6 +60,14 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
     bytes32 private constant RebalancerStorageLocation =
         0x7e58afa6d55148d409feb524397452494284df87c6d0256f1c37551f5f960b00;
 
+    uint256 internal constant BPS = 10_000;
+
+    /**
+     * @dev Gas forwarded to `IProvider.getDepositBalance` from `_safeGetDepositBalance`,
+     *      to bound health-check gas. Unknown NAV blocks financial settlement;
+     *      action illiquidity is isolated when NAV is known. `MorphoProvider` was measured at up
+     *      to ~1.1M gas on a Base fork (crosschain-sandbox, 2026-08-13); this is ~2.7x that.
+     */
     uint256 internal constant PROVIDER_VIEW_CALL_GAS = 3_000_000;
 
     function _getRebalancerStorage() private pure returns (RebalancerStorage storage $) {
@@ -127,6 +138,31 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         // the appropriate amount depends on the underlying asset’s decimals.
         _deposit(_msgSender(), address(this), minAssets_, minAssets_);
         $._highWaterMark = SCALE;
+    }
+
+    /// @notice Bootstrap an upgraded legacy proxy in the upgrade transaction.
+    /// @dev Governance must attest historic PPS and the currently configured
+    /// sources. Unsettled legacy fees are waived; no historic peak is guessed.
+    function initializeSecurityAccounting(uint256 historicalHighWaterMark) external reinitializer(2) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        // upgradeAndCall preserves ProxyAdmin as msg.sender. Its owner already
+        // controls implementation upgrades; accepting that actual admin permits
+        // atomic migration without opening a public initialization window.
+        if (_msgSender() != $._timelock && _msgSender() != ERC1967Utils.getAdmin()) revert Unauthorized();
+        if ($._highWaterMark != 0) revert InvalidInput();
+        _setProviders($._providers);
+        uint256 assets = totalAssets();
+        uint256 supply = totalSupply();
+        if (
+            supply == 0 || historicalHighWaterMark == 0
+                || historicalHighWaterMark < assets.mulDiv(SCALE, supply, Math.Rounding.Ceil)
+        ) {
+            revert InvalidInput();
+        }
+        $._highWaterMark = historicalHighWaterMark;
+        $._lastTotalAssets = assets;
+        $._lastTimestamp = block.timestamp.toUint64();
+        emit SecurityAccountingInitialized(historicalHighWaterMark);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -335,6 +371,7 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         _delegateActionToProvider(assets, "deposit", entryProvider);
         _mint(receiver, shares);
         $._lastTotalAssets += assets;
+        _enforceProviderCap(entryProvider);
 
         emit Deposit(caller, receiver, assets, shares);
     }
@@ -482,6 +519,8 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
             _delegateActionToProvider(received, "deposit", to);
             // slither-disable-end reentrancy-balance
 
+            _enforceProviderCap(to);
+
             emit RebalanceExecuted(received, address(from), address(to));
         }
 
@@ -505,6 +544,11 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         _settleFees(totalManagedAssets);
     }
 
+    /**
+     * @dev Entry paths use this variant. When a provider's balance view fails it
+     *      cannot be priced safely. Both entry and exit settlement require the
+     *      complete NAV; no holder forfeits an unknown position on redemption.
+     */
     function _applyFeesRequiringHealthyProviders() internal returns (uint256 totalManagedAssets) {
         bool healthy;
         (totalManagedAssets, healthy) = _totalAssetsWithHealth();
@@ -586,9 +630,9 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
 
     /**
      * @notice Sets the list of providers for this vault.
-     * @dev Retain the entry, reject accounting aliases and prove every removal empty.
-     * @dev If the current entry provider is dropped from the list, the entry provider
-     * is reset to `providers[0]` and `EntryProviderUpdated` is emitted.
+     * @dev Change the entry explicitly before removing it. Every removed position
+     * must be provably empty, including any receipt shares; unknown value and
+     * accounting aliases are rejected.
      * @param providers A non-empty array of provider contracts.
      */
     function setProviders(IProvider[] memory providers) external onlyTimelock {
@@ -655,9 +699,8 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
 
     /**
      * @dev Internal function to set the providers for this vault.
-     * If the current entry provider is not in the new list (always the case during
-     * initialize), the entry falls back to `providers[0]`: deposits must never land at a
-     * provider that `totalAssets` and `_withdraw` no longer see.
+     * During initialization entry defaults to providers[0]. Subsequent updates
+     * retain the current entry and require known-empty removed positions.
      * @param providers A non-empty array of provider contracts.
      */
     function _setProviders(IProvider[] memory providers) internal {
@@ -687,6 +730,7 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
             }
             sources[i] = source;
         }
+        // Prove removed positions empty before changing approvals or the list.
         for (uint256 i; i < oldProviders.length; i++) {
             if (_isInList(address(oldProviders[i]), providers)) continue;
             (uint256 assets, bool ok) = _safeGetDepositBalance(oldProviders[i]);
@@ -799,6 +843,57 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         emit MinAssetsUpdated(minAssets);
     }
 
+    /**
+     * @notice Sets the maximum share of total assets a provider may hold, in bps.
+     * @dev 0 means uncapped (the pre-existing behaviour). Lowering a cap reduces
+     *      risk and is open to ADMIN_ROLE for fast response; raising or removing a
+     *      cap goes through the timelock. Enforced after every deposit into the
+     *      entry provider and after every rebalance into a provider.
+     */
+    function setProviderCap(IProvider provider, uint256 capBps) external {
+        if (!_validateProvider(address(provider)) || capBps > BPS) {
+            revert InvalidInput();
+        }
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        uint256 current = $._providerCapBps[address(provider)];
+        bool lowering = capBps != 0 && (current == 0 || capBps <= current);
+        if (_msgSender() != $._timelock) {
+            if (!lowering || !hasRole(ADMIN_ROLE, _msgSender())) {
+                revert Unauthorized();
+            }
+        }
+        $._providerCapBps[address(provider)] = capBps;
+        emit ProviderCapUpdated(address(provider), capBps);
+    }
+
+    /**
+     * @dev Legacy ABI-compatible self-call target; revokes the saved source rather
+     *      than resolving a possibly retargeted registry. Removal now fails closed.
+     */
+    function revokeStaleApproval(IProvider provider) external {
+        if (_msgSender() != address(this)) revert Unauthorized();
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        $._asset.forceApprove($._providerSources[address(provider)], 0);
+    }
+
+    /// @dev Reverts if `provider` holds more than its cap of total assets.
+    function _enforceProviderCap(IProvider provider) internal view {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        uint256 capBps = $._providerCapBps[address(provider)];
+        if (capBps == 0) return;
+        (uint256 atProvider,) = _safeGetDepositBalance(provider);
+        if (atProvider * BPS > totalAssets() * capBps) {
+            revert ProviderCapExceeded(address(provider));
+        }
+    }
+
+    function _isInList(address provider, IProvider[] memory list) private pure returns (bool) {
+        for (uint256 i; i < list.length; i++) {
+            if (address(list[i]) == provider) return true;
+        }
+        return false;
+    }
+
     /// @dev Reverts if the caller is not the timelock.
     function _onlyTimelock() internal view {
         RebalancerStorage storage $ = _getRebalancerStorage();
@@ -834,6 +929,46 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         bool healthy;
         (total, healthy) = _totalAssetsWithHealth();
         if (!healthy) revert ProviderUnavailable();
+    }
+
+    /// @dev Sum of provider balances; `healthy` is false if any view failed.
+    function _totalAssetsWithHealth() internal view returns (uint256 total, bool healthy) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        total = $._asset.balanceOf(address(this));
+        uint256 count = $._providers.length;
+        healthy = true;
+        for (uint256 i; i < count; i++) {
+            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance($._providers[i]);
+            if (ok) {
+                total += assetsAtProvider;
+            } else {
+                healthy = false;
+            }
+        }
+    }
+
+    /**
+     * @dev `getDepositBalance` under a bounded gas stipend; never reverts. A failing
+     *      provider reads as (0, false): its funds are temporarily not counted.
+     *      The false health bit is mandatory: settlement and public NAV readers
+     *      reject incomplete totals rather than irreversibly pricing from zero.
+     */
+    function _safeGetDepositBalance(IProvider provider) internal view returns (uint256 balance, bool ok) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        address pinned = $._providerSources[address(provider)];
+        if (pinned == address(0)) return (0, false);
+        try provider.getSource{gas: PROVIDER_VIEW_CALL_GAS}(asset(), address(this), address(0)) returns (
+            address current
+        ) {
+            if (current != pinned) return (0, false);
+        } catch {
+            return (0, false);
+        }
+        try provider.getDepositBalance{gas: PROVIDER_VIEW_CALL_GAS}(address(this), this) returns (uint256 bal) {
+            return (bal, true);
+        } catch {
+            return (0, false);
+        }
     }
 
     /**
@@ -909,72 +1044,22 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         return $._lastTimestamp;
     }
 
+    /// @notice False while any listed provider's balance view fails. Deposits are
+    ///         refused and NAV readers must not treat `totalAssets` as complete.
+    function providersHealthy() public view returns (bool healthy) {
+        (, healthy) = _totalAssetsWithHealth();
+    }
+
+    /// @notice Returns a provider's cap as a share of total assets in bps (0 = uncapped)
+    function getProviderCap(IProvider provider) public view returns (uint256) {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        return $._providerCapBps[address(provider)];
+    }
+
     /// @notice Returns the minimum asset amount for deposit and mint actions
     function getMinAssets() public view returns (uint256) {
         RebalancerStorage storage $ = _getRebalancerStorage();
         return $._minAssets;
-    }
-
-    function initializeSecurityAccounting(uint256 historicalHighWaterMark) external reinitializer(2) {
-        RebalancerStorage storage $ = _getRebalancerStorage();
-        // upgradeAndCall preserves ProxyAdmin as msg.sender. Its owner already
-        // controls implementation upgrades; accepting that actual admin permits
-        // atomic migration without opening a public initialization window.
-        if (_msgSender() != $._timelock && _msgSender() != ERC1967Utils.getAdmin()) revert Unauthorized();
-        if ($._highWaterMark != 0) revert InvalidInput();
-        _setProviders($._providers);
-        uint256 assets = totalAssets();
-        uint256 supply = totalSupply();
-        if (
-            supply == 0 || historicalHighWaterMark == 0
-                || historicalHighWaterMark < assets.mulDiv(SCALE, supply, Math.Rounding.Ceil)
-        ) {
-            revert InvalidInput();
-        }
-        $._highWaterMark = historicalHighWaterMark;
-        $._lastTotalAssets = assets;
-        $._lastTimestamp = block.timestamp.toUint64();
-        emit SecurityAccountingInitialized(historicalHighWaterMark);
-    }
-
-    function _isInList(address provider, IProvider[] memory list) private pure returns (bool) {
-        for (uint256 i; i < list.length; i++) {
-            if (address(list[i]) == provider) return true;
-        }
-        return false;
-    }
-
-    function _totalAssetsWithHealth() internal view returns (uint256 total, bool healthy) {
-        RebalancerStorage storage $ = _getRebalancerStorage();
-        total = $._asset.balanceOf(address(this));
-        uint256 count = $._providers.length;
-        healthy = true;
-        for (uint256 i; i < count; i++) {
-            (uint256 assetsAtProvider, bool ok) = _safeGetDepositBalance($._providers[i]);
-            if (ok) {
-                total += assetsAtProvider;
-            } else {
-                healthy = false;
-            }
-        }
-    }
-
-    function _safeGetDepositBalance(IProvider provider) internal view returns (uint256 balance, bool ok) {
-        RebalancerStorage storage $ = _getRebalancerStorage();
-        address pinned = $._providerSources[address(provider)];
-        if (pinned == address(0)) return (0, false);
-        try provider.getSource{gas: PROVIDER_VIEW_CALL_GAS}(asset(), address(this), address(0)) returns (
-            address current
-        ) {
-            if (current != pinned) return (0, false);
-        } catch {
-            return (0, false);
-        }
-        try provider.getDepositBalance{gas: PROVIDER_VIEW_CALL_GAS}(address(this), this) returns (uint256 bal) {
-            return (bal, true);
-        } catch {
-            return (0, false);
-        }
     }
 
     function getHighWaterMark() external view returns (uint256) {
@@ -983,9 +1068,5 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
 
     function getPinnedProviderSource(IProvider provider) external view returns (address) {
         return _getRebalancerStorage()._providerSources[address(provider)];
-    }
-
-    function providersHealthy() public view returns (bool healthy) {
-        (, healthy) = _totalAssetsWithHealth();
     }
 }

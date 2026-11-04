@@ -1,0 +1,10 @@
+# allowlist: the ops image needs only these (see ops/Dockerfile)
+*
+!ops/package.json
+!ops/package-lock.json
+!ops/tsconfig.json
+!ops/src
+!ops/scripts
+!deploy/crosschain/registry.ts
+!deployments/base/crosschain.json
+!deployments/arbitrum/crosschain.json

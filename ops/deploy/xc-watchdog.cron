@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+# Host time is UTC. systemd and the watchdog lock prevent overlapping runs.
+0 */2 * * * root /usr/bin/systemctl start --no-block xc-watchdog.service
