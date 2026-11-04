@@ -19,6 +19,10 @@ import { verify } from '../utils/verify';
 const deployUsdcVault: DeployFunction = async function (
   hre: HardhatRuntimeEnvironment,
 ) {
+  const dryRun = hre.network.name === 'hardhat';
+  if (process.env.DRY_RUN === '1' && !dryRun) {
+    throw new Error('DRY_RUN=1 requires --network hardhat (local fork); refusing deployment');
+  }
   // @ts-ignore
   const { getNamedAccounts, deployments } = hre;
   const { deploy, log } = deployments;
@@ -39,7 +43,6 @@ const deployUsdcVault: DeployFunction = async function (
   }
   // A forked run reaches a live chain id but must neither wait for
   // confirmations that never come nor submit anything to a block explorer.
-  const dryRun = hre.network.name === 'hardhat' || process.env.DRY_RUN === '1';
   const isLive =
     !dryRun &&
     (chainId === MAINNET_CHAIN_ID ||
@@ -132,10 +135,11 @@ const deployUsdcVault: DeployFunction = async function (
   log('----------------------------------------------------');
   log('Deploying Morpho providers...');
 
-  for (const { strategy, vaultAddress } of chainConfig.morphoVaults) {
+  for (const { strategy, vaultAddress, version = 1 } of chainConfig.morphoVaults) {
+    const contract = version === 2 ? 'MorphoV2Provider' : 'MorphoProvider';
     const deploymentName = `${strategy}MorphoProvider`;
     const provider = await deploy(deploymentName, {
-      contract: 'MorphoProvider',
+      contract,
       from: deployer,
       args: [vaultAddress],
       log: true,
@@ -143,7 +147,7 @@ const deployUsdcVault: DeployFunction = async function (
     });
 
     log('----------------------------------------------------');
-    log(`MorphoProvider for ${strategy} strategy at ${provider.address}`);
+    log(`${contract} for ${strategy} strategy at ${provider.address}`);
 
     providers.push(provider.address);
 
