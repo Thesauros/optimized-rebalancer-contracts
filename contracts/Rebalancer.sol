@@ -631,7 +631,8 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
     /**
      * @notice Sets the list of providers for this vault.
      * @dev Change the entry explicitly before removing it. Every removed position
-     * must be provably empty; unknown value and accounting aliases are rejected.
+     * must be provably empty, including any receipt shares; unknown value and
+     * accounting aliases are rejected.
      * @param providers A non-empty array of provider contracts.
      */
     function setProviders(IProvider[] memory providers) external onlyTimelock {
@@ -729,6 +730,7 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
             }
             sources[i] = source;
         }
+        // Prove removed positions empty before changing approvals or the list.
         for (uint256 i; i < oldProviders.length; i++) {
             if (_isInList(address(oldProviders[i]), providers)) continue;
             (uint256 assets, bool ok) = _safeGetDepositBalance(oldProviders[i]);
