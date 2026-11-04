@@ -46,14 +46,20 @@ export function semaphore(size: number) {
   };
 }
 
+const RPC_HEAD_LAG = /block range extends beyond current head(?: block)?/i;
+
+function rpcErrorText(e: unknown): string {
+  return [(e as any)?.cause?.message, (e as any)?.shortMessage, (e as any)?.message, (e as any)?.info?.responseBody, (e as any)?.error?.message, String(e)].join(' ');
+}
+
 /**
- * True for transport-level failures, which are transient and worth retrying: dropped sockets,
+ * True for transport failures and temporarily lagging RPC heads: dropped sockets,
  * reset connections, DNS hiccups and request timeouts. Deliberately does not match a contract
  * revert or a bad argument, because those are deterministic and retrying only wastes the budget.
  */
 function isTransient(e: unknown): boolean {
-  const text = [(e as any)?.cause?.message, (e as any)?.shortMessage, (e as any)?.message, (e as any)?.info?.responseBody, (e as any)?.error?.message, String(e)].join(' ');
-  return /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|connection is closed|timeout|timed out|bad gateway|not valid json|rate limit exceeded|409 conflict|error code: 1001|502|503|504|429/i.test(text);
+  const text = rpcErrorText(e);
+  return RPC_HEAD_LAG.test(text) || /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|connection is closed|timeout|timed out|bad gateway|not valid json|rate limit exceeded|409 conflict|error code: 1001|502|503|504|429/i.test(text);
 }
 
 /**
@@ -108,6 +114,10 @@ let logStep = Number(process.env.LOG_RANGE ?? 9_000);
 
 function providerRangeLimit(e: unknown): number | undefined {
   const text = String((e as any)?.info?.responseBody ?? (e as any)?.error?.message ?? (e as any)?.message ?? e);
+  // A backend behind the head returned by another RPC replica is not a size
+  // limit. Shrinking here can permanently reduce every service to one-block
+  // scans, starving NAV until all snapshots expire. Retry the original range.
+  if (RPC_HEAD_LAG.test(rpcErrorText(e))) return undefined;
   // Rate/quota/transport failures must never shrink block ranges: doing so
   // turns throttling into a permanent one-block scan and multiplies RPC load.
   if (/429|rate limit|too many requests|retry limit|quota|compute units/i.test(text)) return undefined;

@@ -67,6 +67,28 @@ and rewinds `INDEX_REWIND_BLOCKS` (default 5000) on load as reorg insurance.
 
 Tests: `npm test` (unit tests + ABI drift guard; run `npx hardhat compile` in the
 repo root first). The full rehearsal on local forks is `ops/rehearsal/run.sh`.
+
+## Autonomous recovery
+
+The server cron in `ops/deploy/xc-watchdog.cron` starts `xc-watchdog.service`
+at 00:00, 02:00, … UTC. `ops/scripts/autofix-watchdog.py` checks all five health
+endpoints, monitor incidents and accepted tick freshness. It confirms a failure
+after 10 seconds, recreates only affected Docker services or restarts the systemd
+indexer, then verifies recovery. A tick older than 75% of `maxTickAge` triggers
+recovery before settlement expires. At most two attempts run, each with an
+eight-minute verification window; systemd limits the whole job to 25 minutes.
+
+The existing Telegram bot receives explicitly labelled autonomous-auto-fix start,
+success and failure messages. Healthy checks are silent. Failed notifications
+stay in `/var/lib/xc-watchdog/state.json` for retry. State and logs contain no bot
+credentials; credentials come from the existing `ops/.env.server`. systemd and a
+file lock prevent overlapping runs. Contract freezes and quarantine are reported
+as unresolved when service restarts cannot resolve them.
+
+Inspect: `systemctl status xc-watchdog.service`,
+`journalctl -u xc-watchdog.service`, `/var/lib/xc-watchdog/state.json`.
+Read-only check: `python3 ops/scripts/autofix-watchdog.py --check`.
+Tests: `python3 -m unittest discover -s ops/test -p 'test_autofix_watchdog.py'`.
 # RPC rate budget
 
 All read providers in one process share `RPC_REQUESTS_PER_SECOND` (default 10)
