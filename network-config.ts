@@ -43,6 +43,14 @@ export const networkConfig = {
     chainId: 42161,
     accounts: REHEARSAL_ACCOUNTS,
   },
+  mainnetLocal: {
+    url: process.env.LOCAL_MAINNET_RPC ?? 'http://127.0.0.1:8547',
+    chainId: 1,
+    accounts: REHEARSAL_ACCOUNTS,
+    // a cold fork pulls every MetaMorpho market slot from the upstream RPC on
+    // first touch; strategy initialization alone outlasts the 40 s default
+    timeout: 600_000,
+  },
   hardhat: {
     forking: {
       // FORK_RPC_URL lets a dry run fork any supported chain, e.g. Ethereum.

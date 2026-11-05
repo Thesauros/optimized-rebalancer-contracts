@@ -43,7 +43,7 @@ git checkout <release commit>          # the commit that carries deployments/*/c
 cp ops/.env.server.example ops/.env.server
 cp ops/.env.keys.example   ops/.env.keys
 chmod 600 ops/.env.server ops/.env.keys
-# fill both: Moralis project URLs in RPC_BASE / RPC_ARBITRUM, the deployer key in
+# fill both: Moralis project URLs in RPC_BASE / RPC_ARBITRUM / RPC_MAINNET, the deployer key in
 # all four *_PRIVATE_KEY on the stand, Telegram token and chat id, CORS origin
 
 docker compose -f ops/docker-compose.yml build
