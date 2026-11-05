@@ -4,8 +4,11 @@ Scope: the deployment on **Base (hub)** with **Arbitrum** and **Ethereum**
 (spokes), the services that run it, and the procedure to add networks.
 Ethereum was added to the running Base + Arbitrum deployment (TS-419, §6a).
 
-The whole procedure has been rehearsed end to end on local forks of both
-chains: `ops/rehearsal/run.sh`, last run 2026-09-28, result `REHEARSAL PASSED`.
+The whole procedure has been rehearsed end to end on local forks of Base and
+Arbitrum: `ops/rehearsal/run.sh`, run 2026-09-28, result `REHEARSAL PASSED`.
+With Ethereum (2026-11-04/05) the rehearsal passed both deployment stages and
+steps 1-7 of the cycle; redemption, the return path and the API steps are still
+to pass on a paid Ethereum RPC (changes/ts-419-ethereum-crosschain-spoke/verification.md).
 The rehearsal covered:
 
 * phase 4: 56/56 checks on Base and 32/32 on Arbitrum;

@@ -40,6 +40,11 @@ could not resolve their upstream hosts (DNS), so the run failed there. Steps 8
 (queued and instant redemption), 8b (return path from both spokes) and 9
 (indexer and API) have not completed with Ethereum in the set yet.
 
+Run 12 (sleep prevented) failed earlier, in phase 1 on Ethereum: the fork's
+upstream answered 408 "Request timeout on the free plan, please upgrade to
+paid plan". Each run on free endpoints fails at a different point; the
+remaining steps need a paid archive Ethereum RPC (`ETHEREUM_FORK_URL`).
+
 Earlier runs failed on public RPC limits before reaching the cycle; each cause
 was fixed (fork retries and compute budget, archive endpoint for Ethereum, a
 configurable read timeout) except the one in the code below.
