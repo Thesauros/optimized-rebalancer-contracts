@@ -5,7 +5,7 @@
  */
 import { Contract, Provider, getAddress, id, keccak256 } from 'ethers';
 import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
-import { NETWORKS, NetworkEntry, routeId } from '../../../deploy/crosschain/registry';
+import { NETWORKS, NetworkEntry, routeId, strategyProviders } from '../../../deploy/crosschain/registry';
 
 const EXECUTOR_ROLE = id('EXECUTOR_ROLE');
 const GUARDIAN_ROLE = id('GUARDIAN_ROLE');
@@ -139,12 +139,11 @@ export async function checkDeployment(
   // strategy wiring and caps
   const strategy = new Contract(c.Strategy, STRATEGY, provider);
   const providers: string[] = await strategy.getProviders();
-  const expected = entry.strategy.reusedProviders.map((p) => p.address);
-  if (c.CompoundV3Provider) expected.splice(1, 0, c.CompoundV3Provider);
+  const listed = strategyProviders(entry, c);
+  const expected = listed.map((p) => p.address);
   check(providers.length === expected.length && providers.every((p, i) => eq(p, expected[i])), 'strategy providers', providers.join(','));
   check(eq(await strategy.getEntryProvider(), expected[0]), 'strategy entry provider');
-  const labelled: Record<string, string> = Object.fromEntries(entry.strategy.reusedProviders.map((p) => [p.label, p.address]));
-  if (c.CompoundV3Provider) labelled.CompoundV3 = c.CompoundV3Provider;
+  const labelled: Record<string, string> = Object.fromEntries(listed.map((p) => [p.label, p.address]));
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
     const cap = BigInt(await strategy.getProviderCap(labelled[label]));
     check(cap === BigInt(bps), `strategy cap ${label}`, `${cap} bps`);

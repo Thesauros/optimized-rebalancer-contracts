@@ -8,3 +8,4 @@
 !deploy/crosschain/registry.ts
 !deployments/base/crosschain.json
 !deployments/arbitrum/crosschain.json
+!deployments/mainnet/crosschain.json

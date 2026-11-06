@@ -8,8 +8,9 @@ import {CctpV2Adapter, IMessageTransmitterV2} from "../../contracts/crosschain/b
 /**
  * @notice Verifies CctpV2Adapter against the live CCTP V2 deployment:
  *         - the domains we configure match `localDomain()` on each chain;
- *         - a real `depositForBurnWithHook` on a Base fork emits a message whose
- *           fields our parser reads correctly (recipient, caller, sender, hook);
+ *         - a real `depositForBurnWithHook` on a Base fork and on an Ethereum
+ *           fork emits a message whose fields our parser reads correctly
+ *           (recipient, caller, sender, hook);
  *         - a destination adapter accepts that exact message and rejects a
  *           tampered sender.
  *         Attestation cannot be produced in a test, so `receiveMessage` is mocked
@@ -20,6 +21,7 @@ contract CctpV2AdapterForkTest is Test {
     address internal constant TOKEN_MESSENGER_V2 = 0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d;
     address internal constant MESSAGE_TRANSMITTER_V2 = 0x81D40F21F12A8F0E3252Bccb954D722d4c464B64;
     address internal constant USDC_BASE = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+    address internal constant USDC_ETHEREUM = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     uint32 internal constant DOMAIN_ETHEREUM = 0;
     uint32 internal constant DOMAIN_ARBITRUM = 3;
@@ -51,29 +53,41 @@ contract CctpV2AdapterForkTest is Test {
 
     function testRealBurnMessageRoundTrip() public {
         if (!_fork("BASE_RPC_URL", "")) return;
+        _roundTrip(USDC_BASE, 8453, DOMAIN_BASE, 42161, DOMAIN_ARBITRUM);
+    }
 
+    /// @dev Ethereum runs its own MessageTransmitterV2 implementation (the code
+    ///      differs from Base's), so the message layout is checked there too.
+    function testRealBurnMessageRoundTripFromEthereum() public {
+        if (!_fork("ETHEREUM_RPC_URL", "")) return;
+        _roundTrip(USDC_ETHEREUM, 1, DOMAIN_ETHEREUM, 8453, DOMAIN_BASE);
+    }
+
+    /// @dev A real burn on the forked source chain, finalized by an adapter as it
+    ///      would be deployed on the destination chain.
+    function _roundTrip(address usdc, uint64 srcChainId, uint32 srcDomain, uint64 dstChainId, uint32 dstDomain) internal {
         // source side: this test contract plays the agent
-        CctpV2Adapter src = new CctpV2Adapter(USDC_BASE, address(this), address(this), TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALIZED);
-        // the destination adapter, as it would be deployed on Arbitrum (agent = dstAgent)
-        CctpV2Adapter dst = new CctpV2Adapter(USDC_BASE, dstAgent, address(this), TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALIZED);
+        CctpV2Adapter src = new CctpV2Adapter(usdc, address(this), address(this), TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALIZED);
+        // the destination adapter, as it would be deployed on the destination chain (agent = dstAgent)
+        CctpV2Adapter dst = new CctpV2Adapter(usdc, dstAgent, address(this), TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALIZED);
         dstAdapterAddr = address(dst);
-        src.setRemote(42161, DOMAIN_ARBITRUM, dstAdapterAddr);
+        src.setRemote(dstChainId, dstDomain, dstAdapterAddr);
 
         uint256 amount = 1_000e6;
-        deal(USDC_BASE, address(this), amount);
-        IERC20(USDC_BASE).approve(address(src), amount);
+        deal(usdc, address(this), amount);
+        IERC20(usdc).approve(address(src), amount);
         bytes32 transferId = keccak256("transfer-1");
 
         vm.recordLogs();
-        src.send(transferId, amount, 42161, dstAgent, amount);
+        src.send(transferId, amount, dstChainId, dstAgent, amount);
         bytes memory message = _messageSent(vm.getRecordedLogs());
 
-        assertEq(IERC20(USDC_BASE).balanceOf(address(src)), 0, "adapter keeps nothing");
-        assertEq(IERC20(USDC_BASE).allowance(address(src), TOKEN_MESSENGER_V2), 0, "approval cleared");
+        assertEq(IERC20(usdc).balanceOf(address(src)), 0, "adapter keeps nothing");
+        assertEq(IERC20(usdc).allowance(address(src), TOKEN_MESSENGER_V2), 0, "approval cleared");
 
         // header fields from the real message
-        assertEq(uint32(bytes4(_slice32(message, 4))), DOMAIN_BASE, "source domain");
-        assertEq(uint32(bytes4(_slice32(message, 8))), DOMAIN_ARBITRUM, "destination domain");
+        assertEq(uint32(bytes4(_slice32(message, 4))), srcDomain, "source domain");
+        assertEq(uint32(bytes4(_slice32(message, 8))), dstDomain, "destination domain");
         assertEq(_slice32(message, 108), bytes32(uint256(uint160(dstAdapterAddr))), "destinationCaller = peer adapter");
         // burn body
         assertEq(_slice32(message, 148 + 36), bytes32(uint256(uint160(dstAgent))), "mintRecipient = destination agent");
@@ -83,15 +97,15 @@ contract CctpV2AdapterForkTest is Test {
         assertEq(_slice32(message, 148 + 260), bytes32(uint256(uint160(address(this)))), "hook: source agent");
         assertEq(message.length, 148 + 228 + 64, "exact length our parser expects");
 
-        // destination side: pretend to be Arbitrum; agent = dstAgent
-        vm.chainId(42161);
-        dst.setRemote(8453, DOMAIN_BASE, address(src));
+        // destination side: pretend to be the destination chain; agent = dstAgent
+        vm.chainId(dstChainId);
+        dst.setRemote(srcChainId, srcDomain, address(src));
 
         vm.mockCall(MESSAGE_TRANSMITTER_V2, abi.encodeWithSelector(IMessageTransmitterV2.receiveMessage.selector), abi.encode(true));
         vm.prank(dstAgent);
         (bytes32 id, uint64 srcChain, address srcAgent) = dst.finalize(abi.encode(message, bytes("")));
         assertEq(id, transferId);
-        assertEq(srcChain, 8453);
+        assertEq(srcChain, srcChainId);
         assertEq(srcAgent, address(this));
 
         // a burn from anyone but the registered peer adapter is rejected

@@ -6,11 +6,13 @@
  * for the new chain and re-running phase 2 on the chains that route to it.
  *
  * Every address below was read from this repository's deployment records or
- * checked on-chain on 2026-09-28:
+ * checked on-chain on 2026-09-28 (Ethereum on 2026-11-04):
  *  - USDC and CCTP V2 addresses and domains: test/forking/CctpV2Adapter.t.sol
- *    asserts `localDomain()` on the live deployments (Base 6, Arbitrum 3).
+ *    asserts `localDomain()` on the live deployments (Base 6, Arbitrum 3,
+ *    Ethereum 0).
  *  - Aave/Morpho provider contracts: deployments/<network>/*.json (stateless,
- *    immutable configuration, reused as-is).
+ *    immutable configuration, reused as-is). ops/test/registry.test.ts checks
+ *    every reused address against its deployment record.
  *  - Comet addresses: ProviderManager.getYieldToken on each chain.
  */
 
@@ -47,6 +49,8 @@ export interface NetworkEntry {
     reusedProviders: { label: string; address: string }[];
     /** Compound V3 Comet for USDC; a fresh ProviderManager + provider are deployed for it. */
     comet?: string;
+    /** Fluid fToken for USDC; a fresh FluidProvider is deployed for it. */
+    fluidFToken?: string;
     /**
      * Per-provider cap in bps of strategy assets; label -> bps; 0 or missing = uncapped.
      * The entry provider (first reused provider) must stay uncapped: every deposit
@@ -96,7 +100,7 @@ const ROUTE_BY_PROFILE: Record<Profile, RouteLimits> = {
 };
 const DEFAULT_ROUTE: RouteLimits = ROUTE_BY_PROFILE[PROFILE];
 
-export const NETWORKS: Record<string, NetworkEntry> = {
+const ALL_NETWORKS: Record<string, NetworkEntry> = {
   base: {
     hardhatName: 'base',
     chainId: 8453n,
@@ -126,7 +130,7 @@ export const NETWORKS: Record<string, NetworkEntry> = {
         SteakhousePrimeMorpho: 4_000,
       },
     },
-    routes: { '42161': DEFAULT_ROUTE },
+    routes: { '1': DEFAULT_ROUTE, '42161': DEFAULT_ROUTE },
     confirmations: 10,
   },
   arbitrum: {
@@ -161,7 +165,61 @@ export const NETWORKS: Record<string, NetworkEntry> = {
     routes: { '8453': DEFAULT_ROUTE },
     confirmations: 20,
   },
+  mainnet: {
+    hardhatName: 'mainnet',
+    chainId: 1n,
+    role: 'spoke',
+    usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    cctp: {
+      tokenMessenger: CCTP_V2_TOKEN_MESSENGER,
+      messageTransmitter: CCTP_V2_MESSAGE_TRANSMITTER,
+      domain: 0,
+      minFinalityThreshold: 2000,
+    },
+    strategy: {
+      name: 'Thesauros Cross-Chain Strategy (Ethereum)',
+      symbol: 'tcsUSDC-eth',
+      // Compound and Morpho (TS-419), Fluid (TS-420). The Morpho providers are the
+      // ones the Ethereum vault already runs: MetaMorpho V1.0, the version
+      // GauntletCore uses on Base, with the same MorphoProvider code. Steakhouse is
+      // the entry provider as the largest of the three.
+      reusedProviders: [
+        { label: 'SteakhouseMorpho', address: '0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622' },
+        { label: 'GauntletPrimeMorpho', address: '0xBC64abbCa87289746f2B01C8ab02A78c9fC92B89' },
+        { label: 'SmokehouseMorpho', address: '0x2fe36048F394A0732E8F28C43DbF351F0253C6E5' },
+      ],
+      comet: '0xc3d688B66703497DAA19211EEdff47f25384cdc3',
+      // fUSDC: an immutable fToken (no proxy) over the Fluid Liquidity layer
+      fluidFToken: '0x9Fb7b4477576Fe5B32be4C1843aFB1e55F251B33',
+      capsBps: {
+        SteakhouseMorpho: 0,
+        CompoundV3: 5_000,
+        GauntletPrimeMorpho: 4_000,
+        SmokehouseMorpho: 3_000,
+        Fluid: 3_000,
+      },
+    },
+    routes: { '8453': DEFAULT_ROUTE },
+    // 12 blocks x 12 s = 2.4 min behind the head, for ordinary short reorgs.
+    // Bridged funds do not depend on it: CCTP attests a burn only after
+    // Ethereum finality (64 blocks).
+    confirmations: 12,
+  },
 };
+
+/**
+ * Rehearsal only: REHEARSAL_NETWORKS=base,arbitrum narrows the registry to those
+ * keys, so ops/rehearsal/run.sh can hand over the existing chains first and then
+ * add a network the way production does (phase 5 through the Timelock).
+ */
+function selectNetworks(only?: string): Record<string, NetworkEntry> {
+  if (!only) return ALL_NETWORKS;
+  const keys = only.split(',').map((k) => k.trim()).filter(Boolean);
+  for (const k of keys) if (!ALL_NETWORKS[k]) throw new Error(`REHEARSAL_NETWORKS: unknown network ${k}`);
+  return Object.fromEntries(keys.map((k) => [k, ALL_NETWORKS[k]]));
+}
+
+export const NETWORKS: Record<string, NetworkEntry> = selectNetworks(process.env.REHEARSAL_NETWORKS);
 
 /**
  * Derived protocol bounds. Three of the configured values are not independent;
@@ -320,6 +378,26 @@ export function hubEntry(): [string, NetworkEntry] {
   const hubs = Object.entries(NETWORKS).filter(([, n]) => n.role === 'hub');
   if (hubs.length !== 1) throw new Error('registry must contain exactly one hub');
   return hubs[0];
+}
+
+/**
+ * The strategy's providers in the order phase 1 initializes them: the entry
+ * provider, the fresh Compound provider, the other reused providers, then the
+ * fresh Fluid provider. Fresh providers are read from the chain's manifest; one
+ * not deployed (yet) is absent.
+ */
+export function strategyProviders(entry: NetworkEntry, contracts: Record<string, string>): { label: string; address: string }[] {
+  const [first, ...rest] = entry.strategy.reusedProviders;
+  const fresh = (label: string, key: string) => (contracts[key] ? [{ label, address: contracts[key] }] : []);
+  return [first, ...fresh('CompoundV3', 'CompoundV3Provider'), ...rest, ...fresh('Fluid', 'FluidProvider')];
+}
+
+/** The labels a cap may name: the reused providers and the fresh ones the entry asks for. */
+export function providerLabels(entry: NetworkEntry): string[] {
+  const labels = entry.strategy.reusedProviders.map((p) => p.label);
+  if (entry.strategy.comet) labels.push('CompoundV3');
+  if (entry.strategy.fluidFToken) labels.push('Fluid');
+  return labels;
 }
 
 export function entryByChainId(chainId: bigint): [string, NetworkEntry] {
