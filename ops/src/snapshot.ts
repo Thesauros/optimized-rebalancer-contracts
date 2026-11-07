@@ -9,6 +9,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, SNAPSHOT_TUPLE, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, hubOf } from './config';
+import { strategyShareValue } from './strategy-value';
 import { blockAtOrBefore, scanMany, semaphore } from './util';
 
 export const KIND_IDLE = 0;
@@ -352,7 +353,8 @@ export interface Built {
   unhealthy: string[];
 }
 
-async function positionsAt(c: Chain, block: number, prevOffers: Map<string, bigint>, unhealthy: string[]): Promise<Position[]> {
+/** Exported for tests; NAV and the verifier reach it through `assemble`. */
+export async function positionsAt(c: Chain, block: number, prevOffers: Map<string, bigint>, unhealthy: string[]): Promise<Position[]> {
   const agentAddr = c.manifest.contracts.ChainAgent;
   const usdc = new Contract(c.entry.usdc, ERC20, c.provider);
   const agent = new Contract(agentAddr, CHAIN_AGENT, c.provider);
@@ -366,8 +368,9 @@ async function positionsAt(c: Chain, block: number, prevOffers: Map<string, bigi
   const strategy = new Contract(strategyAddr, STRATEGY, c.provider);
   const shares: bigint = await strategy.balanceOf(agentAddr, tag);
   if (shares > 0n) {
-    const value: bigint = await strategy.convertToAssets(shares, tag);
-    const healthy: boolean = await strategy.providersHealthy(tag);
+    // health first: on the current Rebalancer convertToAssets reverts while a
+    // provider view fails, which used to stop every Tick of the vault
+    const { value, healthy } = await strategyShareValue(strategy, shares, block);
     const pos: Position = { chainId: c.chainId, holder: agentAddr, strategy: strategyAddr, kind: KIND_STRATEGY_SHARES, units: shares, valueBid: value, valueOffer: value };
     if (!healthy) {
       // docs/nav-reproduction.md: offer = max(bid, previous accepted offer of the same position)

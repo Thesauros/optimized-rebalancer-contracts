@@ -117,14 +117,25 @@ export const STRATEGY = [
   'function totalAssets() view returns (uint256)',
   'function convertToAssets(uint256 shares) view returns (uint256)',
   'function balanceOf(address) view returns (uint256)',
+  'function totalSupply() view returns (uint256)',
   'function providersHealthy() view returns (bool)',
   'function getProviders() view returns (address[])',
+  // the inputs of the readable lower bound (strategy-value.ts)
+  'function getPinnedProviderSource(address provider) view returns (address)',
+  'function getManagementFee() view returns (uint96)',
+  'function getPerformanceFee() view returns (uint96)',
+  'function getHighWaterMark() view returns (uint256)',
+  'function getLastTimestamp() view returns (uint64)',
   'function getEntryProvider() view returns (address)',
   'function getProviderCap(address provider) view returns (uint256)',
   'function paused(uint8 action) view returns (bool)',
 ];
 
-export const PROVIDER = ['function getDepositBalance(address user, address vault) view returns (uint256)', 'function getIdentifier() view returns (string)'];
+export const PROVIDER = [
+  'function getDepositBalance(address user, address vault) view returns (uint256)',
+  'function getSource(address keyOne, address keyTwo, address keyThree) view returns (address)',
+  'function getIdentifier() view returns (string)',
+];
 
 export const ADAPTER = [
   'function remotes(uint64 chainId) view returns (uint32 domain, address adapter, bool set)',

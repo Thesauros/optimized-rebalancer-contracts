@@ -36,6 +36,7 @@ import { CHAIN_AGENT, EPOCH_VAULT, ERC20, STRATEGY, TICK_ACCOUNTANT } from './ab
 import { sendWithGasMargin } from './util';
 import { Chain, hubOf, loadChains } from './config';
 import { openTransferIndex } from './snapshot';
+import { strategyShareValue } from './strategy-value';
 import { routeId } from '../../deploy/crosschain/registry';
 
 const argv = process.argv.slice(2);
@@ -151,9 +152,12 @@ async function status(chains: Chain[]) {
   for (const c of chains) {
     const { agent, strategy } = contracts(c, c.provider);
     const shares: bigint = await agent.strategyShares();
-    const value: bigint = shares === 0n ? 0n : await strategy.convertToAssets(shares);
+    const sv = await strategyShareValue(strategy, shares, await c.provider.getBlockNumber());
     console.log(`\n== ${c.key}`);
-    console.log(`agent: idle ${usd(await agent.idle())}, strategy ${usd(value)} USDC (${shares} shares), providers healthy ${await strategy.providersHealthy()}`);
+    console.log(
+      `agent: idle ${usd(await agent.idle())}, strategy ${usd(sv.value)} USDC (${shares} shares), providers healthy ${sv.healthy}` +
+        (sv.healthy ? '' : `; a provider view fails, value is the readable lower bound${sv.blocked ? ', exits revert until it answers' : ''}`),
+    );
     for (const peer of chains.filter((x) => x !== c)) {
       const r = await agent.getRoute(routeId(c.chainId, peer.chainId));
       if (r.adapter === '0x0000000000000000000000000000000000000000') continue;
@@ -218,7 +222,14 @@ async function main() {
       const { agent, strategy } = contracts(c, signer(c, 'EXECUTOR_PRIVATE_KEY'));
       const shares: bigint = await agent.strategyShares();
       if (shares === 0n) throw new Error(`${c.key} agent holds no strategy shares`);
-      const value: bigint = await strategy.convertToAssets(shares);
+      const sv = await strategyShareValue(strategy, shares, await c.provider.getBlockNumber());
+      if (sv.blocked) {
+        throw new Error(
+          `${c.key} strategy refuses exits while a provider view fails (${sv.readable?.failing.join(', ')}); ` +
+            'deallocateShares would revert until the view answers again or governance removes the provider',
+        );
+      }
+      const value = sv.value;
       const bps = BigInt(flags.get('slippage-bps') ?? '10');
       const min = (value * (10_000n - bps)) / 10_000n;
       console.log(`redeem ${shares} shares on ${c.key}, worth ${usd(value)} USDC, floor ${usd(min)}`);

@@ -78,7 +78,7 @@ For each agent, at its chain's reference block:
 | kind | `strategy` | `units` | `valueBid` = `valueOffer` |
 |---|---|---|---|
 | `IDLE` (0) | `address(0)` | `asset.balanceOf(agent)` | `units` |
-| `STRATEGY_SHARES` (1) | `agent.strategy()` | `IERC20(strategy).balanceOf(agent)` | `Rebalancer(strategy).convertToAssets(units)` |
+| `STRATEGY_SHARES` (1) | `agent.strategy()` | `IERC20(strategy).balanceOf(agent)` | `Rebalancer(strategy).convertToAssets(units)`; while a provider view fails, see *Unhealthy strategy* |
 
 **Ordering** is strictly ascending by `(chainId, holder, strategy, kind)`. An
 agent's idle entry therefore precedes its strategy entry. Zero holdings are
@@ -100,14 +100,38 @@ provider by provider as a cross-check. The number that goes into the snapshot is
 the `convertToAssets` result itself.
 
 **Unhealthy strategy.** If `Rebalancer(strategy).providersHealthy()` is false at
-the reference block, one provider's balance view failed and `convertToAssets`
-under-states the position. Then:
+the reference block, a provider's balance view failed. Then:
 
-* `valueBid` is still the `convertToAssets` result, which is safe for exits;
+* `valueBid` is the position's readable lower bound, which is safe for exits:
+  the value with every failing provider counted as 0.
+  * Implementations deployed before the complete-NAV rule return exactly that
+    from `convertToAssets`.
+  * The current implementation reverts `ProviderUnavailable` on
+    `convertToAssets` (and on `totalAssets`, `previewRedeem`, `getAccruedFees`)
+    instead. Compute the bound from public getters at the reference block, as
+    the contract would:
+    1. `total = asset.balanceOf(strategy) + Σ p.getDepositBalance(strategy, strategy)`
+       over `getProviders()`, counting a provider only if
+       `getPinnedProviderSource(p)` is non-zero, `p.getSource(asset, strategy, 0)`
+       returns it, and the balance view answers; each provider call gets the
+       contract's `PROVIDER_VIEW_CALL_GAS` (3,000,000 gas). A call that reverts
+       or runs out of gas counts the provider as 0; an RPC failure is not an
+       answer and the computation must be retried.
+    2. Fee shares as `Rebalancer._accruedFees(total)`, from `getManagementFee`,
+       `getPerformanceFee`, `getHighWaterMark`, `getLastTimestamp`,
+       `totalSupply` and the reference block's timestamp.
+    3. `valueBid = units · total / (totalSupply + feeShares)`, rounded down
+       (`totalSupply = 0` gives `units`).
+
+    With every provider readable this equals `convertToAssets`. The reference
+    implementation is `ops/src/strategy-value.ts`;
+    `test/unit/ReadableStrategyValue.t.sol` fuzzes the identity against the
+    contract and pins the vectors the ops tests reuse.
 * `valueOffer` is `max(valueBid, the same position's valueOffer in the previous
   accepted Tick)`.
 
-This keeps entries from being priced against an incomplete NAV.
+This keeps entries from being priced against an incomplete NAV, and keeps Ticks
+flowing: a failing view on one chain does not stop the vault's NAV.
 
 **Rewards** of any kind are recognized only after they have been swapped into
 the vault asset and are held as idle. The same rule applies on both sides (bid
