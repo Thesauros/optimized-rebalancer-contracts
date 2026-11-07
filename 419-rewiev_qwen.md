@@ -91,36 +91,47 @@ and the per-provider records stay excluded. Verify with
 Note the allowlist has no `!deployments/ADDRESSES.md` line and the Dockerfile
 does not copy it. That is consistent; do not add it.
 
-### C2. Refines R4: gate the registry narrowing on PROFILE as well as on the manifest dir
+### C2. RETRACTED - do not gate the registry narrowing on PROFILE
 
-Codex R4 proposes refusing `REHEARSAL_NETWORKS` unless
-`CROSSCHAIN_MANIFEST_DIR` starts with `/tmp/`. That works, but the `/tmp` test
-is satisfiable by accident - an operator who stages manifests under `/tmp` for
-any reason re-arms the footgun. Add a second, independent condition on the
-profile, which the rehearsal can never satisfy:
+An earlier revision of this file proposed adding a second condition to codex R4:
 
 ```ts
-if (only && PROFILE === 'production') {
-  throw new Error('REHEARSAL_NETWORKS must not narrow the registry under CROSSCHAIN_PROFILE=production');
+// DO NOT IMPLEMENT - this breaks the rehearsal
+if (only && PROFILE === 'production') { throw new Error(...); }
+```
+
+That proposal rested on a false premise and is withdrawn. The premise was that
+the rehearsal runs under `CROSSCHAIN_PROFILE=stand`. It does not.
+`ops/rehearsal/run.sh`, verified by grep:
+
+```
+50: PROFILE=${REHEARSAL_PROFILE:-production}
+51: export CROSSCHAIN_PROFILE=$PROFILE
+```
+
+The DEFAULT rehearsal profile is `production`; `stand` requires an explicit
+`REHEARSAL_PROFILE=stand`. The narrowing is exported at line 129
+(`REHEARSAL_NETWORKS=base,arbitrum`) while that production profile is in force,
+and unset only at line 151. The proposed guard would therefore throw on every
+default rehearsal run, in stage 1, before anything is deployed.
+
+Implement codex R4's `/tmp` gate as written and add no PROFILE condition:
+
+```ts
+if (only && !(process.env.CROSSCHAIN_MANIFEST_DIR ?? '').startsWith('/tmp/')) {
+  throw new Error('REHEARSAL_NETWORKS is rehearsal-only; it would narrow the production registry');
 }
 ```
 
-`PROFILE` is already validated two lines above its declaration in
-`deploy/crosschain/registry.ts` (`unknown CROSSCHAIN_PROFILE`), so this follows
-an existing pattern rather than inventing one.
+It is correct precisely because the rehearsal exports
+`CROSSCHAIN_MANIFEST_DIR=/tmp/xc-rehearsal` (run.sh:66) and production does not.
+That is a property of the deployment rather than of the profile, so it does not
+collide with the rehearsal's use of the production profile.
 
-Safety of the combined guard, verified against `ops/rehearsal/run.sh`:
-- the rehearsal exports `CROSSCHAIN_PROFILE=stand` (the `PROFILE=rehearsal`
-  branch maps to `stand`), so the PROFILE guard never fires there;
-- `REHEARSAL_NETWORKS=base,arbitrum` is exported at line ~129 and unset at
-  line ~151;
-- the one place the rehearsal runs under `CROSSCHAIN_PROFILE=production`
-  (line ~227, the phase 5 plan check on `baseLocal`) executes AFTER the unset,
-  so `only` is empty and the guard cannot fire.
-
-Keep codex's `/tmp` condition too. Two independent conditions, either of which
-blocks the narrowing, is the right shape for a control whose failure mode is a
-`setChains` batch that drops a funded chain.
+If a second, independent condition is wanted, key it on something the rehearsal
+sets and production never does - for example require an explicit
+`CROSSCHAIN_ALLOW_NARROWING=1` alongside the `/tmp` manifest dir. Do not key it
+on PROFILE.
 
 Restating codex R4's severity because it is the sharpest consequence in either
 package: a narrowed registry makes phase 5 on the hub plan `setChains` WITHOUT
@@ -129,26 +140,41 @@ chain. Executed through the Timelock, NAV drops by the whole Ethereum share.
 This is a fund-accounting failure reachable from one stray environment
 variable, gated only by the Safe and the delay.
 
-### C3. Extends R9.2: there are three rehearsal-only overrides, not one
+### C3. Extends R9.2: five rehearsal overrides diverge from production, not one
 
-Codex R9.2 correctly identifies that the rehearsal exports
-`CONFIRMATIONS_MAINNET=0` while production uses 12, so the rehearsed NAV path is
-not the production one. The same run.sh exports two more:
+Codex R9.2 identifies `CONFIRMATIONS_MAINNET=0` against production's 12. The
+full set, each value verified by grep against `run.sh` and against the source of
+the production default:
 
-- `RPC_TIMEOUT_MS=600000` against the production default of 15000;
-- `INDEX_REWIND_BLOCKS=5000`.
+| Variable | run.sh | Production default | Default defined in |
+|---|---|---|---|
+| `CONFIRMATIONS_BASE` | 1 (line 87) | 10 | `deploy/crosschain/registry.ts:132` |
+| `CONFIRMATIONS_ARBITRUM` | 0 (line 87) | 20 | `deploy/crosschain/registry.ts:164` |
+| `CONFIRMATIONS_MAINNET` | 0 (line 87) | 12 | `deploy/crosschain/registry.ts:201` |
+| `RPC_TIMEOUT_MS` | 180000 (line 92) | 15000 | `ops/src/config.ts:78` |
+| `LOG_RANGE` | 2000 (line 90) | 9000 | `ops/src/util.ts:113` |
 
-All three are the same class of divergence: the rehearsal passes with values
-production never uses. Extend R9.2 so verification.md records, for EACH override,
-whether the production value was separately exercised - not only for
-confirmations. Where it was not, record it as a gap, not as a pass.
+So confirmations diverge on ALL THREE chains, not only Ethereum, and two further
+variables diverge that R9.2 does not mention. Extend R9.2 so verification.md
+records, for each of the five, whether the production value was separately
+exercised. Where it was not, record a gap rather than a pass.
 
-Related and worth folding into R7: `RPC_TIMEOUT_MS` has no upper bound and no
+Correction to an earlier revision of this file: it listed
+`INDEX_REWIND_BLOCKS=5000` as a rehearsal override. It is not one. `run.sh`
+never sets that variable, and `ops/src/snapshot.ts:19` defaults it to 5000, so
+rehearsal and production use the SAME value. It is not a divergence and needs no
+action. The earlier revision also gave `RPC_TIMEOUT_MS` as 600000; the real
+value is 180000.
+
+Related, and worth folding into R7: `RPC_TIMEOUT_MS` has no upper bound and no
 validation. `envNumber` already treats an empty string as unset, which is what
 codex R7 uses to fix the zero-timeout bug. Consider bounding the production
-value while you are in that function - a leaked `600000` lets one hung RPC stall
-the tick loop for ten minutes. If you bound it, exempt the rehearsal by profile
-rather than by a magic number, and confirm `run.sh` still passes.
+value while you are in that function. The rehearsal runs at 180000, twelve times
+the production default, so one hung RPC can block a single request for three
+minutes. Section 7 records an observed hang of over 18 minutes at
+`await tx.wait()` in `ops/src/exec.ts:109` during the 420 rehearsal. If you
+bound the value, exempt the rehearsal by manifest dir rather than by profile
+(see the retraction in C2), and confirm `run.sh` still passes.
 
 ### C4. Corrects a claim about `.env.server.example`
 
@@ -323,15 +349,86 @@ not do".
 This is not a request to reopen the scope. It is a report that the COMMENT is
 now stale and actively misleading: the next reader of `registry.ts` will believe
 the cap is scheduled to be on, while §6a says it is deliberately off. With three
-live chains and per-provider caps on Ethereum summing to 150 percent
-(`CompoundV3` 5000, `GauntletPrimeMorpho` 4000, `SmokehouseMorpho` 3000,
-`Fluid` 3000, entry uncapped), there is currently no on-chain ceiling on how
-much of the vault can sit on one chain.
+live chains and per-provider caps on Ethereum summing to 120 percent on this
+branch (`CompoundV3` 5000, `GauntletPrimeMorpho` 4000, `SmokehouseMorpho` 3000,
+entry uncapped) - and 150 percent once TS-420 adds `Fluid` 3000 - there is
+currently no on-chain ceiling on how much of the vault can sit on one chain.
 
 Required, minimally: rewrite the comment so it states the current decision and
 points at §6a, instead of promising an action that was declined. Whether to set
 a real value is the owner's call and should be recorded as an accepted risk if
 it stays at 0.
+
+### Q6. HIGH, REQUIRED: commit `0c420d3` deleted 1435 lines of ops tooling and left dangling references. This is the root cause of BOTH the second Docker failure and the ops test failure.
+
+Found while reproducing the build. `git show --stat 0c420d3`:
+
+```
+commit 0c420d38de33293df8a952d7710b84ce316dc5a2
+Author: Ivan Borisov <2622610@gmail.com>
+Date:   Wed Nov 4 21:18:49 2026 +0200
+    correct
+ 16 files changed, 1435 deletions(-)
+```
+
+All deletions, no additions. Among them:
+
+| Deleted | Lines | Still referenced by |
+|---|---|---|
+| `ops/scripts/extract-errors.js` | 30 | `ops/test/abi.test.ts:46` (`require('../scripts/extract-errors.js')`), `ops/src/exec.ts:54` (comment only), `ops/Dockerfile:15`, `.dockerignore:7` |
+| `ops/scripts/autofix-watchdog.py` | 275 | `ops/README.md:74` and `:90`, which document it as a live health check on a 00:00/02:00 UTC cron and give a `--check` command |
+| `ops/scripts/install-autofix-watchdog.sh` | 32 | - |
+| `ops/scripts/execute-buffer-governance.sh` | 17 | - |
+| `ops/deploy/xc-watchdog.service`, `.cron` | 25 | `ops/README.md`, four mentions of `xc-watchdog` |
+| `ops/governance/*` (README, two buffer batches, systemd unit + timer) | 294 | - |
+| `ops/src/prepare-buffer-10pct.ts` | 197 | - |
+| `ops/test/util.test.ts` | 328 | - |
+| `ops/test/prepare-buffer-10pct.test.ts`, `ops/test/test_autofix_watchdog.py` | 237 | - |
+
+Two consequences that are live on `main` right now, independent of TS-419:
+
+1. **The ops image has a SECOND unbuildable COPY.** `ops/Dockerfile:15` is
+   `COPY ops/scripts ops/scripts`, and `ops/scripts/` does not exist in a fresh
+   checkout. Proven by experiment in section 7.1: with the mainnet line removed,
+   the build fails at `COPY ops/scripts`. So codex R1's fix alone does NOT
+   produce a buildable image. Both sources must be addressed.
+2. **The operations runbook documents a watchdog that is not in the
+   repository.** `ops/README.md` tells an operator to run
+   `python3 ops/scripts/autofix-watchdog.py --check` and describes a cron that
+   checks all five health endpoints. On a fresh clone that file is absent.
+
+Note on the untracked copy: `ops/scripts/extract-errors.js` exists on disk in
+the main worktree (1016 bytes, mtime 2026-11-07 09:50:30) as `?? ops/scripts/`.
+It is NOT gitignored (`git check-ignore` returns nothing) and it is NOT present
+in a fresh worktree or in the `orc-fix-convert-to-assets` worktree. So it was
+recreated locally after the deletion and never re-added. Do not assume it is
+committed; do not assume the on-disk copy is the same as the deleted 30-line
+version - compare against `git show bdb0c7d:ops/scripts/extract-errors.js`
+before trusting it.
+
+Required:
+1. Decide, per file, restore or delete-the-reference. `git show <commit>:<path>`
+   recovers any of them; `bdb0c7d` is the last commit that had all four scripts.
+   A commit whose entire message is "correct" and which removes a 328-line test
+   file, a 275-line watchdog and 197 lines of source is not self-documenting -
+   if the removal was intentional, record why in `ops/README.md` and delete the
+   references; if not, restore.
+2. `ops/test/util.test.ts` (328 lines) deserves specific attention. If it tested
+   `ops/src/util.ts`, which still exists and still holds `LOG_RANGE`, then
+   deleting the test removed coverage without removing the code. Confirm whether
+   `util.ts` is now untested and restore the test if so.
+3. Commit `ops/scripts/extract-errors.js` so `abi.test.ts` and the Dockerfile
+   resolve. This single action closes codex R8 AND the second half of the Docker
+   build failure. Then re-run `node ops/scripts/extract-errors.js` and commit the
+   regenerated `ops/src/errors.json` in the same commit, as R8 asks.
+4. Fix `ops/README.md` to match whatever survives. A runbook that points at
+   absent tooling is worse than no runbook, because it is trusted during an
+   incident.
+5. Add a guard so this cannot recur silently: a test asserting that every path
+   named in a `COPY` line of `ops/Dockerfile` exists in the repository. It is a
+   few lines and it would have caught both missing sources at commit time rather
+   than at deploy time. CI currently has no docker build (`.github/workflows/`
+   contains only `security.yml`), so nothing else catches it.
 
 ## 4. Verification (combined, runs after codex section 3)
 
@@ -339,12 +436,23 @@ it stays at 0.
 - [ ] C1 applied: `.dockerignore` uses `!deployments/*/crosschain.json`;
       `docker build -f ops/Dockerfile .` succeeds with NO mainnet manifest
       present, and the image's `deployments/` contains only `crosschain.json`
-      files. If Docker is unavailable, record SKIPPED with the reason.
-- [ ] C2 applied: both conditions present; a test that `REHEARSAL_NETWORKS`
-      with `CROSSCHAIN_PROFILE=production` throws regardless of the manifest
-      dir; `ops/rehearsal/run.sh` still completes.
-- [ ] C3 applied: verification.md lists all three rehearsal overrides and, for
-      each, whether the production value was exercised.
+      files. Docker is available on this machine (server 29.8.2) so record a real
+      result, not SKIPPED.
+- [ ] Q6 applied FIRST, before C1 can be verified: `ops/scripts/` is committed,
+      because `COPY ops/scripts ops/scripts` is a second missing source. A build
+      that only fixes the mainnet manifest still fails - this was proven by
+      experiment, see section 7.1.
+- [ ] Q6: the Dockerfile COPY-path guard test exists and fails when a COPY
+      source is absent from the repository.
+- [ ] Q6: `ops/README.md` no longer references deleted tooling, or the tooling
+      is restored. Decide per file and record the decision.
+- [ ] C2: NO CODE CHANGE. That item is retracted; implement codex R4's `/tmp`
+      gate only. If a PROFILE-based guard was already written, remove it - it
+      breaks the default rehearsal run, which uses the production profile.
+- [ ] C3 applied: verification.md lists all FIVE rehearsal overrides
+      (three CONFIRMATIONS, RPC_TIMEOUT_MS, LOG_RANGE) and, for each, whether
+      the production value was exercised. `INDEX_REWIND_BLOCKS` is not an
+      override and must not be listed as one.
 - [ ] Q1: example env updated; §6a mentions send-path exposure. Base and
       Arbitrum send endpoints unchanged.
 - [ ] Q2: preflight chainId assertion added and tested, or the accepted-risk
@@ -355,10 +463,19 @@ it stays at 0.
       provider-list-length assertion added in the engine.
 - [ ] Q5: `registry.ts` comment rewritten; cap decision recorded.
 - [ ] Section 5 untouched: `git diff` shows no change there.
-- [ ] `cd ops && npm test` at the documented baseline; `npx tsc --noEmit -p ops`
-      shows only the `node:sqlite` error.
-- [ ] `forge test --no-match-path 'test/forking/*'` passes; no file under
-      `contracts/` changed.
+- [ ] `cd ops && npm test` fully green. The baseline recorded in section 7 is
+      49 tests / 48 pass / 1 fail, and Q6.3 turns that last one green - do not
+      carry the failure forward as "expected".
+- [ ] `npx tsc --noEmit -p ops` exits 0. It already does; see section 7.4 for
+      why the documented `node:sqlite` error must not be expected.
+- [ ] `forge test --no-match-path 'test/forking/*'` passes 176/176; no file
+      under `contracts/` changed.
+- [ ] `forge test --match-path 'test/forking/*'` passes 49/50 with the single
+      known-noise `NewVaultWithdraw.t.sol::testWithdrawTrace` failure, or 50/50
+      if `VAULT` and `DEPLOYER_ADDR` are supplied. See section 7.3.
+- [ ] `ops/rehearsal/run.sh` completes with `REHEARSAL PASSED`. It does today on
+      this branch - section 7.2 records a full nine-step pass. Re-run it after
+      your changes and do not regress it.
 - [ ] `changes/ts-419-ethereum-crosschain-spoke/verification.md` updated, one
       line per item, with observed output.
 
@@ -431,13 +548,7 @@ grep -n "crosschain" Thesauros-Rebalance-Engine/libs/networks/src/deployments.ts
                                                                            # entries at 93 and 216 only
 ```
 
-Not verified, stated as unverified:
-- No `docker build` was run. The build failure is deduced from Docker `COPY`
-  semantics against a source path proven absent from the committed tree. C1's
-  `docker run ... ls -R deployments` check is the way to confirm the fix.
-- No forge test, fork test or rehearsal was run by this review. The 176/176,
-  3/3 and 4/4 figures are quoted from
-  `changes/ts-419-ethereum-crosschain-spoke/verification.md`, not reproduced.
+Still not verified, stated as unverified:
 - The ethers 6.16.0 `staticNetwork` behaviour in Q2 is taken from the pinned
   version in `ops/package.json` and the documented semantics of that option. It
   was not confirmed by an experiment against a wrong-chain RPC. If you implement
@@ -445,3 +556,168 @@ Not verified, stated as unverified:
 - `TickAccountant.setChains` having no guard against removing a funded chain is
   codex R4's finding, quoted here for severity. It was not independently
   re-verified against the contract source during this review.
+- Q1's mempool-exposure reasoning for `RPC_SEND_MAINNET` was not demonstrated
+  empirically. It follows from the fact that the send path is a public endpoint,
+  not from an observed front-run.
+
+## 7. Reproduction log - actually executed, not quoted
+
+Everything below was run on this branch (`cb54abb`, code identical to `106e905`)
+in a dedicated worktree, so the results are observations rather than citations
+from `verification.md`. Environment: macOS, forge 1.5.2, solc 0.8.33, ethers
+6.16.0, Docker server 29.8.2, Node 22. RPCs were probed first and all three
+answer archive queries two million blocks behind head, so no fork test was
+skipped for lack of an archive node.
+
+| Check | Command | Result |
+|---|---|---|
+| Docker image build | `docker build -f ops/Dockerfile .` | FAILED, exit 1 |
+| forge build | `forge build` | OK, 128 files, 10.8s |
+| forge non-fork | `forge test --no-match-path 'test/forking/*'` | 176 passed, 0 failed, 11 suites, 131.3s |
+| forge forking, whole dir | `forge test --match-path 'test/forking/*'` | 49 passed, 1 failed, 50 total |
+| forge forking, 419 targets | `--match-path .../CrossChainStrategyEthereum.t.sol` | 4 passed |
+| forge forking, 419 targets | `--match-path .../CctpV2Adapter.t.sol` | 3 passed |
+| ops unit tests | `cd ops && npm test` | 49 tests, 48 pass, 1 fail |
+| ops type check | `npx tsc --noEmit -p ops` | exit 0, NO errors |
+| full rehearsal | `ops/rehearsal/run.sh`, production profile | PASSED, exit 0 |
+
+### 7.1 The docker build failure is confirmed, with the exact error
+
+```
+#13 [11/13] COPY deployments/mainnet/crosschain.json deployments/mainnet/crosschain.json
+#13 ERROR: failed to calculate checksum of ref ...: "/deployments/mainnet/crosschain.json": not found
+Dockerfile:19
+ERROR: failed to build: failed to solve: failed to compute cache key
+```
+
+`deployments/base/` and `deployments/arbitrum/` COPY fine at steps 9 and 12;
+only the mainnet one fails. `ls deployments/mainnet/` in this tree shows no
+`crosschain.json`. This is R1 and it is not theoretical - the production ops
+image cannot be built from this branch today.
+
+There is a SECOND missing source that the build never reaches, because BuildKit
+aborts on the first error. Checking every COPY source against the tree:
+
+```
+  OK      ops/package.json
+  OK      ops/tsconfig.json
+  OK      ops/src
+  MISSING ops/scripts
+  OK      deploy/crosschain/registry.ts
+  OK      deployments/base/crosschain.json
+  OK      deployments/arbitrum/crosschain.json
+  MISSING deployments/mainnet/crosschain.json
+```
+
+Proven by rebuilding with only the mainnet line removed:
+
+```
+#11 [ 7/12] COPY ops/scripts ops/scripts
+#11 ERROR: failed to calculate checksum of ref ...: "/ops/scripts": not found
+ERROR: failed to build: failed to solve: failed to compute cache key
+PROBE_RC=1
+```
+
+So fixing R1 alone does NOT yield a buildable image. `ops/scripts/` is absent
+from the repository in `main`, in this branch and in 420; see Q6 for the root
+cause (commit `0c420d3`) and the fix. Implement Q6 before attempting to verify
+C1, otherwise the build will keep failing and the cause will look like C1 was
+done wrong.
+
+The C1 glob was validated separately with a throwaway context containing
+`deployments/{base,arbitrum,mainnet,monad}/crosschain.json` plus a
+`CompoundV3Provider.json` and a `solcInputs/` file. With
+`!deployments/*/crosschain.json` and `COPY deployments deployments`, the built
+image contained exactly the four `crosschain.json` files - the provider record
+and `solcInputs` stayed out, and the hypothetical fifth chain was picked up with
+no Dockerfile edit.
+
+### 7.2 The rehearsal now passes end to end, which closes R9
+
+This is the significant result. `verification.md` records that runs 10, 11 and
+12 all failed before step 8 and that "steps 8, 8b and 9 have not completed with
+Ethereum in the set yet". A full run on this branch completed all nine steps:
+
+```
+== 8. user redeems part through the queue and part instantly
+  nav snapshot built  tickId 5  positions 3  inFlight 0  unhealthy []
+  nav tick committed  tickId 5  status Accepted
+  keeper clearRedeems / claim #2
+  ✓ redemption cleared, funded and claimed by the keeper
+== 8b. return path: arbitrum and mainnet strategies -> CCTP -> base -> vault
+  deallocate + bridgeOut on arbitrum, relayer delivered
+  deallocate + bridgeOut on mainnet, relayer delivered
+  ✓ hub agent received exactly 10000 USDC back from each spoke
+== 9. indexer + API
+  ✓ indexer healthy and synced
+  ✓ API vault summary at tick 7
+  ✓ API user requests redeem:claimed, deposit:claimed
+  ✓ API shows the instant exit
+  ✓ API allocation shows capital on every chain
+  ✓ API tick history (8 ticks)
+  ✓ API shows the delivered CCTP transfer
+REHEARSAL PASSED
+REHEARSAL_EXIT=0
+```
+
+Every NAV snapshot in the run reports `positions: 3` and `unhealthy: []`, so the
+Ethereum leg is counted in NAV and no provider was excluded. Run with the
+default `production` profile and the real Safe impersonated, three anvil forks,
+`ETHEREUM_FORK_URL` and `ARBITRUM_FORK_URL` pointed at the archive endpoints
+from `.env`. Elapsed about 14 minutes. The three anvil processes were reaped by
+the script's own EXIT trap.
+
+Note for R9.2: this pass does NOT close the divergence gap. It ran with
+`CONFIRMATIONS_BASE=1`, `CONFIRMATIONS_ARBITRUM=0`, `CONFIRMATIONS_MAINNET=0`,
+`RPC_TIMEOUT_MS=180000` and `LOG_RANGE=2000`. Production uses 10/20/12, 15000
+and 9000. See C3.
+
+Also note: the run used `ethereum-rpc.publicnode.com` for the Ethereum fork, the
+endpoint `verification.md` describes as serving "only the last ~100 blocks" and
+blames for run 12's failure. Phase 1 on Ethereum and the whole e2e succeeded
+against it, and a direct probe of a block two million behind head returned data.
+That documented limitation did not reproduce. It may still be intermittent, so
+do not delete the paid-RPC recommendation on the strength of one run - but the
+claim as written is not currently accurate.
+
+### 7.3 The single fork failure is a manual harness, not a regression
+
+```
+[FAIL: vm.envAddress: environment variable "VAULT" not found] testWithdrawTrace()
+  test/forking/NewVaultWithdraw.t.sol
+```
+
+That file requires `VAULT` and `DEPLOYER_ADDR` and is an operator trace tool,
+not an automated test. It is byte-identical on `main`, on this branch and on
+`feat/ts-420-fluid-ethereum`, so neither branch touched it. It only appears when
+the whole `test/forking/` directory is run; `verification.md` never saw it
+because it uses `--match-path` on individual files. Treat it as known noise and
+record it as such rather than chasing it.
+
+### 7.4 Two documented baselines do not reproduce
+
+- `npx tsc --noEmit -p ops` exits 0 with no output. Both `verification.md` files
+  describe a "known `node:sqlite` type error on main". With the current
+  `node_modules` it is absent. Do not treat a clean `tsc` as a new problem, and
+  do not "restore" the error.
+- `cd ops && npm test` gives 49 tests / 48 pass / 1 fail on this branch and
+  50 / 49 / 1 on the 420 branch. The one failure is
+  `src/errors.json matches the compiled artifacts`, failing with
+  `Cannot find module '../scripts/extract-errors.js'` from
+  `ops/test/abi.test.ts:46`. The required path is `ops/scripts/extract-errors.js`,
+  which is absent from the repository in `main`, in this branch and in 420 - so
+  the failure is pre-existing and is codex R8. Its root cause is Q6: commit
+  `0c420d3` deleted the whole `ops/scripts/` directory. R8 and Q6.3 are the same
+  fix, and it also unblocks `COPY ops/scripts` in the Dockerfile. A copy of
+  `extract-errors.js` exists UNTRACKED on disk in the main worktree only; it is
+  not in a fresh checkout, so a clean clone or CI runner reproduces the failure.
+  Compare any on-disk copy against `git show bdb0c7d:ops/scripts/extract-errors.js`
+  before committing it.
+- The rehearsal's documented Ethereum RPC limitation did not reproduce either.
+  `verification.md` says publicnode "serves only the last ~100 blocks on
+  Ethereum" and blames it for run 12's failure. This run used
+  `ethereum-rpc.publicnode.com` for the Ethereum fork and completed phase 1 on
+  Ethereum plus all nine e2e steps. A direct probe of a block two million behind
+  head returned full block data on all three endpoints. Treat the paid-RPC
+  recommendation as still prudent, but the stated limitation is not currently
+  accurate and should be re-worded rather than repeated.
