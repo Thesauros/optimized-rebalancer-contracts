@@ -348,13 +348,30 @@ refactor cannot reintroduce the divide-by-zero.
       with the reason recorded.
 - [ ] Q6: `FluidRateLib` extracted, all vectors from codex R5 plus the
       `supplyRatio == 1` divide-by-zero vector.
+- [ ] Q7.1: `RequestPacer.acquire` has a deadline and throws a diagnostic naming
+      method, weight and queue depth.
+- [ ] Q7.2: `semaphore()` acquisition has a deadline and warns with queue depth.
+- [ ] Q7.3: the nested-limited-call invariant is asserted, not just documented.
+- [ ] Q7.4: pacer defaults revisited; the rehearsal raises them and production
+      values are justified per provider tier.
+- [ ] Q7.5: every `.wait(` in `ops/src/` bounded, with a regression test that a
+      never-resolving wait exits non-zero and does NOT resend.
+- [ ] Q7.6: `RoutedProvider.sender` gets its own `FetchRequest` with a timeout.
+- [ ] Q7 gate: `ops/rehearsal/run.sh` completes with `REHEARSAL PASSED` on this
+      branch. It does NOT today - two runs stalled in step 6, see section 7.2.
+      This is the blocking item for 420; do not merge without it.
 - [ ] Section 5 items untouched: `git diff` shows no change to them.
 - [ ] `forge build` clean on `FluidProvider.sol` and new test files.
-- [ ] `forge test --no-match-path 'test/forking/*'` passes.
-- [ ] Fork tests still 6/6 and 4/4 on an archive RPC. If no archive RPC is
-      available, record SKIPPED with the reason. Do not record a pass.
-- [ ] `cd ops && npm test` and `npx tsc --noEmit -p ops` at the baseline codex
-      documents (the `errors.json` and `node:sqlite` items).
+- [ ] `forge test --no-match-path 'test/forking/*'` passes 176/176. It does
+      today; see section 7. Do not set `FOUNDRY_AUTO_DETECT_REMAPPINGS=false` for
+      forge - that is a hardhat-only variable and it breaks `@openzeppelin`
+      resolution in `test/unit/SecurityRemediation.t.sol`.
+- [ ] Fork tests still 6/6 and 4/4 on an archive RPC. They are today; all three
+      `.env` endpoints answer archive queries two million blocks behind head.
+- [ ] `cd ops && npm test`: the baseline is 50 tests / 49 pass / 1 fail, and the
+      one failure is fixed by 419's Q6.3, not carried forward as expected.
+- [ ] `npx tsc --noEmit -p ops` exits 0. It already does; the documented
+      `node:sqlite` error does not reproduce, so do not expect it.
 - [ ] `changes/ts-420-ethereum-fluid-provider/verification.md` updated, one line
       per item, with actual observed output.
 
@@ -420,13 +437,273 @@ sed -n '387,428p' contracts/Rebalancer.sol                                 # _wi
 git log --all --oneline -- 419-rewiev_codex.md                             # f46c8bf on the 419 branch
 ```
 
-Not verified, stated as unverified:
-- No `docker build` was run. The build failure is deduced from Docker `COPY`
-  semantics against a source path proven absent from the committed tree.
-- No forge or fork test was run by this review. The 6/6 and 4/4 figures are
-  quoted from `changes/ts-420-ethereum-fluid-provider/verification.md`, not
-  reproduced.
+Still not verified, stated as unverified:
 - Fluid's `LiquidityCalcs.calcExchangePrices` source was not read. The bit
   layout is validated transitively by the existing differential fork test, not
   independently confirmed here. Codex R1 assigns that confirmation to the
   independent reviewer.
+- The Q3 `RATE_CALL_GAS` figure of 300000 is a starting estimate, not a
+  measurement. Measure it.
+- Q4's claim about which cap binds (on-chain `capsBps.Fluid = 3000` versus the
+  engine's `applyMaxProviderAllocationCap`) was not resolved. Determine it and
+  record the number.
+
+## 7. Reproduction log - actually executed, not quoted
+
+Run on this branch (`df5b62b` code) in a dedicated detached worktree.
+Environment: macOS, forge 1.5.2, solc 0.8.33, ethers 6.16.0, Docker server
+29.8.2, Node 22. All three RPC endpoints were probed first and answer archive
+queries two million blocks behind head.
+
+| Check | Command | Result |
+|---|---|---|
+| Docker image build | `docker build -f ops/Dockerfile .` | FAILED, exit 1, `Dockerfile:19` |
+| forge build | `forge build` | OK, 131 files (419 has 128; the 3 are FluidProvider, IFluid, FluidProvider.t.sol) |
+| forge non-fork | `forge test --no-match-path 'test/forking/*'` | 176 passed, 0 failed |
+| forge fork | `--match-path .../FluidProvider.t.sol` | 6 passed, 0 failed |
+| forge fork | `--match-path .../CrossChainStrategyEthereum.t.sol` | 4 passed, 0 failed |
+| ops unit tests | `cd ops && npm test` | 50 tests, 49 pass, 1 fail |
+| ops type check | `npx tsc --noEmit -p ops` | exit 0, NO errors |
+| full rehearsal, run 1 | `ops/rehearsal/run.sh`, production profile | STALLED at step 6 after a successful mainnet allocate, 18+ min, killed |
+| full rehearsal, run 2 | same command, repeat | STALLED at step 6 before reaching mainnet allocate, 11.5 min, killed |
+
+The fork results reproduce `verification.md` exactly: FluidProvider 6/6 and
+CrossChainStrategyEthereum 4/4, including
+`testRateIsTheAccrualOfTheSupplyExchangePrice` (3.33s) and
+`testActionsOnlyThroughTheVault`. The ops and tsc baselines match 419's; see
+`419-rewiev_qwen.md` sections 7.3 and 7.4 for why the single ops failure and the
+absent `node:sqlite` error are both explained by commit `0c420d3` (that file's
+Q6), and note the Docker build has a SECOND missing source, `ops/scripts`, which
+R1's fix alone does not address.
+
+### 7.1 The rehearsal reaches Fluid on Ethereum and the deploy path works
+
+Phases 1 to 5 completed on all three chains with Fluid present. From the log:
+
+```
+Ethereum (spoke, chainId 1)
+  FluidProvider          0x4a80a1e53c776C93B84E0D1f790cd173637857bB
+  Strategy.setProviderCap(Fluid, 3000)
+  [mainnet] strategy cap Fluid (3000 bps)
+phase 5: every chain now matches the registry
+```
+
+So `01-deploy.ts`, `02-configure.ts`, `05-governance-plan.ts` and
+`checks/deployment.ts` all behave correctly with Fluid added, on a fresh
+deployment. That is the part of codex's "the rehearsal was not re-run" concern
+which is now discharged for the deploy path. It is NOT discharged for the e2e
+cycle, which is what 7.2 covers.
+
+### 7.2 The rehearsal stalls at step 6, and the cause is a hung `tx.wait()`, not the chain
+
+At `== 6. relayer delivers on every spoke`, the mainnet leg printed:
+
+```
+--- exec allocate mainnet all --yes
+allocate 50000.0 USDC on mainnet
+  sent allocate: 0xc6098d4942cb87a81f8f8142b9d2e2aa5af760ff6ffe59bda480d16a911d1b97
+```
+
+and then produced no further output for over 18 minutes. The identical step on
+the 419 branch completed normally:
+
+```
+  sent allocate: 0xbad617d087c07b877dce2a85a63f1513b3805651a2e92f03230e43353a52a6c4
+  confirmed in block 26361709
+  ✓ mainnet strategy shares held by the agent
+```
+
+The transaction is NOT the problem. Queried directly against the local Ethereum
+fork at `127.0.0.1:8547` while the CLI was hung:
+
+```
+eth_getTransactionReceipt(0xc6098d...) ->
+  {"status":"0x1","cumulativeGasUsed":"0x136fa3","logs":[{"address":"0xa0b8...eb48", ...
+txpool_status -> {"pending":"0x0","queued":"0x0"}
+eth_blockNumber -> 0x1924d38      (responds instantly)
+```
+
+`status: 0x1` is success and `0x136fa3` is 1,273,763 gas, with USDC transfer
+logs. The allocation including Fluid executed correctly on chain. The pool is
+empty. The fork answers immediately.
+
+The hang is in the CLI. `ops/src/exec.ts`:
+
+```
+108:  console.log(`  sent ${label}: ${tx.hash}`);
+109:  const r = await tx.wait();
+111:  console.log(`  confirmed in block ${r.blockNumber}`);
+```
+
+It is blocked at line 109 with the receipt already available. Corroborating
+observations taken while it hung:
+
+- all three anvil processes at 0.0% CPU, with identical cumulative CPU time
+  across two samples 20 seconds apart - the forks are idle, not working;
+- the Ethereum anvil has no outbound TCP connection, only its LISTEN socket and
+  two localhost connections from the ethers providers;
+- the node process is in state `S` with 1.20s cumulative CPU after 17:34
+  elapsed - it is blocked on I/O, not computing;
+- `RPC_TIMEOUT_MS=180000` was in effect, so roughly six timeout periods elapsed
+  without recovery;
+- host memory was 48% free, so this is not memory pressure.
+
+What is established and what is not. Established: `await tx.wait()` did not
+resolve for over 18 minutes despite a mined, successful, retrievable receipt,
+and a SECOND run stalled at a different point in step 6 for 11.5 minutes with no
+`exec.ts` process running at all. The same step on 419 resolves normally. The
+only difference at that step is that the mainnet strategy now has five providers
+including Fluid. NOT established: the mechanism. Q7 below narrows it to the
+local rate limiter with code evidence, but does not prove which of two candidate
+mechanisms fired. Do not write a fix that assumes a specific cause without
+instrumenting it.
+
+### Q7. HIGH, REQUIRED: ops RPC calls can block forever in the local rate limiter, and nothing bounds them
+
+This replaced an earlier, narrower version of this item that blamed `tx.wait()`
+alone. Two rehearsal runs stalled at DIFFERENT points, which rules out a single
+call site and points at shared infrastructure. Both runs are described below,
+then the code that explains them.
+
+Run 1 stalled at step 6, `exec allocate mainnet all --yes`, for over 18 minutes
+after printing `sent allocate: 0xc6098d...`. The transaction had already
+succeeded (section 7.2). The process was blocked at `ops/src/exec.ts:109`,
+`const r = await tx.wait();`.
+
+Run 2 stalled at step 6 as well, but EARLIER and in a different process: after
+the base to arbitrum delivery, before `exec allocate mainnet` was ever reached.
+It sat for 11.5 minutes with no `exec.ts` process running at all. The blocked
+process was `e2e.ts` itself: state `S`, 1.22s cumulative CPU after 9:18 elapsed.
+
+Common to both runs, measured while they hung:
+
+- all three anvil forks alive and answering `eth_blockNumber` instantly;
+- the upstream `ethereum-rpc.publicnode.com` answering in 2.4s;
+- the Ethereum anvil holding NO outbound TCP connection, only its LISTEN socket
+  and two localhost sockets from the ethers providers;
+- the node process in state `S` with roughly 1 second of CPU after many minutes;
+- host memory 48% free;
+- `RPC_TIMEOUT_MS=180000` in effect, and no timeout ever firing.
+
+No outbound connection plus a responsive upstream plus a blocked process means
+**no HTTP request was in flight**. The code was waiting on something local.
+
+#### The local rate limiter, and why RPC_TIMEOUT_MS cannot bound it
+
+`ops/src/config.ts`:
+
+```
+71: const readGate = semaphore(4);
+72: const readPacer = new RequestPacer(Number(process.env.RPC_REQUESTS_PER_SECOND ?? 10));
+73: const computePacer = new RequestPacer(Number(process.env.RPC_COMPUTE_UNITS_PER_SECOND ?? 24));
+78:   request.timeout = Number(process.env.RPC_TIMEOUT_MS ?? 15_000);
+83:   request.preflightFunc = async (req) => {
+84:     await computePacer.acquire(calls.reduce((sum, p) => sum + rpcWeight(p.method, p.params), 0));
+85:     await readPacer.acquire();
+94:   return retryTransient(() => readGate(() => super._send(payload)), 3, 1_000);
+```
+
+`request.timeout` bounds the fetch. `preflightFunc` runs BEFORE the fetch and
+awaits two pacers. **Waiting for a pacer slot is therefore outside the
+timeout's scope entirely.** The same is true of `readGate`: only four reads may
+be in flight process-wide, and each holds a slot while it waits on the pacers.
+
+`ops/src/rpc-pacer.ts` has no deadline on `acquire`:
+
+```ts
+acquire(weight = 1): Promise<void> {
+  this.tail = this.tail.then(async () => {
+    const delay = this.next - performance.now();
+    if (delay > 0) await new Promise<void>((resolve) => setTimeout(resolve, Math.ceil(delay)));
+    this.next = performance.now() + 1000 * weight / this.rate;
+  });
+  return this.tail;
+}
+```
+
+It is a single strictly serialized queue. With `rate = 24` and the weights in
+`rpcWeight`, one `eth_call` or `eth_getStorageAt` at a pinned (non-latest) block
+costs 12 CU, which reserves `1000 * 12 / 24` = **500 ms of exclusive queue
+time**. The default for an unknown method is also 12 CU. `eth_getTransactionReceipt`
+is 8 CU = 333 ms.
+
+NAV and the executor read at pinned reference blocks, so they pay the 12 CU
+price, not the 3 CU latest price. Every such call serializes behind every other
+one in the process at half a second each.
+
+`ops/src/util.ts:26-30` documents the second hazard explicitly:
+
+```
+ * The slot is handed directly to the next waiter instead of being released and re-taken, so the
+ * count stays exact under contention. Callers must not await a limited call from inside another
+ * limited call: with every slot held by an outer call waiting on an inner one, that deadlocks.
+```
+
+With `readGate = semaphore(4)` and every provider read routed through it at
+line 94, that invariant is load-bearing for the whole ops stack.
+
+Neither `run.sh` nor `.env.server.example` raises these values: the example sets
+`RPC_REQUESTS_PER_SECOND=10` and `RPC_COMPUTE_UNITS_PER_SECOND=24` for
+production, and `run.sh` exports neither, so the rehearsal inherits the same
+defaults. Those numbers are Moralis standard-plan budgets. They are being
+applied to a local anvil fork that has no such budget, and to whichever
+production provider is actually configured.
+
+What is proven and what is not. PROVEN: the stalls are local, not network; the
+pacer and the semaphore have no deadline; `RPC_TIMEOUT_MS` cannot bound either;
+420 raises the Ethereum provider count from 4 to 5, which raises the pinned-block
+call count per cycle; 419 completed the identical step. NOT PROVEN: which of the
+two mechanisms (unbounded pacer queueing versus the documented nested-acquire
+deadlock) produced each stall. Do not claim a mechanism in a commit message
+without instrumenting it.
+
+Required:
+1. Put a deadline on `RequestPacer.acquire`. Reject after a bounded wait so a
+   stall becomes an error the retry layer and the operator can see, instead of a
+   silent hang:
+   ```ts
+   acquire(weight = 1, deadlineMs = Number(process.env.RPC_PACER_DEADLINE_MS ?? 30_000)): Promise<void>
+   ```
+   and throw a message naming the method, the weight and the queue depth.
+2. Put a deadline on `semaphore()` acquisition, and log a warning with the queue
+   depth when all slots have been held longer than a threshold. That converts
+   the documented deadlock from an infinite hang into a diagnosable event.
+3. Assert the nesting invariant instead of only documenting it. A debug counter
+   that throws when a limited call is awaited inside another limited call would
+   have caught this at the first occurrence.
+4. Re-examine the defaults. 24 CU/s against a local fork is pure self-throttling.
+   Let the rehearsal raise `RPC_COMPUTE_UNITS_PER_SECOND` and
+   `RPC_REQUESTS_PER_SECOND`, and set production values per provider tier rather
+   than assuming Moralis standard.
+5. Bound `await tx.wait()` at `ops/src/exec.ts:109` and at line 244 anyway, and
+   grep `ops/src/` for every other `.wait(`. On timeout the command must print
+   the hash, exit non-zero, and NOT resend:
+   ```ts
+   const r = await Promise.race([
+     tx.wait(),
+     new Promise<null>((resolve) => setTimeout(() => resolve(null), CONFIRM_DEADLINE_MS)),
+   ]);
+   if (!r) {
+     console.error(`  NOT CONFIRMED within ${CONFIRM_DEADLINE_MS}ms. tx ${tx.hash} may still land.`);
+     console.error(`  Check it with: cast receipt ${tx.hash} --rpc-url <send url>`);
+     process.exitCode = 1;
+     return;
+   }
+   ```
+   This is independently necessary: `ops/src/exec.ts` is the operator CLI for
+   bridge, allocate and deallocate. A silent hang after `sent <hash>` invites a
+   re-run, and a re-run sends a SECOND transaction - a duplicate CCTP burn for a
+   bridge, a double allocation for an allocate.
+6. Note the related asymmetry while you are in `config.ts`. Line 102 builds the
+   read provider from `readRequest(readUrl)`, but line 103 builds
+   `this.sender = new JsonRpcProvider(sendUrl, ...)` from a bare URL string. The
+   sender therefore gets NO `request.timeout`, NO `retryFunc = async () => false`
+   override, and no pacers - it keeps ethers' default retry behaviour, which is
+   exactly what the comment at line 79 says "can block for minutes". Sends should
+   be rate limited differently from reads, but they should not be unbounded.
+   Give the sender its own `FetchRequest` with a timeout.
+
+Q7 is not specific to Fluid. It is a latent defect in the ops RPC layer that the
+fifth Ethereum provider made reachable. Fixing it protects every chain and every
+service, and it is the difference between a slow cycle and an operator staring
+at a hung CLI with a live transaction in flight.
