@@ -160,7 +160,13 @@ export class TransferIndex {
    *   makes every commit revert `InvalidHubReference`, ticks stop, and all
    *   settlement and instant exits halt with it.
    */
-  constructor(readonly file?: string, readonly fingerprint?: string, readonly readOnly = false) {}
+  constructor(
+    readonly file?: string,
+    readonly fingerprint?: string,
+    readonly readOnly = false,
+    /** Per-chain identity (`chainBindings`), to recognise state saved before a network was added. */
+    readonly bindings?: Record<string, string>,
+  ) {}
 
   async load(): Promise<void> {
     if (!this.file) return;
@@ -170,7 +176,7 @@ export class TransferIndex {
     } catch {
       return; // absent or unreadable: fall back to a full scan from startBlock
     }
-    if (this.fingerprint !== undefined && raw.fingerprint !== this.fingerprint) {
+    if (this.fingerprint !== undefined && raw.fingerprint !== this.fingerprint && !this.sameDeploymentBeforeAddition(raw)) {
       // state from a different deployment: the scan marks are keyed by chain name,
       // so a fork or a stand would otherwise poison a production run
       return;
@@ -202,6 +208,24 @@ export class TransferIndex {
     }
   }
 
+  /**
+   * Adding a network to the registry changes the fingerprint, yet the saved state
+   * of the chains already covered is still this deployment's. Without this check
+   * the first restart after the addition would re-scan every chain from its start
+   * block: a cold start, which can outgrow the 256-block commit window and stop
+   * Ticks. The file is kept only if its fingerprint is exactly the one of the
+   * chains it covers, with the same agent addresses; the new chain then scans from
+   * its own start block.
+   */
+  private sameDeploymentBeforeAddition(raw: any): boolean {
+    if (!this.bindings) return false;
+    const covered = Object.keys(raw.scanned ?? {});
+    if (!covered.length || covered.some((k) => !this.bindings![k])) return false;
+    const events = [...Object.values<any>(raw.sent ?? {}), ...Object.values<any>(raw.received ?? {})];
+    if (events.some((e) => !covered.includes(e.chainKey))) return false;
+    return fingerprintOf(covered.map((k) => this.bindings![k])) === raw.fingerprint;
+  }
+
   /** Written through a temp file and renamed, so a reader never sees a partial state. */
   async save(): Promise<void> {
     if (!this.file || this.readOnly) return;
@@ -229,7 +253,10 @@ export class TransferIndex {
     for (const c of chains) {
       const agent = new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider);
       const head = upTo?.get(c.key) ?? (await c.provider.getBlockNumber());
-      const from = (this.scanned.get(c.key) ?? c.manifest.startBlock - 1) + 1;
+      // the reorg rewind of a mark taken soon after deployment would reach below the
+      // start block, where the agent has no events: on a fork those blocks are served
+      // by the upstream RPC, so a public endpoint rate-limits the scan
+      const from = Math.max(c.manifest.startBlock, (this.scanned.get(c.key) ?? c.manifest.startBlock - 1) + 1);
       if (from > head) continue;
       await scanMany(agent, ['BridgeOut', 'BridgeIn'], from, head, async (batch, through) => {
         for (const e of batch) {
@@ -272,20 +299,23 @@ export class TransferIndex {
  */
 const sharedIndexes = new Map<string, Promise<TransferIndex>>();
 
+/** The deployment identity of each chain, keyed by registry key. */
+export function chainBindings(chains: Chain[]): Record<string, string> {
+  return Object.fromEntries(chains.map((c) => [c.key, `${c.key}:${c.chainId}:${c.manifest.contracts.ChainAgent.toLowerCase()}`]));
+}
+
+export function fingerprintOf(bindings: string[]): string {
+  return keccak256(Buffer.from([...bindings].sort().join('|')));
+}
+
 export async function openTransferIndex(chains: Chain[], file: string = TRANSFER_INDEX_FILE, readOnly = false): Promise<TransferIndex> {
-  const fingerprint = keccak256(
-    Buffer.from(
-      chains
-        .map((c) => `${c.key}:${c.chainId}:${c.manifest.contracts.ChainAgent.toLowerCase()}`)
-        .sort()
-        .join('|'),
-    ),
-  );
+  const bindings = chainBindings(chains);
+  const fingerprint = fingerprintOf(Object.values(bindings));
   const key = `${path.resolve(file)}:${fingerprint}:${readOnly}`;
   let pending = sharedIndexes.get(key);
   if (!pending) {
     pending = (async () => {
-      const index = new TransferIndex(file, fingerprint, readOnly);
+      const index = new TransferIndex(file, fingerprint, readOnly, bindings);
       await index.load();
       return index;
     })();

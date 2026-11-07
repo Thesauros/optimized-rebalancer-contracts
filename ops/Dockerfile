@@ -16,6 +16,7 @@ COPY ops/scripts ops/scripts
 COPY deploy/crosschain/registry.ts deploy/crosschain/registry.ts
 COPY deployments/base/crosschain.json deployments/base/crosschain.json
 COPY deployments/arbitrum/crosschain.json deployments/arbitrum/crosschain.json
+COPY deployments/mainnet/crosschain.json deployments/mainnet/crosschain.json
 
 ENV NODE_ENV=production \
     TRANSFER_INDEX_FILE=/data/transfer-index.json \
