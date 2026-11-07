@@ -6,6 +6,7 @@
 import { Contract, Provider, getAddress, id, keccak256 } from 'ethers';
 import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
 import { NETWORKS, NetworkEntry, routeId } from '../../../deploy/crosschain/registry';
+import { loadNativeSpokes } from '../native';
 
 const EXECUTOR_ROLE = id('EXECUTOR_ROLE');
 const GUARDIAN_ROLE = id('GUARDIAN_ROLE');
@@ -163,11 +164,23 @@ export async function checkDeployment(
     check(eq(await vault.accountant(), c.TickAccountant), 'vault accountant');
     check(eq(await vault.hubAgent(), c.ChainAgent), 'vault hubAgent');
     const chainIds: bigint[] = (await accountant.chainIds()).map((x: bigint) => BigInt(x));
-    const want = Object.values(NETWORKS).map((n) => n.chainId).sort((a, b) => (a < b ? -1 : 1));
+    const native = loadNativeSpokes();
+    const want = [...Object.values(NETWORKS).map((n) => n.chainId),...native.map((n) => n.chainId)].sort((a, b) => (a < b ? -1 : 1));
     check(chainIds.join() === want.join(), 'accountant chain set', chainIds.join(','));
     for (const [netKey, net] of Object.entries(NETWORKS)) {
       const nm = manifests[netKey];
       if (nm) check(await accountant.isAgent(net.chainId, nm.contracts.ChainAgent), `accountant agent ${netKey}`);
+    }
+    for (const spoke of native) {
+      const { SolanaSpoke } = await import('../solana/spoke');
+      const { aliasOf } = await import('../solana/codec');
+      if (!(spoke instanceof SolanaSpoke)) throw new Error('unsupported native deployment check');
+      const alias = aliasOf(spoke.agent);
+      check(await accountant.isAgent(spoke.chainId,alias),`accountant agent ${spoke.key}`);
+      check(await agent.isPeer(spoke.chainId,alias),`hub native peer ${spoke.key}`);
+      check(await agent.isAdapter(spoke.manifest.hubAdapter),`hub native adapter ${spoke.key}`);
+      const route = await agent.getRoute(routeId(entry.chainId,spoke.chainId));
+      check(eq(route.dstAgent,alias) && eq(route.adapter,spoke.manifest.hubAdapter),`hub native route ${spoke.key}`);
     }
     const fees = await accountant.getFees();
     check(eq(fees.treasury, ids.safe), 'fee treasury = Safe', fees.treasury);

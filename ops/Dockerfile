@@ -8,12 +8,15 @@ WORKDIR /app
 # dependencies live in /app/node_modules so both ops/src and
 # deploy/crosschain/registry.ts (which requires ethers) resolve them
 COPY ops/package.json ops/package-lock.json ./
+COPY ops/.npmrc ./
+COPY ops/vendor vendor
 RUN npm ci --ignore-scripts && npm cache clean --force
 
 COPY ops/tsconfig.json ops/tsconfig.json
 COPY ops/src ops/src
 COPY ops/scripts ops/scripts
 COPY deploy/crosschain/registry.ts deploy/crosschain/registry.ts
+COPY deploy/crosschain/native-registry.ts deploy/crosschain/native-registry.ts
 COPY deployments/base/crosschain.json deployments/base/crosschain.json
 COPY deployments/arbitrum/crosschain.json deployments/arbitrum/crosschain.json
 COPY deployments/mainnet/crosschain.json deployments/mainnet/crosschain.json

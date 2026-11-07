@@ -1,0 +1,38 @@
+name: Native Solana and cross-chain regression
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-and-ops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: npm ci --ignore-scripts
+      - run: FOUNDRY_AUTO_DETECT_REMAPPINGS=false npx hardhat compile
+      - run: forge test --no-match-path 'test/forking/*'
+      - run: npm run test:deploy
+      - run: npm ci --ignore-scripts
+        working-directory: ops
+      - run: npm run typecheck && npm test && npm audit --audit-level=high
+        working-directory: ops
+
+  native-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked --manifest-path solana/Cargo.toml
+      - run: cargo install cargo-build-sbf --version 4.5.0 --locked
+      - run: cargo build-sbf --manifest-path solana/programs/chain-agent/Cargo.toml --arch v2 -- --locked
+      - run: cargo build-sbf --manifest-path solana/tests/mock-kamino/Cargo.toml --arch v2 -- --locked

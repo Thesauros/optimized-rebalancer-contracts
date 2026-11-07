@@ -30,6 +30,8 @@ export interface RouteLimits {
 }
 
 export interface NetworkEntry {
+  /** This registry is EVM-only; native spokes use native-registry.ts. */
+  family: 'evm';
   /** hardhat network name in network-config.ts */
   hardhatName: string;
   chainId: bigint;
@@ -100,6 +102,7 @@ const DEFAULT_ROUTE: RouteLimits = ROUTE_BY_PROFILE[PROFILE];
 
 const ALL_NETWORKS: Record<string, NetworkEntry> = {
   base: {
+    family: 'evm',
     hardhatName: 'base',
     chainId: 8453n,
     role: 'hub',
@@ -132,6 +135,7 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     confirmations: 10,
   },
   arbitrum: {
+    family: 'evm',
     hardhatName: 'arbitrum',
     chainId: 42161n,
     role: 'spoke',
@@ -164,6 +168,7 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     confirmations: 20,
   },
   mainnet: {
+    family: 'evm',
     hardhatName: 'mainnet',
     chainId: 1n,
     role: 'spoke',
