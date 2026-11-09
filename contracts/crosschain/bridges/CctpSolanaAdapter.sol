@@ -80,7 +80,8 @@ contract CctpSolanaAdapter is IBridgeAdapter {
             msg.value != 0 || dstChainId != SOLANA_ACCOUNTING_ID || dstAgent != remoteAlias || transferId == bytes32(0)
                 || amount == 0 || amount > type(uint64).max || minReceive == 0 || minReceive > amount
         ) revert InvalidMessage();
-        IERC20(asset).safeTransferFrom(agent, address(this), amount);
+        // onlyAgent binds msg.sender to the immutable custody endpoint.
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
         IERC20(asset).forceApprove(address(tokenMessenger), amount);
         tokenMessenger.depositForBurnWithHook(
             amount,

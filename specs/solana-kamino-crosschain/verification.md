@@ -30,6 +30,12 @@ production deployment, governance execution or real-fund transaction.
 
 ## Executed checks
 
+Follow-up 2026-11-09: root clean-install/security CI defects were reproduced
+and corrected. See [CI remediation evidence](ci-remediation.md) for fresh
+Node 22 installs, both dependency audits, Slither triage and full regressions.
+This supplements the initial local feature verification; it does not claim
+that the original GitHub contracts/security jobs succeeded.
+
 - Hardhat compile succeeds with `FOUNDRY_AUTO_DETECT_REMAPPINGS=false`.
 - `forge test --no-match-path 'test/forking/*' -q` succeeds: 188 discovered
   tests/invariants across 12 suites, including the new native adapter suite.
