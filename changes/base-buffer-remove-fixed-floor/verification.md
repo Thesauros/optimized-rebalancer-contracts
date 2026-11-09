@@ -38,8 +38,18 @@ Execution ETA: 2026-11-11 00:15 UTC; actual Timelock delay is 86400 seconds.
 Recheck the plan and current limits before any external signature. If the queue
 window is missed, prepare a fresh sibling proposal; never overwrite this one.
 
-No keys loaded or mainnet transactions sent. The plan is not queued/applied;
-cash remains 5 USDC in production. A parameter change alone does not allocate
+During preparation no keys were loaded or mainnet transactions sent. At that
+stage the plan was not queued/applied and cash remained 5 USDC in production.
+A parameter change alone does not allocate
 cash: a healthy allocator or a separately authorized push/allocate is still
 needed after execution. This scoped verification does not resolve the excluded
 NAV-failure, security-upgrade, governance, funding-SLA or concentration risks.
+
+## Approved mainnet queue — 2026-11-09
+
+After user approval, the original operation was queued in transaction
+`0xccf4271a23ba9a8eec6c5d5ecd2da36426e18014a061264b0dbda441895ecd22`.
+The user then corrected the extra six-hour review margin. An earlier replacement
+with identical setter calldata was queued, followed by cancellation of the
+original. See `queue-confirmation.md` and the public receipt/verification JSONs
+under `ops/governance/`. The fixed 5 USDC minimum still applies until execution.

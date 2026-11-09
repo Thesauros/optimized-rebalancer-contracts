@@ -27,3 +27,21 @@ buffer-path check, not a claim that all excluded readiness risks are resolved.
 Applying or queueing the proposal in mainnet requires the user's review of the
 concrete tuple, timings and unsigned transaction requests. No mainnet transaction
 or capital movement is part of this preparation.
+
+## User approval — 2026-11-09
+
+The user confirmed the concrete minimumBuffer 5 USDC -> 0 transition while
+retaining the 10% reserve and all other limits. Queue the reviewed unsigned
+operation 0xf70f7c259ff3d458977f4e45a8abc1c67097f146bcf179d314eef044ae6d6841
+in the existing Base Timelock after rechecking identities, limits and timing.
+Execution of this same approved operation remains subject to its on-chain ETA;
+no bypass, unrelated change or service restart is authorized. Record and verify
+transaction receipts and the queued/applied distinction. Keep the preparation
+utility strictly read-only; use a separate narrow operator for signed submission.
+
+The user then pointed out that the six-hour review margin made the first ETA
+longer than one day. Replace that queue with the same setter payload and a
+24-hour delay plus a short inclusion margin; cancel the superseded operation
+only after the earlier replacement is confirmed. Current operation:
+0x1488e32fa0a98607ac9c45fdde681a6dd0ef543eb9ef528f6cf410c577e92e02,
+ETA 2026-11-10 18:33:38 UTC. All policy values are identical to the reviewed plan.
