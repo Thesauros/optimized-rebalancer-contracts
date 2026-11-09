@@ -11,6 +11,7 @@ Off-chain services for the cross-chain vault:
 | `npm run indexer` | Indexer + read API for the frontend (requests, epochs, NAV history, allocation) |
 | `npm run verify-tick -- <ids>` | Independent Tick verification for partners |
 | `npm run exec -- <command>` | Operator CLI: status, transfers, capital moves, user and keeper actions. Every write is simulated; nothing is sent without `--yes` |
+| `npm run check:config` | Offline startup check: deployed manifests and required RPC configuration, without RPC requests or signing keys |
 
 ## Operator CLI
 
@@ -42,6 +43,11 @@ incrementally; nothing re-reads history on every pass.
 `npm run preflight -- --layout operators|separate` checks an environment before start.
 
 Configuration, deployment and operations: `docs/crosschain-deployment.md`.
+Runtime networks default to the available cross-chain manifests. Optional
+`CROSSCHAIN_NETWORKS=base,arbitrum` requires exactly that configured set; a
+supported registry network without a manifest is not automatically required.
+Preflight and NAV reject an omitted active accountant chain. Reproducible image
+updates and rollback: `docs/crosschain-server.md`, Upgrading.
 Snapshot rules: `docs/nav-reproduction.md`.
 Open items: `docs/crosschain-open-items.md`.
 
@@ -68,7 +74,13 @@ and rewinds `INDEX_REWIND_BLOCKS` (default 5000) on load as reorg insurance.
 Tests: `npm test` (unit tests + ABI drift guard; run `npx hardhat compile` in the
 repo root first). The full rehearsal on local forks is `ops/rehearsal/run.sh`.
 
-## Autonomous recovery
+## Legacy host recovery tooling
+
+The following describes separately provisioned host tooling from earlier releases.
+Its `ops/scripts` and `ops/deploy` files are absent from this checkout and are not
+dependencies of the service image. Preserve the existing host installation during
+an image update; the commands below apply only to hosts with those legacy files.
+This release does not install or replace cron/systemd recovery jobs.
 
 The server cron in `ops/deploy/xc-watchdog.cron` starts `xc-watchdog.service`
 at 00:00, 02:00, … UTC. `ops/scripts/autofix-watchdog.py` checks all five health

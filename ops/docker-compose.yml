@@ -7,7 +7,7 @@
 # misconfiguration, so nothing starts half-configured. Runbook: docs/crosschain-server.md.
 
 x-common: &common
-  image: thesauros/crosschain-ops:local
+  image: ${CROSSCHAIN_OPS_IMAGE:-thesauros/crosschain-ops:local}
   init: true # node as PID 1 would ignore SIGTERM
   restart: unless-stopped
   env_file: [.env.server]

@@ -232,9 +232,10 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
   }
   const ids = identities();
   const manifests = Object.fromEntries(chains.map((c) => [c.key, c.manifest]));
+  const networks = Object.fromEntries(chains.map((c) => [c.key, c.entry]));
   for (const c of chains) {
     if (ids.safe) {
-      const results = await checkDeployment(c.provider, c.key, c.manifest, manifests, ids);
+      const results = await checkDeployment(c.provider, c.key, c.manifest, manifests, ids, networks);
       const failed = results.filter((r) => !r.ok);
       add(`governance.${c.key}`, failed.length ? 'crit' : 'ok', failed.length ? `${c.key}: ${failed.map((f) => `${f.label} (${f.detail})`).join('; ').slice(0, 400)}` : `${c.key}: ${results.length} deployment checks pass`);
     }

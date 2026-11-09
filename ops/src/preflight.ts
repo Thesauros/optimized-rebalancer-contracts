@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { Contract, JsonRpcProvider, Wallet, formatEther, id } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, TICK_ACCOUNTANT } from './abi';
-import { Chain, hubOf, loadChains, rpcUrl } from './config';
+import { Chain, assertTrackedChainsConfigured, hubOf, loadChains, rpcUrl } from './config';
 import { TRANSFER_INDEX_FILE } from './snapshot';
 import { PROFILE } from '../../deploy/crosschain/registry';
 
@@ -141,6 +141,13 @@ async function main() {
 
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
   const vault = new Contract(hub.manifest.contracts.EpochVault, EPOCH_VAULT, hub.provider);
+  try {
+    const tracked: bigint[] = (await accountant.chainIds()).map((chainId: bigint) => BigInt(chainId));
+    assertTrackedChainsConfigured(chains, tracked);
+    pass('every accountant chain is configured', tracked.join(','));
+  } catch (e) {
+    fail('every accountant chain is configured', (e as Error).message);
+  }
   if (nav) {
     if (await accountant.hasRole(id('NAV_UPDATER_ROLE'), nav)) pass('NAV updater holds NAV_UPDATER_ROLE', nav);
     else fail('NAV updater holds NAV_UPDATER_ROLE', `${nav} does not`);

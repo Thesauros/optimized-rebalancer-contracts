@@ -333,8 +333,10 @@ npx hardhat run deploy/crosschain/05-governance-plan.ts --network arbitrum
 **Order of the service rollout.** Roll the services out from this release
 **after the batches are queued and before they are executed**:
 
-* **Too early is impossible.** The image copies `deployments/mainnet/crosschain.json`,
-  so it cannot be built before step 1, and every service needs that manifest.
+* **Registry support alone does not activate Ethereum.** The image includes the
+  cross-chain manifests present in the release. Before step 1 it builds and runs
+  Base/Arbitrum only. After step 1, include the real Ethereum manifest and RPC in
+  the service release (and in `CROSSCHAIN_NETWORKS` if explicitly configured).
 * **Too late stops Ticks.** Once `setChains` executes, a NAV service that does
   not know Ethereum refuses to build snapshots (`accountant tracks chains not
   configured here: 1`).

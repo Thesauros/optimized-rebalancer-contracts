@@ -13,13 +13,14 @@
     "indexer": "ts-node --transpile-only src/indexer.ts",
     "exec": "ts-node --transpile-only src/exec.ts",
     "preflight": "ts-node --transpile-only src/preflight.ts",
+    "check:config": "ts-node --transpile-only src/check-config.ts",
     "operators": "ts-node --transpile-only src/operators.ts"
   },
   "dependencies": {
     "ethers": "6.16.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
+    "@types/node": "22.19.0",
     "ts-node": "10.9.2",
     "typescript": "^5.4.0"
   }

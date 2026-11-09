@@ -2,7 +2,7 @@
 #   docker compose -f ops/docker-compose.yml build
 # The image carries the code, the registry and the committed deployment
 # manifests; secrets come only from the env files on the server.
-FROM node:22-slim
+FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
 
 WORKDIR /app
 # dependencies live in /app/node_modules so both ops/src and
@@ -12,11 +12,10 @@ RUN npm ci --ignore-scripts && npm cache clean --force
 
 COPY ops/tsconfig.json ops/tsconfig.json
 COPY ops/src ops/src
-COPY ops/scripts ops/scripts
 COPY deploy/crosschain/registry.ts deploy/crosschain/registry.ts
-COPY deployments/base/crosschain.json deployments/base/crosschain.json
-COPY deployments/arbitrum/crosschain.json deployments/arbitrum/crosschain.json
-COPY deployments/mainnet/crosschain.json deployments/mainnet/crosschain.json
+# .dockerignore admits only crosschain.json files, preserving network directories.
+# New supported chains do not become runtime dependencies until actually deployed.
+COPY deployments/ deployments/
 
 ENV NODE_ENV=production \
     TRANSFER_INDEX_FILE=/data/transfer-index.json \
