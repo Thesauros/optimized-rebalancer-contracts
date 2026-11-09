@@ -1,0 +1,35 @@
+{
+  "verifiedAt": "2026-11-09T18:13:40.103Z",
+  "scope": "local fork only; mainnet unchanged",
+  "forkBlock": 55287226,
+  "before": [
+    "1000000",
+    "500000000",
+    "5000000",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "after": [
+    "1000000",
+    "500000000",
+    "0",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "bufferMicroUSDC": "1102538",
+  "additionalAllocatedMicroUSDC": "3897462",
+  "instantPaidMicroUSDC": "499902",
+  "checks": [
+    "fixed 5 USDC floor currently blocks even one additional allocation unit",
+    "only the fixed floor changed; 10% ratio and all other limits preserved",
+    "excess allocation still rejected; permitted idle cash reached the real deployed strategy",
+    "instant user redemption pays from the buffer even when cash drops below the allocation floor",
+    "strategy liquidity can be recalled and returned to replenish user payout cash"
+  ]
+}
