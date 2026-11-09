@@ -110,6 +110,10 @@ a network, include its real manifest and RPC before activating it on-chain.
 Build each release under its commit tag. Keep the previous image reference for
 rollback, and use the same new image for preflight and the running services:
 
+Use the checked-out repository directory as the build context, as below. Do not
+pipe a source tar archive to Docker: that context mode does not apply this
+checkout's `.dockerignore` allowlist. CI verifies the directory-context image.
+
 ```bash
 git fetch && git checkout <new release commit>
 export CROSSCHAIN_OPS_IMAGE=thesauros/crosschain-ops:$(git rev-parse HEAD)
