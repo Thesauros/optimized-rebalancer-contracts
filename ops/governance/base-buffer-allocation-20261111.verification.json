@@ -1,0 +1,67 @@
+{
+  "amount": "3897300",
+  "receipts": [
+    {
+      "step": "push",
+      "transactionHash": "0x8fe56f545ee364bc6e171e21d331b60c152e00174ec1559517eb017d56b7b26f",
+      "blockNumber": 55800667,
+      "blockHash": "0xfd4dce4b188b58db257cc96b667b3059a09531c90eb3c4c228bf332d4ee6b885",
+      "gasUsed": "189418",
+      "confirmations": 110
+    },
+    {
+      "step": "allocate",
+      "transactionHash": "0x00689e1152d2ef52c4376a37d4fd0fb35a3b47442e8e2771ec624d732f6f39cc",
+      "blockNumber": 55800710,
+      "blockHash": "0xe74d16cd3b9b4dd584ee1d1e24e755281aaf654fd3287c4d61e28c573c9268d5",
+      "gasUsed": "387417",
+      "confirmations": 70
+    }
+  ],
+  "primary": {
+    "blockNumber": 55800760,
+    "blockHash": "0x83b7918c82d89ecf10fa0cb1375df5755267c481f871c122ca0ca15dce75b0f1",
+    "timestamp": 1794350527,
+    "cash": "1102700",
+    "pending": "0",
+    "liabilities": "0",
+    "reserved": "0",
+    "escrow": "0",
+    "freeCash": "1102700",
+    "buffer": "1102620",
+    "headroom": "80",
+    "idle": "0",
+    "shares": "7875237",
+    "strategyValue": "7917003",
+    "entryProvider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "bidNav": "11026204",
+    "acceptedTickId": "570",
+    "healthy": true
+  },
+  "independentRpc": {
+    "blockNumber": 55800760,
+    "blockHash": "0x83b7918c82d89ecf10fa0cb1375df5755267c481f871c122ca0ca15dce75b0f1",
+    "timestamp": 1794350527,
+    "cash": "1102700",
+    "pending": "0",
+    "liabilities": "0",
+    "reserved": "0",
+    "escrow": "0",
+    "freeCash": "1102700",
+    "buffer": "1102620",
+    "headroom": "80",
+    "idle": "0",
+    "shares": "7875237",
+    "strategyValue": "7917003",
+    "entryProvider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "bidNav": "11026204",
+    "acceptedTickId": "570",
+    "healthy": true
+  },
+  "arbitrumStrategyValue": "2006525",
+  "earning": "9923528",
+  "total": "11026228",
+  "utilizationPercent": 89.9992,
+  "actualCapitalPlaced": true,
+  "bridgeOrUpgradeOrLimitChanges": false
+}

@@ -54,3 +54,8 @@ change was performed. Excluded readiness findings remain outside this change.
 Public evidence:
 `ops/governance/base-buffer-10pct-20261109-24h.execute-receipt.json` and
 `ops/governance/base-buffer-10pct-20261109-24h.execution-verification.json`.
+
+The user later separately instructed "размести". The previously unallocated
+headroom was then placed into the existing Base strategy. See
+`allocation-confirmation.md` and the `base-buffer-allocation-20261111` records;
+the no-capital-movement statements above describe the configuration-only stage.

@@ -57,3 +57,31 @@ all other limits preserved, operation unqueued, implementations unchanged.
 The configuration change does not itself move funds. Allocation headroom was
 checked by read-only simulation; no live capital allocation was submitted.
 Evidence: changes/base-buffer-remove-fixed-floor/execution-confirmation.md.
+
+## One-time capital placement requested — 2026-11-11 Asia/Jerusalem
+
+The user subsequently instructed "размести" after reviewing the remaining
+5 USDC cash and approximately 54.7% utilization. Place only the newly available
+cash into the existing Base ChainAgent/Strategy through pushToAgent and allocate.
+Keep the approved 10% reserve and all current limits unchanged. No new provider,
+bridge, contract upgrade or automatic allocation job is in scope.
+
+Recheck pending deposits, all withdrawal obligations, allocation pauses,
+provider health, actual code/implementation and executor roles before moving
+capital. Bound the amount by current available cash minus the required reserve,
+with a maximum of 3.90 USDC and a small rounding margin. Simulate both steps on
+a fresh local fork before broadcast, then simulate each live call again. Record
+transaction hash/nonce before each broadcast and verify both receipts, minted
+shares, remaining reserve and zero agent idle via an independent RPC. Never
+blindly repeat a step after an ambiguous submission. If the second step fails,
+reconcile its transaction first; unallocated agent idle can be returned to the
+same hub vault with the existing returnToVault path.
+
+Placement completed: 3.897300 USDC, push tx
+0x8fe56f545ee364bc6e171e21d331b60c152e00174ec1559517eb017d56b7b26f,
+allocation tx
+0x00689e1152d2ef52c4376a37d4fd0fb35a3b47442e8e2771ec624d732f6f39cc.
+Both succeeded and were independently verified after a successful fresh local
+fork rehearsal. Vault cash 1.102700 USDC exceeds required 1.102620 reserve;
+agent idle zero, earning capital 9.923528 USDC, utilization 89.9992%.
+Evidence: changes/base-buffer-remove-fixed-floor/allocation-confirmation.md.

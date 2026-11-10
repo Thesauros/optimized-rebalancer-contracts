@@ -55,3 +55,21 @@ Evidence: `base-buffer-10pct-20261109-24h.execute-receipt.json` and
 requeue this operation again. See
 `changes/base-buffer-remove-fixed-floor/execution-confirmation.md` for the
 scoped verification record.
+
+## One-time capital placement confirmed — 2026-11-11 Asia/Jerusalem
+
+The user then instructed "размести". A fresh deployed-bytecode fork rehearsal
+passed before 3.897300 USDC was pushed to the existing Base ChainAgent and
+allocated into its existing Strategy. Push transaction:
+`0x8fe56f545ee364bc6e171e21d331b60c152e00174ec1559517eb017d56b7b26f`.
+Allocation transaction:
+`0x00689e1152d2ef52c4376a37d4fd0fb35a3b47442e8e2771ec624d732f6f39cc`.
+Both succeeded and were independently verified. Vault cash is 1.102700 USDC,
+required reserve 1.102620 USDC, agent idle zero, and capital earning yield
+9.923528 USDC across Base/Arbitrum. Observed utilization is 89.9992%.
+
+Evidence: `base-buffer-allocation-20261111.{plan,fork-verification,verification}.json`,
+`base-buffer-allocation-20261111.{push,allocate}-receipt.json` and product
+`changes/base-buffer-remove-fixed-floor/allocation-confirmation.md`. These are
+completed historical transactions, not pending actions. No automatic allocation
+job or other policy/implementation change was made.
