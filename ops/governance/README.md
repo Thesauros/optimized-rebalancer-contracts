@@ -34,3 +34,24 @@ approval is needed for this same confirmed change; drift requires review.
 After execution verify only minimumBuffer changed to zero, minBufferRatio is
 still 10%, and the operation is no longer queued. Queueing alone does not apply
 the new limit or allocate capital. No automatic execution job was installed.
+
+## Execution confirmed — 2026-11-11 Asia/Jerusalem
+
+The user requested execution ("исполняй буфер"). The exact approved operation
+was executed in Base transaction
+`0x57e04f978215f0c1f770ead7312f72b78e35acc69cc93f73ccb32126c9649d76`,
+block 55791865. Receipt status is 1. Primary and independent RPC checks confirm
+minimumBuffer is 0, minBufferRatio remains 10%, the other seven tuple fields
+are unchanged, and the executed operation is no longer queued. The cancelled
+original operation remains unqueued; proxy implementation/code are unchanged.
+
+At verification block 55792151: cash 5 USDC, pending deposits/liabilities/reserved
+all zero, accepted bid NAV 11.026204 USDC, required reserve 1.102620 USDC, and
+allocation headroom 3.897380 USDC. A read-only pushToAgent simulation for that
+headroom passed. No actual USDC allocation or service rollout was submitted.
+
+Evidence: `base-buffer-10pct-20261109-24h.execute-receipt.json` and
+`base-buffer-10pct-20261109-24h.execution-verification.json`. Do not execute or
+requeue this operation again. See
+`changes/base-buffer-remove-fixed-floor/execution-confirmation.md` for the
+scoped verification record.

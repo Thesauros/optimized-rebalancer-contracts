@@ -26,7 +26,7 @@ and a conservative gas-cost bound. Signer material was never logged or stored.
 All three receipts and postconditions were checked. A second public Base RPC
 independently confirmed the replacement/cancellation receipts and queued state.
 
-Current status: **queued, not executed**. The original operation is not queued;
+Status at queue verification (2026-11-09): **queued, not executed**. The original operation is not queued;
 the replacement is queued; live limits still contain the fixed 5 USDC floor.
 No USDC allocation, contract upgrade, service restart or other limit change.
 No automatic execution job was installed. The same operation's execution after
@@ -37,3 +37,10 @@ Evidence: `ops/governance/base-buffer-10pct-20261109.queue-receipt.json`,
 `base-buffer-10pct-20261109-24h.queue-receipt.json`,
 `base-buffer-10pct-20261109.cancel-original-receipt.json`, and
 `base-buffer-10pct-20261109-24h.verification.json`.
+
+Execution follow-up, 2026-11-11 Asia/Jerusalem: the replacement operation was
+executed successfully in transaction
+`0x57e04f978215f0c1f770ead7312f72b78e35acc69cc93f73ccb32126c9649d76`.
+Current status: **executed; fixed floor removed, 10% preserved**. See
+`execution-confirmation.md` and the public execution receipt/verification in
+`ops/governance/`. The original operation remains cancelled.

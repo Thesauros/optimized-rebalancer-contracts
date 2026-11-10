@@ -45,3 +45,15 @@ longer than one day. Replace that queue with the same setter payload and a
 only after the earlier replacement is confirmed. Current operation:
 0x1488e32fa0a98607ac9c45fdde681a6dd0ef543eb9ef528f6cf410c577e92e02,
 ETA 2026-11-10 18:33:38 UTC. All policy values are identical to the reviewed plan.
+
+## Execution requested and verified — 2026-11-11 Asia/Jerusalem
+
+The user requested "исполняй буфер". Execute only the approved replacement
+operation after confirming live identities, exact limits and queue/timing.
+Execution succeeded in Base transaction
+0x57e04f978215f0c1f770ead7312f72b78e35acc69cc93f73ccb32126c9649d76.
+Postconditions verified through two RPCs: fixed minimum zero, 10% ratio and
+all other limits preserved, operation unqueued, implementations unchanged.
+The configuration change does not itself move funds. Allocation headroom was
+checked by read-only simulation; no live capital allocation was submitted.
+Evidence: changes/base-buffer-remove-fixed-floor/execution-confirmation.md.
