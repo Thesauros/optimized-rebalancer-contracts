@@ -274,6 +274,11 @@
  },
  {
   "inputs": [],
+  "name": "InvalidFToken",
+  "type": "error"
+ },
+ {
+  "inputs": [],
   "name": "InvalidHubReference",
   "type": "error"
  },
