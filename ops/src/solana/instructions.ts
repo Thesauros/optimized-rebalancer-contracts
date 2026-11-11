@@ -1,13 +1,19 @@
 import { AccountMeta, PublicKey, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import { getBytes } from 'ethers';
 import { SOLANA } from '../../../deploy/crosschain/native-registry';
-import { checkpointPda, discriminator, NativeStrategy, u64, vector } from './codec';
+import { checkpointPda, discriminator, NativeStrategy, seedBytes, u64, vector } from './codec';
 import { KAMINO_PROGRAM, meta, strategyAdapter, TOKEN_PROGRAM } from './kamino';
 
 const TM = new PublicKey(SOLANA.cctp.tokenMessenger),
   MT = new PublicKey(SOLANA.cctp.messageTransmitter);
+export const LOADER_PROGRAM = new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111');
 export const pda = (program: PublicKey, name: string, ...seeds: Uint8Array[]): PublicKey =>
   PublicKey.findProgramAddressSync([Buffer.from(name), ...seeds.map((s) => Buffer.from(s))], program)[0];
+
+/** ProgramData of an upgradeable program; carries the deploy authority that
+ * `initialize` requires as a signer. */
+export const programDataAddress = (program: PublicKey): PublicKey =>
+  PublicKey.findProgramAddressSync([program.toBuffer()], LOADER_PROGRAM)[0];
 
 export function executeInstruction(
   program: PublicKey,
@@ -20,6 +26,9 @@ export function executeInstruction(
   prefix: AccountMeta[] = [],
 ): TransactionInstruction {
   const checkpoint = checkpointPda(program, agent, sequence);
+  // The program skips a retired strategy's reserve entirely, so the observation
+  // tail carries seven accounts per live strategy and nothing for a retired one.
+  const live = strategies.filter((s) => !s.retired);
   return new TransactionInstruction({
     programId: program,
     keys: [
@@ -29,10 +38,64 @@ export function executeInstruction(
       meta(checkpoint, true),
       meta(SystemProgram.programId),
       ...prefix,
-      ...strategies.flatMap((s) => strategyAdapter(s).observationAccounts(s)),
+      ...live.flatMap((s) => strategyAdapter(s).observationAccounts(s)),
       meta(KAMINO_PROGRAM),
     ],
     data: Buffer.concat([discriminator('global:execute'), actionData]),
+  });
+}
+
+/** Deploy-time accounts. `initialize` reads the upgrade authority out of
+ * `programData` and requires it to sign, so publishing the seed is not enough
+ * to claim the agent PDA. */
+export function initializeInstruction(
+  program: PublicKey,
+  agent: PublicKey,
+  idle: PublicKey,
+  programData: PublicKey,
+  upgradeAuthority: PublicKey,
+  governance: PublicKey,
+  seed: string,
+  executor: PublicKey,
+  guardian: PublicKey,
+  route: Buffer,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: program,
+    keys: [
+      meta(agent, true),
+      meta(programData),
+      meta(upgradeAuthority, false, true),
+      meta(governance, true, true),
+      meta(idle, true),
+      meta(new PublicKey(SOLANA.asset.mint)),
+      meta(TOKEN_PROGRAM),
+      meta(SystemProgram.programId),
+    ],
+    data: Buffer.concat([
+      discriminator('global:initialize'),
+      seedBytes(seed),
+      executor.toBuffer(),
+      guardian.toBuffer(),
+      route,
+    ]),
+  });
+}
+
+/** Governance-only. `collateral` is the retiring strategy's own cToken account;
+ * the program requires its balance to be exactly zero. */
+export function retireStrategyInstruction(
+  program: PublicKey,
+  agent: PublicKey,
+  collateral: PublicKey,
+  governance: PublicKey,
+  index: number,
+): TransactionInstruction {
+  if (!Number.isInteger(index) || index < 0 || index > 7) throw new Error('invalid strategy index');
+  return new TransactionInstruction({
+    programId: program,
+    keys: [meta(agent, true), meta(collateral), meta(governance, false, true)],
+    data: Buffer.concat([discriminator('global:retire_strategy'), Buffer.from([index])]),
   });
 }
 

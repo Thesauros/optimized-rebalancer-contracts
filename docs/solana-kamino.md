@@ -204,13 +204,23 @@ positions at the committed slots.
 
 The observer creates checkpoints when the hub's NAV cadence or closed-epoch
 settlement requires one, with spacing to avoid paying rent for unused idle
-minute-by-minute snapshots. Checkpoint allocation is exactly `133 + 48*N` bytes
+minute-by-minute snapshots. Checkpoint allocation is exactly `133 + 49*N` bytes
 for N strategies; gas payers fund account rent. Budget rent against expected
 movement/NAV frequency before activation. Checkpoints are permanent in this
 version; the SQLite cache avoids replaying the growing RPC history at every
 restart. Do not delete on-chain checkpoints or use a cache from another genesis,
 program or agent. CCTP event-account rent reclamation can be handled separately
 through Circle's supported operator flow.
+
+A checkpoint position carries an `observation_failed` flag. Receive and Observe
+tolerate a reserve that cannot be refreshed or valued, so a dead Kamino reserve
+cannot strand an inbound transfer, and record `value: 0` with that flag set. Zero
+then means unknown, not free: NAV refuses to price the cut while any position with
+units carries the flag, and the spoke halts rather than under-reports. Retire the
+strategy once its collateral is empty to clear it. A reserve passed read-only is
+rejected up front rather than tolerated, so a permissionless Receive or Observe
+cannot set that flag on a checkpoint by handing it accounts the refresh CPI cannot
+write.
 
 The cache is a trusted accounting input, so it is protected like one. The reader
 creates the file `0600` and its directory `0700`, tightens an existing

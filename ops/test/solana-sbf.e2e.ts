@@ -27,9 +27,12 @@ import {
   executeInstruction,
   bridgeData,
   burnAccounts,
+  initializeInstruction,
   pda,
+  programDataAddress,
   receiveAccounts,
   receiveData,
+  retireStrategyInstruction,
 } from '../src/solana/instructions';
 import { KAMINO_PROGRAM, kaminoAdapter, meta, TOKEN_PROGRAM } from '../src/solana/kamino';
 import { SolanaSpoke } from '../src/solana/spoke';
@@ -40,6 +43,7 @@ async function main() {
   const program = new PublicKey('Fg6PaFpoGXkYsidMpWxTWqkZ2dKjF6Q6Bf6WZ7H6LJ7');
   const payer = Keypair.generate(),
     attacker = Keypair.generate(),
+    deployer = Keypair.generate(),
     seed = Buffer.alloc(32, 12);
   const agent = PublicKey.findProgramAddressSync([Buffer.from('agent'), seed], program)[0];
   const idle = PublicKey.findProgramAddressSync([Buffer.from('idle'), agent.toBuffer()], program)[0];
@@ -243,7 +247,9 @@ async function main() {
       '--upgradeable-program',
       program.toBase58(),
       agentBinary,
-      'none',
+      // `initialize` authenticates against this recorded upgrade authority, so
+      // the agent program cannot be deployed immutably any more.
+      deployer.publicKey.toBase58(),
       '--upgradeable-program',
       KAMINO_PROGRAM.toBase58(),
       mockBinary,
@@ -287,6 +293,7 @@ async function main() {
     collateral,
     oracles: [KAMINO_PROGRAM, KAMINO_PROGRAM, KAMINO_PROGRAM, KAMINO_PROGRAM],
     cap: 100_000_000n,
+    retired: false,
   };
   try {
     let ready = false;
@@ -319,26 +326,28 @@ async function main() {
       u64(0n),
       fee,
     ]);
-    await send([
-      new TransactionInstruction({
-        programId: program,
-        keys: [
-          meta(agent, true),
-          meta(payer.publicKey, true, true),
-          meta(idle, true),
-          meta(mint),
-          meta(TOKEN_PROGRAM),
-          meta(SystemProgram.programId),
-        ],
-        data: Buffer.concat([
-          discriminator('global:initialize'),
-          seed,
-          payer.publicKey.toBuffer(),
-          payer.publicKey.toBuffer(),
-          route,
-        ]),
-      }),
-    ]);
+    const initialize = (authority: Keypair, governance: PublicKey) =>
+      initializeInstruction(
+        program,
+        agent,
+        idle,
+        programDataAddress(program),
+        authority.publicKey,
+        governance,
+        hexlify(seed),
+        payer.publicKey,
+        payer.publicKey,
+        route,
+      );
+    // The seed is public in the deployment plan, so claiming the PDA must still
+    // require the recorded upgrade authority: a squatter is rejected and the
+    // rolled-back transaction leaves the agent uninitialized.
+    await assert.rejects(
+      () => send([initialize(attacker, attacker.publicKey)], attacker),
+      /Unauthorized|0x1770/,
+    );
+    assert.equal(await c.getAccountInfo(agent, 'confirmed'), null);
+    await send([initialize(deployer, payer.publicKey)], payer, [deployer]);
     const strategyData = Buffer.concat([
       Buffer.from([1]),
       reserve.toBuffer(),
@@ -349,6 +358,7 @@ async function main() {
       collateral.toBuffer(),
       ...strategy.oracles.map((o) => o.toBuffer()),
       u64(strategy.cap),
+      Buffer.from([0]),
     ]);
     await send([
       new TransactionInstruction({
@@ -381,6 +391,7 @@ async function main() {
     let cp = decodeCheckpoint((await c.getAccountInfo(checkpointPda(program, agent, 0n), 'confirmed'))!.data);
     assert.equal(cp.idle, 20_000_000n);
     assert.equal(cp.positions[0].units, 0n);
+    assert.equal(cp.positions[0].observationFailed, false, 'a readable reserve is priced, not flagged');
     await assert.rejects(
       () =>
         execute(
@@ -640,8 +651,41 @@ async function main() {
         'PASS deployed Circle CCTP V2 bytecode in local VM: native PDA burn, real secp256k1 attestation, authenticated receive during pause, replay/forgery rejection, balance conservation and governance write-down',
       );
     }
+    // A reserve this program can no longer read must not brick an observation:
+    // the position is flagged unknown instead of being silently priced at zero,
+    // and the observation still lands while the agent is paused.
+    const dead = await state(),
+      unreadable = {
+        ...strategy,
+        oracles: [PublicKey.default, PublicKey.default, PublicKey.default, PublicKey.default],
+      };
+    assert.equal(dead.strategies[0].retired, false);
+    await send([
+      executeInstruction(program, agent, idle, payer.publicKey, dead.sequence, [unreadable], Buffer.from([0])),
+    ]);
+    cp = decodeCheckpoint((await c.getAccountInfo(checkpointPda(program, agent, dead.sequence), 'confirmed'))!.data);
+    assert.equal(cp.positions[0].reserve.toBase58(), reserve.toBase58());
+    assert.equal(cp.positions[0].observationFailed, true);
+    assert.equal(cp.positions[0].value, 0n);
+    // Governance retires the now-empty strategy. Its observation tail then
+    // carries only the Kamino executable, and the checkpoint keeps the slot so
+    // history stays positionally bound to the registered strategy set.
+    await send([retireStrategyInstruction(program, agent, collateral, payer.publicKey, 0)]);
+    const retired = await state();
+    assert.equal(retired.strategies[0].retired, true);
+    await send([
+      executeInstruction(program, agent, idle, payer.publicKey, retired.sequence, retired.strategies, Buffer.from([0])),
+    ]);
+    cp = decodeCheckpoint(
+      (await c.getAccountInfo(checkpointPda(program, agent, retired.sequence), 'confirmed'))!.data,
+    );
+    assert.equal(cp.positions.length, 1);
+    assert.equal(cp.positions[0].reserve.toBase58(), reserve.toBase58());
+    assert.equal(cp.positions[0].units, 0n);
+    assert.equal(cp.positions[0].value, 0n);
+    assert.equal(cp.positions[0].observationFailed, false);
     console.log(
-      'PASS real SBF/SPL CPI: initialize, observe, deposit, full redeem, principal conservation, executor authorization, minimum-output rollback, pause and unwind, recipient pinning',
+      'PASS real SBF/SPL CPI: upgrade-authority initialize and squatting rejection, observe, deposit, full redeem, principal conservation, executor authorization, minimum-output rollback, pause and unwind, recipient pinning, unreadable-reserve tolerance and governance strategy retirement',
     );
   } finally {
     validator.kill('SIGTERM');
