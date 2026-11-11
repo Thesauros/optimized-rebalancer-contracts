@@ -17,9 +17,13 @@ COPY ops/src ops/src
 COPY ops/scripts ops/scripts
 COPY deploy/crosschain/registry.ts deploy/crosschain/registry.ts
 COPY deploy/crosschain/native-registry.ts deploy/crosschain/native-registry.ts
-COPY deployments/base/crosschain.json deployments/base/crosschain.json
-COPY deployments/arbitrum/crosschain.json deployments/arbitrum/crosschain.json
-COPY deployments/mainnet/crosschain.json deployments/mainnet/crosschain.json
+# Manifests are copied as a directory, not one line per chain: the Ethereum spoke
+# is deployed after Base/Arbitrum, so deployments/mainnet/crosschain.json exists
+# on main/dev but not on a branch cut before it, and a named COPY of an absent
+# file fails the build. .dockerignore still decides which manifests enter the
+# context. This does not weaken the runtime check: config.ts throws
+# "missing manifest" for any registry chain without one (ops/src/config.ts).
+COPY deployments/ deployments/
 
 ENV NODE_ENV=production \
     TRANSFER_INDEX_FILE=/data/transfer-index.json \

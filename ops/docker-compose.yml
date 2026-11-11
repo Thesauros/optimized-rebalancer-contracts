@@ -2,16 +2,42 @@
 #
 #   stand (one key for every role):  docker compose -f ops/docker-compose.yml --profile stand up -d --build
 #   production (a key per role):     docker compose -f ops/docker-compose.yml --profile production up -d --build
+#   native Solana spoke:             add --profile solana to either of the above
+#   native operator CLI:             docker compose -f ops/docker-compose.yml --profile tools run --rm solana-cli rates
 #
 # Every service waits for `preflight`, which exits non-zero on any
 # misconfiguration, so nothing starts half-configured. Runbook: docs/crosschain-server.md.
+#
+# Native mounts, least privilege first (docs/solana-kamino.md):
+#   * the public manifest directory is read-only in every service, because
+#     monitor and indexer verify Ticks and are accounting readers too;
+#   * each keypair file is mounted on its own and only into the service that
+#     uses that signer, so monitor and indexer stay keyless and the observer
+#     never sees the EVM keys it does not sign with;
+#   * SOLANA_KEYS_DIR (default ops/keys) and SOLANA_CONFIG_DIR (default
+#     ops/config/solana) name the host directories. The container paths are
+#     fixed - /keys/solana-{executor,relayer,checkpoint}.json and
+#     /config/solana - and are the ones ops/.env.keys.example and
+#     ops/.env.server.example use; a different container path means editing both
+#     the mount and the variable. Docker turns a bind source that does not exist
+#     into an empty directory, so create ops/keys with the three JSON files
+#     (chmod 600) before enabling the solana profile. Preflight then fails on a
+#     missing or unreadable keypair instead of a service running without one.
+
+# Reused volume lines. Compose replaces `volumes` on merge instead of appending,
+# so each list below spells out what that service gets.
+x-vol-data: &vol-data ops-data:/data
+x-vol-manifest: &vol-manifest ${SOLANA_CONFIG_DIR:-./config/solana}:/config/solana:ro
+x-vol-key-executor: &vol-key-executor ${SOLANA_KEYS_DIR:-./keys}/solana-executor.json:/keys/solana-executor.json:ro
+x-vol-key-relayer: &vol-key-relayer ${SOLANA_KEYS_DIR:-./keys}/solana-relayer.json:/keys/solana-relayer.json:ro
+x-vol-key-checkpoint: &vol-key-checkpoint ${SOLANA_KEYS_DIR:-./keys}/solana-checkpoint.json:/keys/solana-checkpoint.json:ro
 
 x-common: &common
   image: thesauros/crosschain-ops:local
   init: true # node as PID 1 would ignore SIGTERM
   restart: unless-stopped
   env_file: [.env.server]
-  volumes: [ops-data:/data]
+  volumes: [*vol-data, *vol-manifest]
   logging:
     driver: json-file
     options: { max-size: 20m, max-file: "10" }
@@ -34,13 +60,17 @@ services:
     build: { context: .., dockerfile: ops/Dockerfile }
     env_file: [.env.server, .env.keys]
     restart: "no"
+    # reads every native keypair file to check its balance, so it mounts all three
+    volumes: [*vol-data, *vol-manifest, *vol-key-executor, *vol-key-relayer, *vol-key-checkpoint]
     command: ["src/preflight.ts", "--layout", "${OPS_LAYOUT:-operators}"]
-    profiles: [stand, production, tools]
+    profiles: [stand, production, tools, solana]
 
   # stand: nav, keeper and relayer share one key, so they share one process and
   # one nonce counter (ops/src/operators.ts)
   operators:
     <<: *signing
+    # the relayer half pays for permissionless native receipts
+    volumes: [*vol-data, *vol-manifest, *vol-key-relayer]
     environment:
       RPC_REQUESTS_PER_SECOND: "${OPERATORS_RPC_REQUESTS_PER_SECOND:-10}"
       RPC_COMPUTE_UNITS_PER_SECOND: "${OPERATORS_RPC_COMPUTE_UNITS_PER_SECOND:-40}"
@@ -66,10 +96,30 @@ services:
     healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8082/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
   relayer:
     <<: *signing
+    # delivers Base -> Solana and Solana -> Base, so it pays native fees too
+    volumes: [*vol-data, *vol-manifest, *vol-key-relayer]
     command: ["src/relayer.ts"]
     profiles: [production]
     ports: ["127.0.0.1:8083:8083"]
     healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8083/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
+
+  # Native checkpoints are what NAV prices Solana with, and standard RPC cannot
+  # read historical accounts: without this service a missing observation stops
+  # every new Tick. It signs natively only, so it gets the checkpoint keypair
+  # path and no EVM key file.
+  solana-observer:
+    <<: *common
+    environment:
+      # the observer gets no .env.keys, so the keypair path comes from here; the
+      # value has to equal the mount below, which is what preflight checks too
+      SOLANA_CHECKPOINT_KEYPAIR: "${SOLANA_CHECKPOINT_KEYPAIR:-/keys/solana-checkpoint.json}"
+    volumes: [*vol-data, *vol-manifest, *vol-key-checkpoint]
+    command: ["src/solana/observer.ts"]
+    profiles: [solana]
+    depends_on:
+      preflight: { condition: service_completed_successfully }
+    ports: ["127.0.0.1:8086:8086"]
+    healthcheck: { <<: *health, test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8086/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"] }
 
   # read-only services: no keys in their environment
   monitor:
@@ -100,6 +150,23 @@ services:
     env_file: [.env.server, .env.keys]
     restart: "no"
     entrypoint: ["node", "--require", "/app/node_modules/ts-node/register/transpile-only", "src/exec.ts"]
+    profiles: [tools]
+
+  # Native operator CLI (docs/solana-kamino.md), run on demand:
+  #   docker compose -f ops/docker-compose.yml --profile tools run --rm solana-cli rates
+  #   docker compose -f ops/docker-compose.yml --profile tools run --rm solana-cli allocate 0 10 --yes
+  # Writes simulate unless --yes is appended. `bridge-in` also signs on Base, so
+  # this service takes .env.keys like `exec` does.
+  solana-cli:
+    <<: *common
+    env_file: [.env.server, .env.keys]
+    restart: "no"
+    environment:
+      SOLANA_EXECUTOR_KEYPAIR: "${SOLANA_EXECUTOR_KEYPAIR:-/keys/solana-executor.json}"
+      SOLANA_RELAYER_KEYPAIR: "${SOLANA_RELAYER_KEYPAIR:-/keys/solana-relayer.json}"
+      SOLANA_CHECKPOINT_KEYPAIR: "${SOLANA_CHECKPOINT_KEYPAIR:-/keys/solana-checkpoint.json}"
+    volumes: [*vol-data, *vol-manifest, *vol-key-executor, *vol-key-relayer, *vol-key-checkpoint]
+    entrypoint: ["node", "--require", "/app/node_modules/ts-node/register/transpile-only", "src/solana/cli.ts"]
     profiles: [tools]
 
 volumes:

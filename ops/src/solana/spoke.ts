@@ -7,6 +7,7 @@ import { getBytes, hexlify, ZeroAddress, zeroPadValue } from 'ethers';
 import { SOLANA, SolanaManifest } from '../../../deploy/crosschain/native-registry';
 import type { NativeSpoke } from '../native';
 import type { ChainRef, InFlight, Position, TransferIndex } from '../snapshot';
+import { log } from '../util';
 import {
   aliasOf,
   checkpointPda,
@@ -17,6 +18,51 @@ import {
   Reader,
   seedBytes,
 } from './codec';
+
+/**
+ * The SQLite checkpoint cache is a trusted accounting input: `positionsAt`
+ * returns its amounts and the NAV hash prices deposits and redemptions with
+ * them, so the file carries the same confidentiality as a key and its newest
+ * rows are re-read from chain before they are believed.
+ *
+ * Owner-only, matching the signing journal (transactions.ts) and the event
+ * cache (util.ts): a world-readable cache invites a rewrite nobody notices.
+ */
+const CACHE_MODE = 0o600;
+const CACHE_DIR_MODE = 0o700;
+/**
+ * Rows re-verified against chain at startup. Enough to catch a file edited
+ * while the service was down, small enough that a restart stays one RPC call.
+ */
+const CACHE_REVERIFY_TAIL = 8;
+
+/**
+ * Equality of every field that reaches accounting, amounts included. Sequence
+ * contiguity, the discriminator and the agent binding are already checked by
+ * `validateCheckpoint`; a cache row edited in place keeps all of those and
+ * changes `idle`, `positions[].value` or a movement amount instead.
+ */
+function sameCheckpoint(a: NativeCheckpoint, b: NativeCheckpoint): boolean {
+  return (
+    a.agent.equals(b.agent) &&
+    a.sequence === b.sequence &&
+    a.slot === b.slot &&
+    a.timestamp === b.timestamp &&
+    a.idle === b.idle &&
+    a.positions.length === b.positions.length &&
+    a.positions.every(
+      (p, i) =>
+        p.reserve.equals(b.positions[i].reserve) &&
+        p.units === b.positions[i].units &&
+        p.value === b.positions[i].value,
+    ) &&
+    a.movement.kind === b.movement.kind &&
+    a.movement.transferId === b.movement.transferId &&
+    a.movement.peerChain === b.movement.peerChain &&
+    a.movement.amount === b.movement.amount &&
+    a.movement.minimum === b.movement.minimum
+  );
+}
 
 export function validateManifest(m: SolanaManifest): void {
   if (m.family !== 'solana' || m.network !== SOLANA.network) throw new Error('wrong Solana family/network');
@@ -212,22 +258,11 @@ export class SolanaSpoke implements NativeSpoke {
     await this.verify();
     const state = await this.state();
     if (!this.cacheLoaded) {
-      const file = process.env.SOLANA_CHECKPOINT_DB;
-      if (file) {
-        fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
-        this.cache = new DatabaseSync(file);
-        this.cache.exec(
-          'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS native_checkpoints(binding TEXT NOT NULL,sequence INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(binding,sequence))',
-        );
-        for (const row of this.cache
-          .prepare('SELECT data FROM native_checkpoints WHERE binding=? ORDER BY sequence')
-          .all(this.binding)) {
-          const data = Buffer.from(row.data as Uint8Array),
-            cp = decodeCheckpoint(data);
-          this.validateCheckpoint(cp, this.checkpoints.length);
-          this.checkpoints.push(cp);
-        }
-      }
+      const cached = this.openCache();
+      if (BigInt(cached.length) > state.sequence)
+        throw new Error('native checkpoint cache is ahead of finalized chain state');
+      const trusted = await this.reverifyCacheTail(cached);
+      for (let i = 0; i < trusted; i++) this.checkpoints.push(cached[i]);
       this.cacheLoaded = true;
     }
     if (BigInt(this.checkpoints.length) > state.sequence)
@@ -249,9 +284,71 @@ export class SolanaSpoke implements NativeSpoke {
       }
     }
   }
-  private validateCheckpoint(cp: NativeCheckpoint, sequence: number) {
+  /**
+   * Open the durable cache owner-only and return its rows for this binding,
+   * oldest first. An empty file is created before SQLite opens it so the umask
+   * default (0644) is never applied, and an existing file is tightened in place:
+   * upgrading from an earlier version must not leave the NAV input readable by
+   * every other user of the host or of the mounted /data volume.
+   */
+  private openCache(): NativeCheckpoint[] {
+    const file = process.env.SOLANA_CHECKPOINT_DB;
+    if (!file) return [];
+    const db = path.resolve(file);
+    fs.mkdirSync(path.dirname(db), { recursive: true, mode: CACHE_DIR_MODE });
+    if (!fs.existsSync(db)) fs.writeFileSync(db, '', { mode: CACHE_MODE });
+    fs.chmodSync(db, CACHE_MODE);
+    this.cache = new DatabaseSync(db);
+    this.cache.exec(
+      'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS native_checkpoints(binding TEXT NOT NULL,sequence INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(binding,sequence))',
+    );
+    // SQLite gives the WAL sidecars the umask default; they hold the same rows.
+    for (const suffix of ['-wal', '-shm']) if (fs.existsSync(db + suffix)) fs.chmodSync(db + suffix, CACHE_MODE);
+    const cached: NativeCheckpoint[] = [];
+    for (const row of this.cache
+      .prepare('SELECT data FROM native_checkpoints WHERE binding=? ORDER BY sequence')
+      .all(this.binding)) {
+      const cp = decodeCheckpoint(Buffer.from(row.data as Uint8Array));
+      this.validateCheckpoint(cp, cached.length, cached.at(-1));
+      cached.push(cp);
+    }
+    return cached;
+  }
+  /**
+   * Returns how many leading cache rows to keep. The caller has established
+   * that the cache does not run past finalized chain state, so the newest
+   * CACHE_REVERIFY_TAIL rows exist on chain and can be re-read and compared
+   * field by field. The first disagreement drops that row and every row after
+   * it, in memory and in the file, and readNewCheckpoints rebuilds the tail.
+   *
+   * Without this the cache is an unauthenticated NAV input: `validateCheckpoint`
+   * checks the discriminator, the agent binding, sequence contiguity, slot and
+   * timestamp monotonicity and the strategy set, none of which constrain an
+   * amount, and `positionsAt` hands the cached amounts to the NAV hash.
+   */
+  private async reverifyCacheTail(cached: NativeCheckpoint[]): Promise<number> {
+    const from = Math.max(0, cached.length - CACHE_REVERIFY_TAIL);
+    if (from >= cached.length) return cached.length;
+    const count = cached.length - from;
+    const keys = Array.from({ length: count }, (_, n) => checkpointPda(this.program, this.agent, BigInt(from + n)));
+    const infos = await this.connection.getMultipleAccountsInfo(keys, 'finalized');
+    for (let n = 0; n < infos.length; n++) {
+      const sequence = from + n,
+        info = infos[n];
+      if (!info || !info.owner.equals(this.program)) throw new Error(`missing native checkpoint ${sequence}`);
+      if (sameCheckpoint(decodeCheckpoint(info.data), cached[sequence])) continue;
+      log('solana-spoke', 'native checkpoint cache disagrees with chain; discarding from that sequence', {
+        agent: this.agent.toBase58(),
+        sequence,
+        discarded: cached.length - sequence,
+      });
+      this.cache?.prepare('DELETE FROM native_checkpoints WHERE binding=? AND sequence>=?').run(this.binding, sequence);
+      return sequence;
+    }
+    return cached.length;
+  }
+  private validateCheckpoint(cp: NativeCheckpoint, sequence: number, prior = this.checkpoints.at(-1)) {
     if (!cp.agent.equals(this.agent) || cp.sequence !== BigInt(sequence)) throw new Error('invalid checkpoint binding');
-    const prior = this.checkpoints.at(-1);
     if (prior && (cp.slot < prior.slot || cp.timestamp < prior.timestamp))
       throw new Error('native history is not monotonic');
     if (
