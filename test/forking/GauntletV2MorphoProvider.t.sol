@@ -9,6 +9,7 @@ import {MorphoV2Provider} from "../../contracts/providers/MorphoV2Provider.sol";
 import {IMorphoVaultV2} from "../../contracts/interfaces/morpho/IMorphoVaultV2.sol";
 import {IProvider} from "../../contracts/interfaces/IProvider.sol";
 import {Rebalancer} from "../../contracts/Rebalancer.sol";
+import {ForkPins} from "./ForkPins.sol";
 
 abstract contract GauntletV2ForkTest is Test {
     IERC20 internal usdc;
@@ -18,11 +19,22 @@ abstract contract GauntletV2ForkTest is Test {
     Rebalancer internal vault;
     address internal alice = makeAddr("alice");
 
-    function _config() internal view virtual returns (string memory rpc, address asset, address v2, address v1);
+    function _config()
+        internal
+        view
+        virtual
+        returns (string memory rpc, address asset, address v2, address v1, string memory pinVar, uint256 pin);
 
     function setUp() public {
-        (string memory rpc, address asset, address v2, address v1) = _config();
-        vm.createSelectFork(rpc);
+        (
+            string memory rpc,
+            address asset,
+            address v2,
+            address v1,
+            string memory pinVar,
+            uint256 pin
+        ) = _config();
+        ForkPins.selectFork(vm, rpc, pinVar, pin);
         usdc = IERC20(asset);
         source = IMorphoVaultV2(v2);
         provider = new MorphoV2Provider(v2);
@@ -116,23 +128,37 @@ abstract contract GauntletV2ForkTest is Test {
 }
 
 contract GauntletV2BaseForkTest is GauntletV2ForkTest {
-    function _config() internal view override returns (string memory, address, address, address) {
+    function _config()
+        internal
+        view
+        override
+        returns (string memory, address, address, address, string memory, uint256)
+    {
         return (
             vm.envString("BASE_RPC_URL"),
             0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913,
             0x050cE30b927Da55177A4914EC73480238BAD56f0,
-            0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12
+            0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12,
+            ForkPins.BASE_VAR,
+            ForkPins.BASE
         );
     }
 }
 
 contract GauntletV2EthereumForkTest is GauntletV2ForkTest {
-    function _config() internal view override returns (string memory, address, address, address) {
+    function _config()
+        internal
+        view
+        override
+        returns (string memory, address, address, address, string memory, uint256)
+    {
         return (
             vm.envString("ETHEREUM_RPC_URL"),
             0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,
             0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0,
-            0xdd0f28e19C1780eb6396170735D45153D261490d
+            0xdd0f28e19C1780eb6396170735D45153D261490d,
+            ForkPins.ETHEREUM_VAR,
+            ForkPins.ETHEREUM
         );
     }
 }

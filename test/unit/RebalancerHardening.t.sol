@@ -347,6 +347,98 @@ contract RebalancerHardeningTest is Test {
         assertEq(asset.allowance(address(vault), address(sourceC)), type(uint256).max);
     }
 
+    /// @dev The escape hatch for the deadlock asserted above. The timelock writes the
+    ///      unpriceable position off, which restores a complete NAV so entries and exits
+    ///      work again. The written-off value is gone from `totalAssets()` and the holders
+    ///      absorb it; the claim on the source survives so governance can recover it later
+    ///      by listing a working provider for that same source.
+    function testForceRemoveProviderUnblocksTheVault() public {
+        uint256 healthyTotal = vault.totalAssets();
+
+        FeeCapSource sourceC = new FeeCapSource(IERC20(address(asset)));
+        BrokenProvider broken = new BrokenProvider(address(sourceC), false);
+        IProvider[] memory ps = new IProvider[](3);
+        ps[0] = providerA;
+        ps[1] = providerB;
+        ps[2] = broken;
+        vault.setProviders(ps);
+
+        asset.mint(address(this), 10 * ONE);
+        asset.approve(address(sourceC), 10 * ONE);
+        sourceC.simulateYield(address(vault), 10 * ONE);
+
+        vm.expectRevert(IRebalancer.ProviderUnavailable.selector);
+        vault.totalAssets();
+
+        vm.expectEmit(true, false, false, false);
+        emit IRebalancer.ProviderForcedOut(address(broken));
+        vault.forceRemoveProvider(address(broken));
+
+        IProvider[] memory left = vault.getProviders();
+        assertEq(left.length, 2, "broken provider dropped");
+        assertEq(address(left[0]), address(providerA));
+        assertEq(address(left[1]), address(providerB));
+        assertTrue(vault.providersHealthy(), "vault is readable again");
+        assertEq(vault.totalAssets(), healthyTotal, "written-off value left NAV");
+        assertEq(vault.getPinnedProviderSource(broken), address(0), "source unpinned");
+        assertEq(asset.allowance(address(vault), address(sourceC)), 0, "stale approval revoked");
+        assertEq(sourceC.balanceOf(address(vault)), 10 * ONE, "claim not swept, still recoverable");
+
+        // holders can exit again
+        vm.prank(alice);
+        vault.withdraw(100 * ONE, alice, alice);
+        assertEq(asset.balanceOf(alice), 100 * ONE);
+
+        // and entries are priced against a complete NAV again
+        asset.mint(bob, 10 * ONE);
+        vm.startPrank(bob);
+        asset.approve(address(vault), 10 * ONE);
+        vault.deposit(10 * ONE, bob);
+        vm.stopPrank();
+        assertGt(vault.balanceOf(bob), 0);
+    }
+
+    /// @dev A readable position goes through `setProviders`, which proves it empty. Letting
+    ///      the timelock force out a healthy provider would be a way to strand real funds.
+    function testForceRemoveProviderRefusesAReadableProvider() public {
+        vm.expectRevert(abi.encodeWithSelector(IRebalancer.ProviderStillReadable.selector, address(providerB)));
+        vault.forceRemoveProvider(address(providerB));
+        assertEq(vault.getProviders().length, 2);
+    }
+
+    /// @dev The entry provider receives every deposit; dropping it would leave them nowhere
+    ///      to go, and `setProviders` refuses the same thing via `EntryProviderNotInProviders`.
+    function testForceRemoveProviderRefusesTheEntryProvider() public {
+        FeeCapSource sourceC = new FeeCapSource(IERC20(address(asset)));
+        BrokenProvider broken = new BrokenProvider(address(sourceC), false);
+        IProvider[] memory ps = new IProvider[](3);
+        ps[0] = providerA;
+        ps[1] = providerB;
+        ps[2] = broken;
+        vault.setProviders(ps);
+        vm.prank(admin);
+        vault.setEntryProvider(broken);
+
+        vm.expectRevert(abi.encodeWithSelector(IRebalancer.ProviderIsEntry.selector, address(broken)));
+        vault.forceRemoveProvider(address(broken));
+        assertEq(vault.getProviders().length, 3);
+    }
+
+    function testForceRemoveProviderIsTimelockOnly() public {
+        vm.prank(admin);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.forceRemoveProvider(address(providerB));
+
+        vm.prank(executor);
+        vm.expectRevert(IAccessManager.Unauthorized.selector);
+        vault.forceRemoveProvider(address(providerB));
+    }
+
+    function testForceRemoveProviderRejectsAnUnlistedProvider() public {
+        vm.expectRevert(IRebalancer.InvalidProvider.selector);
+        vault.forceRemoveProvider(makeAddr("stranger"));
+    }
+
     function testEmptyProviderWithBrokenSourceCanStillBeRemoved() public {
         FeeCapSource sourceC = new FeeCapSource(IERC20(address(asset)));
         EmptyBrokenSourceProvider broken = new EmptyBrokenSourceProvider(address(sourceC));
