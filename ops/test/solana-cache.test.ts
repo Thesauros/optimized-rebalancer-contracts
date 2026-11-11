@@ -88,6 +88,7 @@ function agentBlob(sequence: bigint) {
     key(7).toBuffer(),
     key(7).toBuffer(),
     u64(10_000_000n),
+    Buffer.from([0]), // strategy not retired
   ]);
 }
 
@@ -104,6 +105,7 @@ function checkpoint(sequence: bigint, slot: bigint, time: bigint, idleValue: big
     reserve.toBuffer(),
     u64(5_000_000n),
     u64(6_000_000n),
+    Buffer.from([0]), // observation succeeded, so `value` above is a price and not an unknown
     Buffer.from([0]), // no movement: keeps the RPC double to account reads
     Buffer.alloc(32),
     u64(8453n),
