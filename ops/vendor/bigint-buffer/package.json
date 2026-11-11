@@ -1,0 +1,8 @@
+{
+  "name": "@thesauros/bigint-buffer",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "description": "Pure JavaScript compatibility boundary for legacy Solana buffer-layout dependencies; no native addon"
+}

@@ -1,0 +1,135 @@
+name: Native Solana and cross-chain regression
+
+on:
+  # push as well as pull_request: a merge resolution or a direct push to a
+  # long-lived branch is otherwise never tested.
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-and-ops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: npm ci --ignore-scripts
+      - run: FOUNDRY_AUTO_DETECT_REMAPPINGS=false npx hardhat compile
+      - run: forge test --no-match-path 'test/forking/*'
+      - run: npm run test:deploy
+      - run: npm ci --ignore-scripts
+        working-directory: ops
+      - run: npm run typecheck && npm test && npm audit --audit-level=high
+        working-directory: ops
+
+  native-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked --manifest-path solana/Cargo.toml
+      - run: cargo install cargo-build-sbf --version 4.5.0 --locked
+      - run: cargo build-sbf --manifest-path solana/programs/chain-agent/Cargo.toml --arch v2 -- --locked
+      - run: cargo build-sbf --manifest-path solana/tests/mock-kamino/Cargo.toml --arch v2 -- --locked
+      # The end-to-end job loads exactly these bytes into the validator, so a
+      # rename or a failed build surfaces here instead of as a missing file there.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solana-sbf
+          path: |
+            solana/target/deploy/thesauros_chain_agent.so
+            solana/target/deploy/thesauros_test_kamino.so
+          if-no-files-found: error
+          retention-days: 7
+
+  # Real agent SBF and the real SPL token program in an isolated local validator
+  # (ops/test/solana-sbf.e2e.ts): initialization, observation, deposit, complete
+  # redemption, principal conservation, executor rejection, atomic minimum-output
+  # rollback, pause/unwind and fixed recipient pinning.
+  #
+  # Runs automatically on every pull request, push to main/dev and manual
+  # dispatch, against the artifacts native-build produced. Its Kamino component
+  # is the repository's explicitly named CPI double, not deployed Kamino bytecode.
+  #
+  # Stays a manual activation gate: the Circle CCTP V2 half of the same file,
+  # which is the only automated evidence for the native PDA burn, real secp256k1
+  # attestation, authenticated receive while paused, forged-sender and replay
+  # rejection, balance conservation, bounded governance write-down, finalized
+  # source indexing, historical position values and SQLite restart recovery. It
+  # needs read-only dumps of Circle's two mainnet programs; those are not
+  # artifacts of this repository and are not fetched by default, so the step
+  # reports the gate instead of passing silently over it. Set the repository
+  # variable CCTP_MAINNET_DUMP=true to dump both at their registry addresses and
+  # run that half too: a failure then fails the job. The dump goes through a
+  # public mainnet RPC, so a dump failure may be the RPC rather than this code.
+  native-e2e:
+    needs: native-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Pinned to the release the recorded verification ran on; the SBPF v2 build
+      # above and this validator have to agree.
+      SOLANA_CLI_VERSION: v4.3.2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+        working-directory: ops
+      - uses: actions/download-artifact@v4
+        with:
+          name: solana-sbf
+          path: solana/target/deploy
+      - name: Install the pinned local validator
+        run: |
+          set -euo pipefail
+          curl -sSfL -o "$RUNNER_TEMP/solana-release.tar.bz2" \
+            "https://github.com/anza-xyz/agave/releases/download/${SOLANA_CLI_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          tar -xjf "$RUNNER_TEMP/solana-release.tar.bz2" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/solana-release/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/solana-release/bin/solana-test-validator" --version
+      - name: SBF end-to-end suite
+        working-directory: ops
+        run: npm run test:solana-sbf
+      - name: Dump Circle CCTP V2 programs (opt-in gate)
+        if: vars.CCTP_MAINNET_DUMP == 'true'
+        shell: bash
+        working-directory: ops
+        run: |
+          set -euo pipefail
+          # Addresses come from the native registry, not from this file, so the
+          # dump cannot drift away from what the relayer and agent are bound to.
+          cctp=$(node --require ts-node/register/transpile-only -p \
+            "const c=require('../deploy/crosschain/native-registry').SOLANA.cctp; console.log(c.tokenMessenger, c.messageTransmitter)")
+          tm=${cctp% *}; mt=${cctp#* }
+          solana program dump "$tm" "$RUNNER_TEMP/token-messenger-v2.so" --url mainnet-beta
+          solana program dump "$mt" "$RUNNER_TEMP/message-transmitter-v2.so" --url mainnet-beta
+          {
+            echo "CCTP_TOKEN_MESSENGER_BINARY=$RUNNER_TEMP/token-messenger-v2.so"
+            echo "CCTP_MESSAGE_TRANSMITTER_BINARY=$RUNNER_TEMP/message-transmitter-v2.so"
+          } >> "$GITHUB_ENV"
+      - name: Real Circle CCTP V2 receive path
+        shell: bash
+        working-directory: ops
+        run: |
+          set -euo pipefail
+          tm="${CCTP_TOKEN_MESSENGER_BINARY:-}"
+          mt="${CCTP_MESSAGE_TRANSMITTER_BINARY:-}"
+          if [ -n "$tm" ] && [ -f "$tm" ] && [ -n "$mt" ] && [ -f "$mt" ]; then
+            npm run test:solana-cctp
+          else
+            echo "MANUAL GATE, NOT RUN: no Circle CCTP V2 program dumps, so the burn/receive,"
+            echo "attestation, replay and forgery, write-down, source indexing and SQLite"
+            echo "restart-recovery assertions were skipped. Set CCTP_MAINNET_DUMP=true to run"
+            echo "them, or run 'npm run test:solana-cctp' locally with both binaries."
+          fi

@@ -1,11 +1,17 @@
-# allowlist: the ops image needs only these (see ops/Dockerfile)
+# allowlist: the ops image needs only these (see ops/Dockerfile). Everything
+# else never reaches the build context, so it cannot leak into an image layer:
+# .git, .env, ops/.env.server, ops/.env.keys, solana/, contracts/, test fixtures
+# and any keypair or mnemonic file a checkout may carry.
 *
 !ops/package.json
 !ops/package-lock.json
+!ops/.npmrc
+!ops/vendor
 !ops/tsconfig.json
 !ops/src
 !ops/scripts
 !deploy/crosschain/registry.ts
+!deploy/crosschain/native-registry.ts
 # one glob, not a line per chain: `*` matches a single path segment, so this admits
 # exactly deployments/<key>/crosschain.json for every network, present or future
 !deployments/*/crosschain.json

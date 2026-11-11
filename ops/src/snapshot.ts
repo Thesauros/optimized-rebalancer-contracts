@@ -10,6 +10,7 @@ import path from 'node:path';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, SNAPSHOT_TUPLE, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, hubOf } from './config';
 import { blockAtOrBefore, scanMany, semaphore } from './util';
+import { loadNativeSpokes, NativeSpoke } from './native';
 
 export const KIND_IDLE = 0;
 export const KIND_STRATEGY_SHARES = 1;
@@ -250,6 +251,7 @@ export class TransferIndex {
   }
 
   private async syncRanges(chains: Chain[], upTo?: Map<string, number>): Promise<void> {
+    for (const native of loadNativeSpokes()) await native.sync(this);
     for (const c of chains) {
       const agent = new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider);
       const head = upTo?.get(c.key) ?? (await c.provider.getBlockNumber());
@@ -301,7 +303,10 @@ const sharedIndexes = new Map<string, Promise<TransferIndex>>();
 
 /** The deployment identity of each chain, keyed by registry key. */
 export function chainBindings(chains: Chain[]): Record<string, string> {
-  return Object.fromEntries(chains.map((c) => [c.key, `${c.key}:${c.chainId}:${c.manifest.contracts.ChainAgent.toLowerCase()}`]));
+  return Object.fromEntries([
+    ...chains.map((c) => [c.key, `${c.key}:${c.chainId}:${c.manifest.contracts.ChainAgent.toLowerCase()}`]),
+    ...loadNativeSpokes().map((c) => [c.key, c.binding]),
+  ]);
 }
 
 export function fingerprintOf(bindings: string[]): string {
@@ -461,13 +466,16 @@ async function positionsAt(c: Chain, block: number, prevOffers: Map<string, bigi
   return out;
 }
 
-async function inFlightAt(chains: Chain[], refs: Map<string, number>, index: TransferIndex): Promise<InFlight[]> {
+async function inFlightAt(chains: Chain[], refs: Map<string, number>, index: TransferIndex, natives: NativeSpoke[] = []): Promise<InFlight[]> {
   const byKey = new Map(chains.map((c) => [c.key, c]));
   const out: InFlight[] = [];
   for (const [id, s] of index.sent) {
+    if (!refs.has(s.chainKey)) continue;
     if (s.block > refs.get(s.chainKey)!) continue;
     const r = index.received.get(id);
     if (r && r.block <= refs.get(r.chainKey)!) continue;
+    const native = natives.find((c) => c.key === s.chainKey);
+    if (native) { out.push(await native.sentAt(id, refs.get(s.chainKey)!)); continue; }
     const src = byKey.get(s.chainKey)!;
     const agent = new Contract(src.manifest.contracts.ChainAgent, CHAIN_AGENT, src.provider);
     const rec = await agent.getSent(id, { blockTag: refs.get(s.chainKey)! });
@@ -512,7 +520,8 @@ export async function buildSnapshot(allChains: Chain[], index: TransferIndex, pr
   // setChains is still queued in the Timelock, snapshots must not include it
   const onChain: bigint[] = (await new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider).chainIds()).map((x: bigint) => BigInt(x));
   const chains = allChains.filter((c) => onChain.includes(c.chainId));
-  const missing = onChain.filter((id) => !chains.some((c) => c.chainId === id));
+  const natives = loadNativeSpokes().filter((c) => onChain.includes(c.chainId));
+  const missing = onChain.filter((id) => ![...chains,...natives].some((c) => c.chainId === id));
   if (missing.length) throw new Error(`accountant tracks chains not configured here: ${missing.join(',')}`);
   // Catch up before selecting the short-lived hub reference.
   await index.sync(chains);
@@ -534,31 +543,71 @@ export async function buildSnapshot(allChains: Chain[], index: TransferIndex, pr
     const ts = (await c.provider.getBlock(lo))!.timestamp;
     refs.set(c.key, ts > t ? lo : await blockAtOrBefore(c.provider, t, lo, confirmed));
   }
+  for (const c of natives) {
+    const ref = await c.referenceAt(t);
+    refs.set(c.key, Number(ref.blockNumber));
+    confirmedHeads.set(c.key, Number(ref.blockNumber));
+  }
 
   // the index runs to the raw heads so a receipt is never seen without its send;
   // the cut is what enforces confirmation depth, by dropping such a receipt back
   // into flight rather than referencing an unconfirmed block
   await index.sync(chains, heads);
-  const cut = consistentCut(refs, index, confirmedHeads);
-  return assemble(chains, index, cut, prevOffers);
+  const cut = await nativeConsistentCut(refs, index, confirmedHeads, natives, t,
+    async (cut) => (await hub.provider.getBlock(cut.get(hub.key)!))!.timestamp);
+  return assemble(chains, index, cut, prevOffers, undefined, natives);
 }
 
-async function assemble(chains: Chain[], index: TransferIndex, refs: Map<string, number>, prevOffers: Map<string, bigint>, tickIdOverride?: bigint): Promise<Built> {
+/** Snap native refs to actual immutable observations after each causal rollback. */
+export async function nativeConsistentCut(
+  refs: Map<string,number>,
+  index: TransferIndex,
+  ceilings: Map<string,number>,
+  natives: NativeSpoke[],
+  timestamp: number,
+  hubTime?: (cut:Map<string,number>)=>Promise<number>,
+): Promise<Map<string,number>> {
+  let cut = new Map(refs);
+  const cap = new Map(ceilings);
+  for (let attempt = 0; attempt < 1024; attempt++) {
+    const next = consistentCut(cut,index,cap);
+    if (hubTime) timestamp = await hubTime(next);
+    let changed = false;
+    for (const c of natives) {
+      const current = next.get(c.key)!;
+      const ref = await c.referenceAt(timestamp,current);
+      if (Number(ref.blockNumber) !== current) {
+        next.set(c.key,Number(ref.blockNumber)); cap.set(c.key,Number(ref.blockNumber)); changed = true;
+      }
+    }
+    if (!changed) return next;
+    cut = next;
+  }
+  throw new Error('native consistent cut did not converge');
+}
+
+async function assemble(chains: Chain[], index: TransferIndex, refs: Map<string, number>, prevOffers: Map<string, bigint>, tickIdOverride?: bigint, natives: NativeSpoke[] = []): Promise<Built> {
   const hub = hubOf(chains);
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
   const unhealthy: string[] = [];
   let positions: Position[] = [];
   for (const c of chains) positions = positions.concat(await positionsAt(c, refs.get(c.key)!, prevOffers, unhealthy));
+  for (const c of natives) positions = positions.concat(await c.positionsAt(refs.get(c.key)!));
   const hubBlock = refs.get(hub.key)!;
   const hubFields = await hubFieldsAt(hub, hubBlock);
   const tickId = tickIdOverride ?? BigInt(await accountant.lastTickId()) + 1n;
+  const nativeRefs = await Promise.all(natives.map(async (c) => ({
+    chainId:c.chainId,
+    blockNumber:BigInt(refs.get(c.key)!),
+    blockHash:await c.referenceHash(refs.get(c.key)!),
+  })));
   const snapshot: Snapshot = {
     version: 1,
     tickId,
     referenceTime: BigInt((await hub.provider.getBlock(hubBlock))!.timestamp),
-    chains: await chainRefs(chains, refs),
+    chains: [...await chainRefs(chains, refs), ...nativeRefs].sort((a,b) => a.chainId < b.chainId ? -1 : 1),
     positions: sortPositions(positions),
-    inFlight: await inFlightAt(chains, refs, index),
+    inFlight: await inFlightAt(chains, refs, index, natives),
     hubCash: hubFields.cash,
     pendingDeposits: hubFields.pendingDeposits,
     liabilities: hubFields.liabilities,
@@ -629,6 +678,7 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
   const committed = await committedSnapshot(hub, tickId);
   if (!committed) return { tickId, ok: true, mismatches: [] };
   const s = committed.snapshot;
+  const natives = loadNativeSpokes().filter((c) => s.chains.some((r) => r.chainId === c.chainId));
   const mismatches: string[] = [];
 
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
@@ -637,7 +687,7 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
 
   const refs = new Map<string, number>();
   for (const r of s.chains) {
-    if (!chains.some((c) => c.chainId === r.chainId)) mismatches.push(`snapshot chain ${r.chainId} is not configured here`);
+    if (![...chains,...natives].some((c) => c.chainId === r.chainId)) mismatches.push(`snapshot chain ${r.chainId} is not configured here`);
   }
   chains = chains.filter((c) => s.chains.some((r) => r.chainId === c.chainId));
   for (const c of chains) {
@@ -645,6 +695,13 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
     const b = await c.provider.getBlock(Number(ref.blockNumber));
     if (!b || b.hash !== ref.blockHash) mismatches.push(`${c.key}: block ${ref.blockNumber} hash mismatch (reorg or wrong reference)`);
     refs.set(c.key, Number(ref.blockNumber));
+  }
+  for (const c of natives) {
+    await c.sync(index);
+    const ref = s.chains.find((r) => r.chainId === c.chainId)!;
+    const selected = await c.referenceAt(Number(s.referenceTime),Number(ref.blockNumber));
+    if (selected.blockNumber !== ref.blockNumber || selected.blockHash !== ref.blockHash) mismatches.push(`${c.key}: checkpoint or finalized block hash mismatch`);
+    refs.set(c.key,Number(ref.blockNumber));
   }
   if (mismatches.length) return { tickId, ok: false, mismatches };
 
@@ -663,7 +720,7 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
     }
   }
 
-  const rebuilt = (await assemble(chains, index, refs, prevOffers, s.tickId)).snapshot;
+  const rebuilt = (await assemble(chains, index, refs, prevOffers, s.tickId, natives)).snapshot;
   if (rebuilt.referenceTime !== s.referenceTime) {
     mismatches.push(`referenceTime ${s.referenceTime} is not the hub reference block's timestamp ${rebuilt.referenceTime}`);
   }
