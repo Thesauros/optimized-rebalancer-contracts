@@ -14,14 +14,17 @@ RUN npm ci --ignore-scripts && npm cache clean --force
 
 COPY ops/tsconfig.json ops/tsconfig.json
 COPY ops/src ops/src
+# extract-errors.js, the script that wrote the committed src/errors.json. It needs
+# artifacts/, which the image does not carry, so it never runs here; the COPY stays
+# because the image is meant to hold the ops source tree whole.
 COPY ops/scripts ops/scripts
 COPY deploy/crosschain/registry.ts deploy/crosschain/registry.ts
 COPY deploy/crosschain/native-registry.ts deploy/crosschain/native-registry.ts
-# Manifests are copied as a directory, not one line per chain: the Ethereum spoke
-# is deployed after Base/Arbitrum, so deployments/mainnet/crosschain.json exists
-# on main/dev but not on a branch cut before it, and a named COPY of an absent
-# file fails the build. .dockerignore still decides which manifests enter the
-# context. This does not weaken the runtime check: config.ts throws
+# Manifests are copied as a directory, not one line per chain. The Ethereum spoke is
+# in the registry but not deployed, so deployments/mainnet/crosschain.json exists on
+# no branch, and a named COPY of an absent file fails the build of every release from
+# this tree, unrelated hotfixes included. .dockerignore still decides which manifests
+# enter the context. This does not weaken the runtime check: config.ts throws
 # "missing manifest" for any registry chain without one (ops/src/config.ts).
 COPY deployments/ deployments/
 
