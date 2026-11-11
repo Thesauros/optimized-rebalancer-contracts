@@ -49,7 +49,7 @@ export interface NativeCheckpoint {
   slot: number;
   timestamp: number;
   idle: bigint;
-  positions: { reserve: PublicKey; units: bigint; value: bigint }[];
+  positions: { reserve: PublicKey; units: bigint; value: bigint; observationFailed: boolean }[];
   movement: { kind: number; transferId: string; peerChain: bigint; amount: bigint; minimum: bigint };
 }
 export function safeNumber(n: bigint): number {
@@ -67,7 +67,15 @@ export function decodeCheckpoint(data: Buffer): NativeCheckpoint {
     idle = r.u64();
   const count = r.u32();
   if (count > 8) throw new Error('too many native positions');
-  const positions = Array.from({ length: count }, () => ({ reserve: r.key(), units: r.u64(), value: r.u64() }));
+  // `observationFailed` means the reserve could not be refreshed or valued in
+  // that slot: `value` is then unknown, not zero. Decoded here so no consumer
+  // can mistake it for a real position; NAV must fail closed on it.
+  const positions = Array.from({ length: count }, () => ({
+    reserve: r.key(),
+    units: r.u64(),
+    value: r.u64(),
+    observationFailed: r.u8() !== 0,
+  }));
   const movement = {
     kind: r.u8(),
     transferId: hexlify(r.take(32)),
@@ -91,6 +99,9 @@ export interface NativeStrategy {
   collateral: PublicKey;
   oracles: PublicKey[];
   cap: bigint;
+  /** Governance retired this strategy: it carries no observation accounts and
+   * its checkpoint position is a permanent zero. */
+  retired: boolean;
 }
 export function decodeAgent(data: Buffer) {
   const r = new Reader(data);
@@ -129,6 +140,7 @@ export function decodeAgent(data: Buffer) {
     collateral: r.key(),
     oracles: Array.from({ length: 4 }, () => r.key()),
     cap: r.u64(),
+    retired: r.u8() !== 0,
   }));
   return { seed, bump, governance, executor, guardian, idle, paused, sequence, route, level, updatedAt, strategies };
 }

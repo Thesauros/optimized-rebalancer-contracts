@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { PublicKey, Connection, Keypair } from '@solana/web3.js';
+import { PublicKey, Connection, Keypair, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import { Reserve } from '@kamino-finance/klend-sdk/dist/@codegen/klend/accounts/Reserve';
 import { LendingMarket } from '@kamino-finance/klend-sdk/dist/@codegen/klend/accounts/LendingMarket';
 import {
@@ -20,7 +20,16 @@ import BN from 'bn.js';
 import { SOLANA, SolanaManifest } from '../../deploy/crosschain/native-registry';
 import { NETWORKS } from '../../deploy/crosschain/registry';
 import { aliasOf, checkpointPda, decodeCheckpoint, discriminator, NativeStrategy, u64 } from '../src/solana/codec';
-import { burnAccounts, receiveAccounts, executeInstruction, allocateData } from '../src/solana/instructions';
+import {
+  burnAccounts,
+  receiveAccounts,
+  executeInstruction,
+  allocateData,
+  initializeInstruction,
+  LOADER_PROGRAM,
+  programDataAddress,
+  retireStrategyInstruction,
+} from '../src/solana/instructions';
 import {
   collateralForAssets,
   kaminoAdapter,
@@ -47,6 +56,7 @@ const strategy: NativeStrategy = {
   collateral: key(6),
   oracles: [KAMINO_PROGRAM, KAMINO_PROGRAM, KAMINO_PROGRAM, key(7)],
   cap: 10_000_000n,
+  retired: false,
 };
 const program = key(9),
   seed = Buffer.alloc(32, 10),
@@ -74,6 +84,7 @@ function checkpoint(
   idleValue: bigint,
   kind = 0,
   id = Buffer.alloc(32, 0),
+  observationFailed = 0,
 ) {
   return Buffer.concat([
     discriminator('account:Checkpoint'),
@@ -86,6 +97,7 @@ function checkpoint(
     strategy.reserve.toBuffer(),
     u64(5_000_000n),
     u64(6_000_000n),
+    Buffer.from([observationFailed]),
     Buffer.from([kind]),
     id,
     u64(8453n),
@@ -117,9 +129,91 @@ test('native checkpoint decoder rejects wrong/truncated/malformed history', () =
   const cp = decodeCheckpoint(checkpoint(2n, 100n, 1_800_000_000n, 1_000_000n));
   assert.equal(cp.sequence, 2n);
   assert.equal(cp.positions[0].value, 6_000_000n);
+  assert.equal(cp.positions[0].observationFailed, false);
+  assert.equal(
+    decodeCheckpoint(checkpoint(2n, 100n, 1_800_000_000n, 1_000_000n, 0, Buffer.alloc(32, 0), 1)).positions[0]
+      .observationFailed,
+    true,
+    'an unreadable reserve is decoded as unknown, never as a zero price',
+  );
+  assert.equal(checkpoint(0n, 1n, 1n, 0n).length, 133 + 49, 'canonical checkpoint serialization');
   assert.throws(() => decodeCheckpoint(Buffer.alloc(8)), /discriminator/);
   assert.throws(() => decodeCheckpoint(checkpoint(0n, 1n, 1n, 0n).subarray(0, 55)), /truncated/);
   assert.throws(() => decodeCheckpoint(checkpoint(0n, 1n, 1n, 0n, 9)), /movement/);
+});
+test('initialize binds the agent PDA to the recorded program upgrade authority', () => {
+  const governance = Keypair.generate(),
+    upgradeAuthority = Keypair.generate(),
+    programData = programDataAddress(program);
+  assert.equal(
+    programData.toBase58(),
+    PublicKey.findProgramAddressSync([program.toBuffer()], LOADER_PROGRAM)[0].toBase58(),
+  );
+  assert.notEqual(programData.toBase58(), program.toBase58());
+  const route = Buffer.concat([
+    u64(8453n),
+    Buffer.from([6, 0, 0, 0]),
+    Buffer.alloc(32, 1),
+    Buffer.alloc(32, 2),
+    Buffer.alloc(32, 3),
+    Buffer.alloc(32, 4),
+    u64(100_000_000n),
+    u64(200_000_000n),
+    u64(0n),
+    Buffer.from([10, 0]),
+  ]);
+  assert.equal(route.length, 166);
+  const ix = initializeInstruction(
+    program,
+    agent,
+    idle,
+    programData,
+    upgradeAuthority.publicKey,
+    governance.publicKey,
+    `0x${seed.toString('hex')}`,
+    key(60),
+    key(61),
+    route,
+  );
+  assert.equal(ix.keys.length, 8);
+  assert.ok(ix.keys[0].pubkey.equals(agent) && ix.keys[0].isWritable && !ix.keys[0].isSigner);
+  // ProgramData is read to authenticate the deployer; it is never written.
+  assert.ok(ix.keys[1].pubkey.equals(programData) && !ix.keys[1].isWritable && !ix.keys[1].isSigner);
+  assert.ok(ix.keys[2].pubkey.equals(upgradeAuthority.publicKey) && ix.keys[2].isSigner);
+  assert.ok(ix.keys[3].pubkey.equals(governance.publicKey) && ix.keys[3].isSigner && ix.keys[3].isWritable);
+  assert.ok(ix.keys[4].pubkey.equals(idle) && ix.keys[4].isWritable);
+  assert.deepEqual(ix.data.subarray(0, 8), discriminator('global:initialize'));
+  assert.deepEqual(ix.data.subarray(8, 40), seed);
+  // Both signatures and the eight-account message fit one packet: initialize
+  // needs no lookup table, so adding the loader accounts cannot push the
+  // receive path over the budget that transactions.ts already guards.
+  const tx = new VersionedTransaction(
+    new TransactionMessage({
+      payerKey: governance.publicKey,
+      recentBlockhash: key(1).toBase58(),
+      instructions: [ix],
+    }).compileToV0Message([]),
+  );
+  tx.sign([governance, upgradeAuthority]);
+  assert.ok(tx.serialize().length <= 1232, `initialize packet is ${tx.serialize().length} bytes`);
+});
+test('a retired strategy carries no observation accounts and retirement is governance-signed', () => {
+  const retired = { ...strategy, reserve: key(21), retired: true },
+    live = { ...strategy, reserve: key(22) };
+  const keys = executeInstruction(program, agent, idle, key(44), 0n, [live, retired], Buffer.from([0])).keys;
+  assert.equal(keys.length, 13, 'five fixed accounts, seven per live strategy, plus Kamino');
+  assert.ok(keys.at(-1)!.pubkey.equals(KAMINO_PROGRAM));
+  assert.ok(keys.some((k) => k.pubkey.equals(live.reserve)));
+  assert.ok(
+    !keys.some((k) => k.pubkey.equals(retired.reserve)),
+    'the program skips a retired reserve, so no accounts may be sent for it',
+  );
+  const ix = retireStrategyInstruction(program, agent, strategy.collateral, key(50), 3);
+  assert.equal(ix.keys.length, 3);
+  assert.ok(ix.keys[1].pubkey.equals(strategy.collateral) && !ix.keys[1].isSigner);
+  assert.ok(ix.keys[2].pubkey.equals(key(50)) && ix.keys[2].isSigner);
+  assert.deepEqual(ix.data, Buffer.concat([discriminator('global:retire_strategy'), Buffer.from([3])]));
+  assert.throws(() => retireStrategyInstruction(program, agent, strategy.collateral, key(50), 8), /strategy index/);
 });
 test('Kamino instruction account order agrees with the official SDK for deposit and redeem', () => {
   const a = address(agent.toBase58()),
@@ -294,6 +388,24 @@ test('native finalized historical NAV reads checkpoints rather than current acco
   assert.equal((await spoke.positionsAt(100))[0].valueBid, 1_000_000n);
   assert.equal((await spoke.positionsAt(200))[0].valueBid, 3_000_000n);
   await assert.rejects(() => spoke.referenceAt(1300), /stale/);
+});
+test('native NAV fails closed on a position whose observation failed', async () => {
+  const spoke = new SolanaSpoke({} as Connection, manifest);
+  // The program tolerates a failed reserve observation on Receive and Observe so a dead
+  // reserve cannot strand an inbound transfer, and records value 0 with the flag set.
+  // Zero here means unknown, so pricing it would under-report NAV; the cut must halt.
+  spoke.checkpoints.push(
+    decodeCheckpoint(checkpoint(0n, 100n, 1000n, 1_000_000n, 0, Buffer.alloc(32, 0), 1)),
+  );
+  spoke.blockHashes.set(100, `0x${'11'.repeat(32)}`);
+  await assert.rejects(() => spoke.positionsAt(100), /has no observation; NAV cannot be determined/);
+
+  // the identical checkpoint with a successful observation prices normally
+  spoke.checkpoints.length = 0;
+  spoke.checkpoints.push(decodeCheckpoint(checkpoint(0n, 100n, 1000n, 1_000_000n)));
+  const positions = await spoke.positionsAt(100);
+  assert.equal(positions[0].valueBid, 1_000_000n);
+  assert.equal(positions[1].valueBid, 6_000_000n);
 });
 test('native write-downs preserve historical cut values and never exceed source principal', async () => {
   const id = Buffer.alloc(32, 55),

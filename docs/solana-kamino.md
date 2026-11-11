@@ -105,6 +105,46 @@ read-only only to services that need the corresponding signer. The Docker image
 includes native runtime/dependencies; mount the native manifest and keys at the
 paths named in the environment, and persist `/data`.
 
+`ops/docker-compose.yml` carries that wiring. The native services live behind an
+extra profile, so an EVM-only stand is unaffected:
+
+```sh
+docker compose -f ops/docker-compose.yml --profile stand --profile solana up -d --build
+```
+
+| Host path (variable, default) | Container path | Mounted into |
+|---|---|---|
+| `ops/config/solana` (`SOLANA_CONFIG_DIR`) | `/config/solana`, read-only | every service: `monitor` and `indexer` verify Ticks, so they are accounting readers too |
+| `ops/keys/solana-checkpoint.json` (`SOLANA_KEYS_DIR`) | `/keys/solana-checkpoint.json`, read-only | `solana-observer`, `preflight`, `solana-cli` |
+| `ops/keys/solana-relayer.json` | `/keys/solana-relayer.json`, read-only | `relayer`, `operators`, `preflight`, `solana-cli` |
+| `ops/keys/solana-executor.json` | `/keys/solana-executor.json`, read-only | `preflight`, `solana-cli` |
+
+Each keypair is mounted as its own file rather than as one `/keys` directory, so
+a service cannot read a signer it does not use: `monitor` and `indexer` stay
+keyless, `nav` and `keeper` read native state without a native key, and
+`solana-observer` signs natively only — it receives the keypair *path* from
+compose and not `.env.keys`, which also holds the EVM keys. The container paths
+are fixed and are the ones `ops/.env.keys.example` names; only the host side is
+configurable. Create `ops/keys` with the three JSON files (`chmod 600`) before
+enabling the profile: Docker turns a missing bind source into an empty
+directory, and preflight then fails on an unreadable keypair instead of a service
+starting without one. `SOLANA_CHECKPOINT_DB`
+and `SOLANA_TX_JOURNAL_DIR` belong under `/data`, the persisted `ops-data`
+volume. The observer serves `/health` and `/status` on 127.0.0.1:8086
+(`PORT_SOLANA_OBSERVER`), and it is unhealthy once no checkpoint has succeeded
+within `maxCheckpointAgeSeconds` — the same window NAV enforces.
+
+`solana-cli` is the operator CLI from the previous section, on demand:
+
+```sh
+docker compose -f ops/docker-compose.yml --profile tools run --rm solana-cli rates
+docker compose -f ops/docker-compose.yml --profile tools run --rm solana-cli allocate 0 10 --yes
+```
+
+It takes `.env.keys` because `bridge-in` also signs on Base as the executor.
+`docs/crosschain-server.md` describes the EVM-only stack and predates this
+profile; its container table does not list the two native services yet.
+
 From `ops/`:
 
 ```sh
@@ -164,13 +204,39 @@ positions at the committed slots.
 
 The observer creates checkpoints when the hub's NAV cadence or closed-epoch
 settlement requires one, with spacing to avoid paying rent for unused idle
-minute-by-minute snapshots. Checkpoint allocation is exactly `133 + 48*N` bytes
+minute-by-minute snapshots. Checkpoint allocation is exactly `133 + 49*N` bytes
 for N strategies; gas payers fund account rent. Budget rent against expected
 movement/NAV frequency before activation. Checkpoints are permanent in this
 version; the SQLite cache avoids replaying the growing RPC history at every
 restart. Do not delete on-chain checkpoints or use a cache from another genesis,
 program or agent. CCTP event-account rent reclamation can be handled separately
 through Circle's supported operator flow.
+
+A checkpoint position carries an `observation_failed` flag. Receive and Observe
+tolerate a reserve that cannot be refreshed or valued, so a dead Kamino reserve
+cannot strand an inbound transfer, and record `value: 0` with that flag set. Zero
+then means unknown, not free: NAV refuses to price the cut while any position with
+units carries the flag, and the spoke halts rather than under-reports. Retire the
+strategy once its collateral is empty to clear it. A reserve passed read-only is
+rejected up front rather than tolerated, so a permissionless Receive or Observe
+cannot set that flag on a checkpoint by handing it accounts the refresh CPI cannot
+write.
+
+The cache is a trusted accounting input, so it is protected like one. The reader
+creates the file `0600` and its directory `0700`, tightens an existing
+world-readable file in place, and applies the same mode to the WAL sidecars,
+which hold the same rows. Cached amounts are what a NAV hash prices, and nothing
+in the checkpoint format authenticates them: the discriminator, agent binding,
+sequence contiguity, slot and timestamp monotonicity and the strategy set all
+survive an edit of `idle` or of a position value. On startup the reader re-reads
+the newest eight checkpoints from finalized chain and compares every field,
+amounts included; the first disagreement drops that row and everything after it,
+in memory and in the file, and re-fetches them from chain. Rows older than that
+tail stay trusted, because re-reading all of them is the cold-start replay the
+cache exists to avoid — so keep `SOLANA_CHECKPOINT_DB` owner-only and on a volume
+no other workload can write. Receipts are unaffected: transfer IDs are
+re-derived from the checkpoints on every sync, and a send's source transaction is
+always looked up in its finalized block.
 
 To add another Kamino reserve, prepare a reviewed USDC strategy definition and
 cap, register its agent-owned collateral account, extend/finalize the lookup
@@ -224,3 +290,31 @@ to mainnet. Native validator compatibility was tested with SBPF v2; v3 build
 compatibility is a separate check. Select the target cluster's enabled SBPF
 version before deployment. See the dated verification report for exact evidence,
 upstream versions and remaining activation work.
+
+## What CI covers
+
+`.github/workflows/solana.yml` runs on every pull request, on pushes to `main`
+and `dev`, and on demand. `native-build` runs the host `cargo test` suite, builds
+both programs with `cargo build-sbf --arch v2` and publishes the two `.so` files
+as a workflow artifact. `native-e2e` downloads that artifact, installs the pinned
+`solana-test-validator` release and runs `npm --prefix ops run test:solana-sbf`
+against it, so the local-validator evidence above is reproduced automatically
+instead of only on a workstation. A failure fails the job; nothing in it is
+allowed to continue on error.
+
+The bridge half stays a manual activation gate. Circle's two mainnet programs
+are not artifacts of this repository, so CI does not fetch them by default: the
+job prints which assertions it skipped (native PDA burn, secp256k1 attestation,
+receive while paused, forged-sender and replay rejection, balance conservation,
+governance write-down, finalized source indexing, historical values and SQLite
+restart recovery). Setting the repository variable `CCTP_MAINNET_DUMP=true`
+makes the job dump both programs at the addresses in
+`deploy/crosschain/native-registry.ts` and run `test:solana-cctp`; that dump goes
+through a public mainnet RPC, so a dump failure may be the RPC rather than this
+code. Run it once before activation and keep the output with the dated
+verification report.
+
+The Solana checkpoint cache itself is covered without a validator by
+`ops/test/solana-cache.test.ts`: file and directory permissions, the in-place
+tightening of an existing world-readable file, and the startup re-read that
+discards a cached amount the chain disagrees with.
