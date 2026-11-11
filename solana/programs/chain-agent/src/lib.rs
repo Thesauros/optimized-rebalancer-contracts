@@ -610,6 +610,15 @@ fn refresh_value<'info>(
     slot: u64,
     seeds: &[&[u8]],
 ) -> Result<u64> {
+    // The refresh CPI writes the reserve, so a caller that passes it read-only is
+    // malformed rather than unfortunate: reject it here instead of letting the CPI
+    // fail into the tolerated branch below. Without this a permissionless Receive or
+    // Observe could set `observation_failed` on a checkpoint with correctly keyed
+    // accounts, and NAV fails closed on that flag, so a cheap transaction would stall
+    // pricing until the next honest observation. A genuinely dead, frozen or
+    // reallocated reserve still fails inside the CPI or in `kamino::value`, which is
+    // exactly the case the tolerated branch exists for.
+    require!(accounts[0].is_writable, AgentError::Accounts);
     let expected = [
         s.reserve,
         s.market,

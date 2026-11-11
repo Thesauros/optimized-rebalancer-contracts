@@ -387,3 +387,50 @@ fn checkpoint_rent_allocation_matches_canonical_serialization_at_every_capacity(
         assert_eq!(bytes.len(), 133 + 49 * n);
     }
 }
+
+/// The refresh CPI writes the reserve, so a read-only reserve is a malformed
+/// submission rather than an unlucky one. It must be rejected outright: if it
+/// were allowed to fail into the tolerated branch, any permissionless Receive or
+/// Observe could stamp `observation_failed` onto a checkpoint with correctly
+/// keyed accounts, and since NAV fails closed on that flag a cheap transaction
+/// would stall pricing until the next honest observation.
+#[test]
+fn a_read_only_reserve_is_rejected_before_the_refresh_cpi() {
+    let s = strategy();
+    // seven tail accounts per strategy: reserve, market, collateral token, four oracles
+    let keys = [
+        s.reserve,
+        s.market,
+        s.collateral,
+        s.oracles[0],
+        s.oracles[1],
+        s.oracles[2],
+        s.oracles[3],
+    ];
+    let owner = kamino::PROGRAM;
+    let mut lamports = [0u64; 7];
+    let mut data: Vec<Vec<u8>> = (0..7).map(|_| reserve(&s, 7, 0)).collect();
+    let mut infos: Vec<AccountInfo> = Vec::new();
+    for (i, (l, d)) in lamports.iter_mut().zip(data.iter_mut()).enumerate() {
+        // only index 0 is left read-only; every other flag is what a real caller passes
+        infos.push(AccountInfo::new(&keys[i], false, i != 0, l, d, &owner, false, 0));
+    }
+    let mut program_lamports = 0u64;
+    let mut program_data: Vec<u8> = vec![];
+    let program = AccountInfo::new(
+        &kamino::PROGRAM,
+        false,
+        false,
+        &mut program_lamports,
+        &mut program_data,
+        &owner,
+        true,
+        0,
+    );
+
+    assert_eq!(
+        refresh_value(&s, &infos, &program, 1_000_000, 7, &[]).unwrap_err(),
+        Error::from(AgentError::Accounts),
+        "a read-only reserve must be rejected, not tolerated into observation_failed"
+    );
+}
