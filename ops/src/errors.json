@@ -58,6 +58,22 @@
  {
   "inputs": [
    {
+    "internalType": "uint64",
+    "name": "holder",
+    "type": "uint64"
+   },
+   {
+    "internalType": "uint32",
+    "name": "domain",
+    "type": "uint32"
+   }
+  ],
+  "name": "DomainAlreadyMapped",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
     "internalType": "uint8",
     "name": "domain",
     "type": "uint8"
@@ -443,8 +459,30 @@
   "type": "error"
  },
  {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "provider",
+    "type": "address"
+   }
+  ],
+  "name": "ProviderIsEntry",
+  "type": "error"
+ },
+ {
   "inputs": [],
   "name": "ProviderSourceChanged",
+  "type": "error"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "address",
+    "name": "provider",
+    "type": "address"
+   }
+  ],
+  "name": "ProviderStillReadable",
   "type": "error"
  },
  {

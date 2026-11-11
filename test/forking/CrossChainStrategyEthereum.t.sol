@@ -9,6 +9,7 @@ import {ProviderManager} from "../../contracts/utils/ProviderManager.sol";
 import {VaultFactory} from "../../contracts/utils/VaultFactory.sol";
 import {CompoundV3Provider} from "../../contracts/providers/CompoundV3Provider.sol";
 import {Test} from "forge-std/Test.sol";
+import {ForkPins} from "./ForkPins.sol";
 
 /**
  * The cross-chain strategy on Ethereum exactly as deploy/crosschain/01-deploy.ts
@@ -50,7 +51,7 @@ contract CrossChainStrategyEthereumForkTest is Test {
     function setUp() public {
         string memory url = vm.envOr("ETHEREUM_RPC_URL", string(""));
         if (bytes(url).length == 0) return;
-        vm.createSelectFork(url);
+        ForkPins.selectFork(vm, url, ForkPins.ETHEREUM_VAR, ForkPins.ETHEREUM);
         forked = true;
 
         // 01-deploy.ts: fresh ProviderManager + CompoundV3Provider, spliced in after the entry

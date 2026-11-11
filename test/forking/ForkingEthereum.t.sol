@@ -14,6 +14,7 @@ import {CompoundV3Provider} from "../../contracts/providers/CompoundV3Provider.s
 import {MorphoProvider} from "../../contracts/providers/MorphoProvider.sol";
 import {CometInterface} from "../../contracts/interfaces/compoundV3/CometInterface.sol";
 import {Test} from "forge-std/Test.sol";
+import {ForkPins} from "./ForkPins.sol";
 
 /**
  * Ethereum mainnet fork coverage for the vault stack deployed by
@@ -76,7 +77,7 @@ contract ForkingEthereum is Test {
 
     function setUp() public virtual {
         string memory ETHEREUM_RPC_URL = vm.envString("ETHEREUM_RPC_URL");
-        vm.createSelectFork(ETHEREUM_RPC_URL);
+        ForkPins.selectFork(vm, ETHEREUM_RPC_URL, ForkPins.ETHEREUM_VAR, ForkPins.ETHEREUM);
 
         usdc = IERC20Metadata(USDC_ADDRESS);
         vm.label(address(usdc), "USDC");

@@ -23,8 +23,20 @@ interface IRebalancer is IERC4626 {
     error DuplicateProviderSource();
     error ProviderSourceChanged();
     error SecurityAccountingNotInitialized();
+    /// @dev `forceRemoveProvider` only accepts a provider whose balance view actually fails.
+    error ProviderStillReadable(address provider);
+    /// @dev The entry provider cannot be force-removed; deposits would have nowhere to go.
+    error ProviderIsEntry(address provider);
 
     event SecurityAccountingInitialized(uint256 highWaterMark);
+
+    /**
+     * @notice Emitted when an unreadable provider is dropped by `forceRemoveProvider`,
+     *         writing its position off. The written-off value leaves NAV at once.
+     *
+     * @param provider The removed provider.
+     */
+    event ProviderForcedOut(address indexed provider);
 
     /**
      * @notice Emitted when a provider's exposure cap changes.
