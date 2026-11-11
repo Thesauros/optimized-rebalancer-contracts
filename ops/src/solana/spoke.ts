@@ -303,7 +303,18 @@ export class SolanaSpoke implements NativeSpoke {
         valueOffer: cp.idle,
       },
     ];
-    for (const p of cp.positions)
+    for (const p of cp.positions) {
+      if (p.units === 0n) continue;
+      // `observationFailed` means the reserve could not be refreshed or valued in that
+      // slot, so `value` is unknown rather than zero. The program tolerates a failed
+      // observation on Receive and Observe so a dead reserve cannot strand an inbound
+      // transfer, but pricing the position at zero here would under-report NAV and let
+      // deposits and redemptions clear against a rate the position does not support.
+      // Fail the whole cut instead: an unpriceable spoke halts NAV rather than misprices it.
+      if (p.observationFailed)
+        throw new Error(
+          `native position ${p.reserve.toBase58()} (sequence ${cp.sequence}, slot ${cp.slot}) has no observation; NAV cannot be determined`,
+        );
       out.push({
         chainId: this.chainId,
         holder,
@@ -313,6 +324,7 @@ export class SolanaSpoke implements NativeSpoke {
         valueBid: p.value,
         valueOffer: p.value,
       });
+    }
     return out.filter((p) => p.units !== 0n);
   }
   async sentAt(transferId: string, slot: number): Promise<InFlight> {

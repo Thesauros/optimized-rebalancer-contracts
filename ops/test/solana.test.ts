@@ -389,6 +389,24 @@ test('native finalized historical NAV reads checkpoints rather than current acco
   assert.equal((await spoke.positionsAt(200))[0].valueBid, 3_000_000n);
   await assert.rejects(() => spoke.referenceAt(1300), /stale/);
 });
+test('native NAV fails closed on a position whose observation failed', async () => {
+  const spoke = new SolanaSpoke({} as Connection, manifest);
+  // The program tolerates a failed reserve observation on Receive and Observe so a dead
+  // reserve cannot strand an inbound transfer, and records value 0 with the flag set.
+  // Zero here means unknown, so pricing it would under-report NAV; the cut must halt.
+  spoke.checkpoints.push(
+    decodeCheckpoint(checkpoint(0n, 100n, 1000n, 1_000_000n, 0, Buffer.alloc(32, 0), 1)),
+  );
+  spoke.blockHashes.set(100, `0x${'11'.repeat(32)}`);
+  await assert.rejects(() => spoke.positionsAt(100), /has no observation; NAV cannot be determined/);
+
+  // the identical checkpoint with a successful observation prices normally
+  spoke.checkpoints.length = 0;
+  spoke.checkpoints.push(decodeCheckpoint(checkpoint(0n, 100n, 1000n, 1_000_000n)));
+  const positions = await spoke.positionsAt(100);
+  assert.equal(positions[0].valueBid, 1_000_000n);
+  assert.equal(positions[1].valueBid, 6_000_000n);
+});
 test('native write-downs preserve historical cut values and never exceed source principal', async () => {
   const id = Buffer.alloc(32, 55),
     transferId = `0x${id.toString('hex')}`;
