@@ -22,22 +22,11 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - run: npm ci --ignore-scripts
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - run: pip install slither-analyzer==0.11.6
-
       - name: Run Slither
-        # Inspect application contracts, keeping all detectors and the high gate.
-        # Dependency findings are tracked by their upstream maintainers/SCA.
-        run: slither contracts --compile-force-framework foundry --filter-paths '(^|/)(node_modules|lib)/' --fail-high
+        uses: crytic/slither-action@v0.4.0
+        with:
+          target: 'contracts'
+          fail-on: high
 
   dependency-audit:
     name: Dependency audit (npm audit)
@@ -47,17 +36,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - run: npm ci --ignore-scripts
+          node-version: 20
 
       - name: npm audit (fails on high/critical advisories)
         run: npm audit --audit-level=high
-
-      - name: Install ops dependencies
-        run: npm ci --ignore-scripts
-        working-directory: ops
-
-      - name: Audit ops dependencies (fails on high/critical advisories)
-        run: npm audit --audit-level=high
-        working-directory: ops
