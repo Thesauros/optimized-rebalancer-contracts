@@ -1,14 +1,22 @@
 /** Build reviewable unsigned native initialization/configuration instructions. */
-import { AddressLookupTableProgram, PublicKey, SystemProgram, TransactionInstruction } from '@solana/web3.js';
+import { AddressLookupTableProgram, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { zeroPadValue, getBytes } from 'ethers';
 import { Reserve } from '@kamino-finance/klend-sdk/dist/@codegen/klend/accounts/Reserve';
 import { NETWORKS } from '../../../deploy/crosschain/registry';
 import { SOLANA } from '../../../deploy/crosschain/native-registry';
-import { discriminator, NativeStrategy, Reader, seedBytes, u64 } from './codec';
-import { KAMINO_PROGRAM, meta, TOKEN_PROGRAM } from './kamino';
+import { discriminator, NativeStrategy, Reader, u64 } from './codec';
+import { KAMINO_PROGRAM, meta } from './kamino';
 import { SolanaSpoke } from './spoke';
-import { burnAccounts, executeInstruction, pda, receiveAccounts } from './instructions';
+import {
+  burnAccounts,
+  executeInstruction,
+  initializeInstruction,
+  LOADER_PROGRAM,
+  pda,
+  programDataAddress,
+  receiveAccounts,
+} from './instructions';
 
 export interface NativePreparation {
   governance: string;
@@ -52,28 +60,39 @@ export async function prepareNative(spoke: SolanaSpoke, config: NativePreparatio
     u64(refill),
     fee,
   ]);
-  const instructions = [
-    new TransactionInstruction({
-      programId: spoke.program,
-      keys: [
-        meta(spoke.agent, true),
-        meta(governance, true, true),
-        meta(spoke.idle, true),
-        meta(new PublicKey(SOLANA.asset.mint)),
-        meta(TOKEN_PROGRAM),
-        meta(SystemProgram.programId),
-      ],
-      data: Buffer.concat([
-        discriminator('global:initialize'),
-        seedBytes(spoke.manifest.seed),
-        executor.toBuffer(),
-        guardian.toBuffer(),
-        route,
-      ]),
-    }),
-  ];
   if (!spoke.manifest.localValidator && (await spoke.connection.getGenesisHash()) !== SOLANA.genesisHash)
     throw new Error('preparation RPC is not Solana mainnet');
+  // `initialize` authenticates the caller against the loader's ProgramData, so
+  // the seed being public in this plan no longer lets anyone claim the PDA.
+  const programData = programDataAddress(spoke.program);
+  const loaderInfo = await spoke.connection.getAccountInfo(programData, 'finalized');
+  if (
+    !loaderInfo ||
+    !loaderInfo.owner.equals(LOADER_PROGRAM) ||
+    loaderInfo.data.length < 45 ||
+    loaderInfo.data.readUInt32LE() !== 3
+  )
+    throw new Error('native ProgramData unavailable/wrong owner');
+  // 45-byte loader header: state tag(4), slot(8), option(1), authority(32).
+  if (loaderInfo.data[12] !== 1)
+    throw new Error(
+      'the deployed program records no upgrade authority, so initialize can never be authorized; redeploy under the reviewed authority',
+    );
+  const upgradeAuthority = new PublicKey(loaderInfo.data.subarray(13, 45));
+  const instructions = [
+    initializeInstruction(
+      spoke.program,
+      spoke.agent,
+      spoke.idle,
+      programData,
+      upgradeAuthority,
+      governance,
+      spoke.manifest.seed,
+      executor,
+      guardian,
+      route,
+    ),
+  ];
   const strategies: NativeStrategy[] = [];
   for (const s of spoke.manifest.strategies) {
     const reserveKey = new PublicKey(s.reserve),
@@ -115,6 +134,7 @@ export async function prepareNative(spoke: SolanaSpoke, config: NativePreparatio
       collateral,
       oracles,
       cap: strategyCap,
+      retired: false,
     });
     instructions.push(
       createAssociatedTokenAccountIdempotentInstruction(governance, collateral, spoke.agent, collateralMint),
@@ -134,6 +154,8 @@ export async function prepareNative(spoke: SolanaSpoke, config: NativePreparatio
           collateral.toBuffer(),
           ...oracles.map((p) => p.toBuffer()),
           u64(strategyCap),
+          // A new strategy is always live; only governance retires one.
+          Buffer.from([0]),
         ]),
       }),
     );
@@ -185,6 +207,8 @@ export async function prepareNative(spoke: SolanaSpoke, config: NativePreparatio
     network: SOLANA.network,
     family: SOLANA.family,
     program: spoke.program.toBase58(),
+    programData: programData.toBase58(),
+    upgradeAuthority: upgradeAuthority.toBase58(),
     agent: spoke.agent.toBase58(),
     idle: spoke.idle.toBase58(),
     instructions: instructions.map(serialize),
@@ -196,6 +220,6 @@ export async function prepareNative(spoke: SolanaSpoke, config: NativePreparatio
       freshness:
         'Regenerate immediately before execution: createLookupTable requires recentSlot in SlotHashes. Wait for activation/finalization before configuring SOLANA_LOOKUP_TABLES.',
     },
-    note: 'Unsigned ordered instructions. Execute initialize and each add_strategy through the reviewed Solana governance; create the first checkpoint and verify readiness before Base route activation.',
+    note: 'Unsigned ordered instructions. initialize must additionally be signed by the recorded upgrade authority; execute it and each add_strategy through the reviewed Solana governance, then create the first checkpoint and verify readiness before Base route activation. The table covers the execute/receive path only: initialize carries eight accounts and fits a single legacy packet on its own.',
   };
 }

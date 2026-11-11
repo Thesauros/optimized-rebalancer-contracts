@@ -135,8 +135,10 @@ async function main() {
   if (command === 'status') {
     const index = new TransferIndex();
     await spoke.sync(index);
+    // A retired strategy holds nothing and its reserve may be gone; reading it
+    // must not be able to take the status report down.
     const positions = await Promise.all(
-      state.strategies.map((s) => strategyAdapter(s).read(spoke.connection, spoke.agent, s)),
+      state.strategies.filter((s) => !s.retired).map((s) => strategyAdapter(s).read(spoke.connection, spoke.agent, s)),
     );
     console.log(
       JSON.stringify(
@@ -205,6 +207,9 @@ async function main() {
       if (!Number.isInteger(index) || !strategy) throw new Error('invalid strategy index');
       const adapter = strategyAdapter(strategy),
         deposit = command === 'allocate';
+      // Retirement is terminal for deposits; exits stay open until the custody
+      // is empty. The program enforces both.
+      if (deposit && strategy.retired) throw new Error('strategy is retired');
       const position = await adapter.read(spoke.connection, spoke.agent, strategy);
       let amount: bigint, minimum: bigint;
       if (deposit) {
