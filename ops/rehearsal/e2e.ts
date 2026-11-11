@@ -10,7 +10,7 @@ import { CHAIN_AGENT, EPOCH_VAULT, ERC20, STRATEGY, TICK_ACCOUNTANT } from '../s
 import { loadChains, hubOf } from '../src/config';
 import { runChecks } from '../src/monitor';
 import { TransferIndex, verifyTick } from '../src/snapshot';
-import { HUB_PARAMS, PROFILE } from '../../deploy/crosschain/registry';
+import { HUB_PARAMS, NETWORKS, PROFILE } from '../../deploy/crosschain/registry';
 
 const root = path.join(__dirname, '..', '..');
 const USDC = (n: number) => BigInt(n) * 1_000_000n;
@@ -73,7 +73,17 @@ async function main() {
   const spokes = chains.filter((c) => c !== hub);
   const spoke = spokes[0];
   const providers = chains.map((c) => c.provider);
-  assert(spokes.length === 2 && spokes.some((c) => c.chainId === 1n), `spokes: ${spokes.map((c) => c.key).join(', ')}`);
+  // Derived from the registry rather than a literal count: a hardcoded `=== 2`
+  // failed the day a fourth network was added, with a message that read like a real
+  // failure. What this actually asserts is that the services loaded every spoke the
+  // registry declares, and - the TS-419 half - that Ethereum is one of them, which
+  // is what a stray REHEARSAL_NETWORKS would silently remove.
+  const registrySpokes = Object.entries(NETWORKS).filter(([, n]) => n.role === 'spoke');
+  assert(
+    registrySpokes.every(([k, n]) => spokes.some((c) => c.key === k && c.chainId === n.chainId)) && spokes.length === registrySpokes.length,
+    `spokes: ${spokes.map((c) => c.key).join(', ')} (registry declares ${registrySpokes.map(([k]) => k).join(', ')})`,
+  );
+  assert(spokes.some((c) => c.chainId === 1n), 'Ethereum (chain id 1) is among the spokes');
 
   const userWallet = new Wallet(process.env.USER_PRIVATE_KEY!, hub.provider);
   const user = new NonceManager(userWallet);

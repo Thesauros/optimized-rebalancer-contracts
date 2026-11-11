@@ -206,6 +206,14 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
  * Rehearsal only: REHEARSAL_NETWORKS=base,arbitrum narrows the registry to those
  * keys, so ops/rehearsal/run.sh can hand over the existing chains first and then
  * add a network the way production does (phase 5 through the Timelock).
+ *
+ * A narrowed registry is not harmless. `05-governance-plan.ts` derives the hub
+ * accountant's chain set from NETWORKS, so a plan built from a narrowed registry
+ * queues a `setChains` that drops every chain left out, and
+ * `TickAccountant._setChains` has no guard against removing one: the accountant
+ * would stop tracking a chain that still holds capital and NAV would book none of
+ * it. Phase 5 refuses to plan such a removal; `fullNetworks()` below is what it
+ * compares against.
  */
 function selectNetworks(only?: string): Record<string, NetworkEntry> {
   if (!only) return ALL_NETWORKS;
@@ -215,6 +223,14 @@ function selectNetworks(only?: string): Record<string, NetworkEntry> {
 }
 
 export const NETWORKS: Record<string, NetworkEntry> = selectNetworks(process.env.REHEARSAL_NETWORKS);
+
+/**
+ * The registry as written, ignoring REHEARSAL_NETWORKS. A function rather than an
+ * exported constant so that reading the unnarrowed set stays a deliberate act.
+ */
+export function fullNetworks(): Record<string, NetworkEntry> {
+  return ALL_NETWORKS;
+}
 
 /**
  * Derived protocol bounds. Three of the configured values are not independent;
@@ -290,11 +306,21 @@ const COMMON_ACCOUNTANT = {
    * Per-chain concentration cap as a 1e18 fraction of gross bid assets; 0 disables
    * it. Gross rather than NAV, because NAV nets off pending deposits and
    * liabilities, which would inflate every chain's apparent share during a large
-   * deposit or redemption epoch. Left off at launch deliberately: with two chains
-   * all capital starts on the hub, so any cap below 100% is breached on day one and
-   * the flag would be permanent noise. Set it through the Timelock once a target
-   * allocation exists or a third chain is added (`05-governance-plan.ts`). It blocks
-   * sends INTO a chain that is over, never sends out of it and never settlement.
+   * deposit or redemption epoch. It blocks sends INTO a chain that is over, never
+   * sends out of it and never settlement.
+   *
+   * Decision, restated because TS-419 met the condition an earlier version of this
+   * comment set for enabling it: the cap stays DISABLED with three chains
+   * (docs/crosschain-deployment.md §6a, "Left out on purpose"). There is still no
+   * target allocation to size a cap against - capital is moved by hand through the
+   * operator CLI - so any value would either be breached on day one (all capital
+   * starts on the hub) or would be an arbitrary ceiling on a decision nobody has
+   * taken. Accepted consequence: no on-chain ceiling limits how much of the vault
+   * can sit on one chain, and the per-provider caps on Ethereum already sum to 120%
+   * of strategy assets (Compound 50% + GauntletPrime 40% + Smokehouse 30%, entry
+   * uncapped), 150% once TS-420 adds Fluid. Enabling it stays a separate Timelock
+   * decision (`setMaxChainExposure` through `05-governance-plan.ts`) and needs a
+   * written target allocation first.
    */
   maxChainExposure: 0n,
 };

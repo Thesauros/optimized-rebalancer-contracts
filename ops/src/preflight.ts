@@ -27,6 +27,42 @@ const layoutArg = process.argv.indexOf('--layout');
 const layout = layoutArg > 0 ? process.argv[layoutArg + 1] : undefined;
 const MIN_GAS_WEI = BigInt(process.env.PREFLIGHT_MIN_GAS_WEI ?? '100000000000000'); // 0.0001 ETH
 
+/**
+ * Free, shared RPC endpoints that must never carry `eth_sendRawTransaction`. Two
+ * separate reasons: a free plan drops and delays broadcasts (this branch's
+ * rehearsal runs died on 408 "Request timeout on the free plan" and on 429, and a
+ * dropped send leaves a CCTP transfer in flight past maxTransit), and on Ethereum a
+ * broadcast through a public node publishes the signed transaction to the public
+ * mempool before inclusion, where its calldata - amount, destination, route - is
+ * readable to anyone watching.
+ *
+ * The chains' OWN public endpoints are deliberately not listed. `mainnet.base.org`
+ * and `arb1.arbitrum.io/rpc` are the reliable path into the sequencer (a paid data
+ * provider twice accepted a Base transaction and never propagated it), and sequencer
+ * ordering leaves no public mempool to be read. Ethereum has no equivalent, so its
+ * send path has to be a paid provider or a private/protected channel.
+ *
+ * Matching is by host suffix, so a paid or private tier served from one of these
+ * hosts is caught too. `OPS_ALLOW_PUBLIC_SEND_ENDPOINT=1` says that is deliberate
+ * and downgrades the failure to a warning; the default is to fail.
+ */
+const PUBLIC_SEND_ENDPOINTS = ['publicnode.com', 'drpc.org', 'llamarpc.com', 'ankr.com', '1rpc.io', 'cloudflare-eth.com', 'eth.public-rpc.com'];
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** True when `url` is a free shared endpoint; a local fork (the rehearsal) never is. */
+function isPublicSendEndpoint(url: string): boolean {
+  const host = hostOf(url);
+  if (!host || host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return false;
+  return PUBLIC_SEND_ENDPOINTS.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
 async function withTimeout<T>(p: Promise<T>, ms = 20_000): Promise<T> {
   return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timeout after ${ms} ms`)), ms))]);
 }
@@ -59,6 +95,20 @@ async function checkRpc(c: Chain) {
     } catch (e) {
       fail(`${c.key} ${label} RPC reachable`, String((e as Error).message).slice(0, 160));
     }
+  }
+  // Where signed transactions actually go: RPC_SEND_<KEY>, or the read RPC when it is
+  // unset (config.providerFor only splits the two when both are set and differ). A
+  // failure, not a warning: the operator cannot see a dropped broadcast, and the
+  // symptom is a transfer stuck in flight rather than an error anywhere.
+  const broadcast = send ?? read;
+  if (isPublicSendEndpoint(broadcast)) {
+    const detail =
+      `${hostOf(broadcast)} would carry eth_sendRawTransaction: a free plan drops and delays sends, and on Ethereum it publishes the signed transaction to the public mempool before inclusion. ` +
+      `Set RPC_SEND_${c.key.toUpperCase()} to a paid provider (on Ethereum, a private or protected channel).`;
+    if (process.env.OPS_ALLOW_PUBLIC_SEND_ENDPOINT === '1') warn(`${c.key} broadcasts avoid free public endpoints`, `${detail} Accepted via OPS_ALLOW_PUBLIC_SEND_ENDPOINT=1.`);
+    else fail(`${c.key} broadcasts avoid free public endpoints`, detail);
+  } else {
+    pass(`${c.key} broadcasts avoid free public endpoints`, hostOf(broadcast) || broadcast);
   }
   try {
     const head = await withTimeout(c.provider.getBlockNumber());

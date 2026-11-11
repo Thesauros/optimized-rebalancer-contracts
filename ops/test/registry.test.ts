@@ -3,16 +3,30 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { NETWORKS, hubEntry } from '../../deploy/crosschain/registry';
+import { chainConfigs } from '../../utils/constants';
 
 const deployments = path.join(__dirname, '..', '..', 'deployments');
 
-test('every reused provider is the deployment record of that network', () => {
+test('every reused provider and the Compound Comet match their committed record', () => {
   for (const [key, net] of Object.entries(NETWORKS)) {
     for (const { label, address } of net.strategy.reusedProviders) {
       const file = path.join(deployments, key, `${label}Provider.json`);
       assert.ok(existsSync(file), `${key}: no deployment record ${label}Provider.json`);
       const record = JSON.parse(readFileSync(file, 'utf8'));
       assert.equal(address.toLowerCase(), record.address.toLowerCase(), `${key}: ${label} address`);
+    }
+    // The Comet is the one strategy address with no deployments/<key> record: phase 1
+    // takes it from here and writes it into the ProviderManager, so nothing else in the
+    // tree corroborates the value. utils/constants.ts is the table the live single-chain
+    // vaults were deployed from; agreeing with it pins both the Comet and the fact that
+    // it is the market for THIS chain's USDC. checks/deployment.ts reads the on-chain
+    // value back at phase 4 and in the monitor.
+    const pairs = (chainConfigs[Number(net.chainId)]?.cometPairs ?? []).filter((p) => p.asset.toLowerCase() === net.usdc.toLowerCase());
+    if (net.strategy.comet) {
+      assert.equal(pairs.length, 1, `${key}: utils/constants.ts names ${pairs.length} Comets for USDC ${net.usdc}, expected exactly one`);
+      assert.equal(net.strategy.comet.toLowerCase(), pairs[0].cToken.toLowerCase(), `${key}: strategy.comet`);
+    } else {
+      assert.equal(pairs.length, 0, `${key}: utils/constants.ts names a Comet for this USDC but the registry has none`);
     }
   }
 });

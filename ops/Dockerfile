@@ -12,11 +12,20 @@ RUN npm ci --ignore-scripts && npm cache clean --force
 
 COPY ops/tsconfig.json ops/tsconfig.json
 COPY ops/src ops/src
+# extract-errors.js, the script that wrote the committed src/errors.json. It needs
+# artifacts/, which the image does not carry, so it never runs here; the COPY stays
+# because the image is meant to hold the ops source tree whole.
 COPY ops/scripts ops/scripts
 COPY deploy/crosschain/registry.ts deploy/crosschain/registry.ts
-COPY deployments/base/crosschain.json deployments/base/crosschain.json
-COPY deployments/arbitrum/crosschain.json deployments/arbitrum/crosschain.json
-COPY deployments/mainnet/crosschain.json deployments/mainnet/crosschain.json
+# One COPY for every manifest instead of one per network. A registry entry whose
+# chain has not been deployed yet has no deployments/<key>/crosschain.json, and
+# naming that file here fails the build of every release from this branch until the
+# chain ships, hotfixes included. .dockerignore is a deny-all allowlist admitting
+# only deployments/*/crosschain.json, so this copies manifests and nothing else:
+# no solcInputs, no per-provider deployment records. The runtime check is not
+# weakened by it - loadChains() still throws `missing manifest` for a chain whose
+# manifest is absent, so an undeployed network fails loudly at startup.
+COPY deployments deployments
 
 ENV NODE_ENV=production \
     TRANSFER_INDEX_FILE=/data/transfer-index.json \
