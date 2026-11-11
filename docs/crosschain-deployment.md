@@ -38,10 +38,20 @@ the rehearsal's environment and production.
 | `EpochVaultLogic` library + `EpochVault` (proxy) | ✓ | — | — | yes | ProxyAdmin → Safe; ADMIN Safe; timelock Timelock |
 
 Ethereum strategy providers: Steakhouse USDC (entry, uncapped), Compound V3
-cUSDCv3 (cap 50%), Gauntlet USDC Prime (40%), Smokehouse USDC (30%). The three
-Morpho providers are the ones the Ethereum vault already uses; their vaults are
-MetaMorpho V1.0, the same version as GauntletCore on Base, and the provider code
-is byte-identical to Base and Arbitrum. No Aave on Ethereum (TS-419 scope).
+cUSDCv3 (cap 50%), Gauntlet USDC Prime (40%), Smokehouse USDC (30%), Fluid fUSDC
+(30%). The three Morpho providers are the ones the Ethereum vault already uses;
+their vaults are MetaMorpho V1.0, the same version as GauntletCore on Base, and
+the provider code is byte-identical to Base and Arbitrum. Compound and Fluid get
+fresh providers in phase 1: `CompoundV3Provider` and `FluidProvider` (TS-420, a
+new contract) over the immutable fToken `0x9Fb7…1B33`. No Aave on Ethereum.
+
+Fluid limits withdrawals at its Liquidity layer: at most about half of the
+fToken's supply at once, re-expanding over 6 hours, and never more than the USDC
+the layer holds. On 2026-11-05 (LiquidityResolver `getUserSupplyData`): supply
+132.1 M USDC, limit 66.0 M (expand 50% over 21 600 s), withdrawable 22.0 M, the
+layer's idle USDC. A withdrawal beyond that reverts and can be retried once the
+limit expands or liquidity returns. `getDepositRate` is the rate the Liquidity
+supply exchange price accrues at (fToken rewards left out; they are inactive).
 
 * **Registry.** Addresses and parameters come from `deploy/crosschain/registry.ts`.
 * **Manifests.** Results are written to `deployments/<network>/crosschain.json`.
@@ -444,6 +454,7 @@ relayer wallets accordingly:
 | Strategy `withdraw` (`deallocate`) | ≈ 2.8 M |
 | `rebalance` between providers | ≈ 3.9 M |
 | Heaviest provider view, Smokehouse (21 markets) | ≈ 1.2 M, under the 3 M `PROVIDER_VIEW_CALL_GAS` stipend |
+| Fluid: fUSDC deposit / balance view / rate view | ≈ 99 k / 15 k / 7 k |
 | Deployer, phases 1-3 (31 transactions) | ≈ 16.7 M: 0.017 ETH at 1 gwei, 0.08 ETH at 5 gwei |
 
 **Left out on purpose.**
@@ -463,6 +474,14 @@ relayer wallets accordingly:
 * **Aave and Morpho Vault V2.** Not part of TS-419. Neither the Ethereum Aave
   provider nor the Gauntlet Prime V2 vault (`MorphoV2Provider`) is in the
   strategy.
+
+**Fluid ships with the Ethereum strategy (TS-420).** Phase 1 initializes the
+strategy with its full provider list, Fluid included. On a strategy already
+initialized without it, phase 1 deploys `FluidProvider` but cannot add it:
+`setProviders` is a Timelock call that phase 5 does not plan (it plans caps
+only), and phase 4 then reports `strategy providers` until that call executes.
+Deploy TS-419 and TS-420 together, or queue `setProviders` with the full list
+(`strategyProviders` in `registry.ts`) through the Timelock first.
 
 ## 7. Rehearsal
 

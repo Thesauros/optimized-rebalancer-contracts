@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { NETWORKS, hubEntry } from '../../deploy/crosschain/registry';
+import { NETWORKS, hubEntry, providerLabels, strategyProviders } from '../../deploy/crosschain/registry';
 import { chainConfigs } from '../../utils/constants';
 
 const deployments = path.join(__dirname, '..', '..', 'deployments');
@@ -33,11 +33,32 @@ test('every reused provider and the Compound Comet match their committed record'
 
 test('caps name known providers and leave the entry provider uncapped', () => {
   for (const [key, net] of Object.entries(NETWORKS)) {
-    const labels = net.strategy.reusedProviders.map((p) => p.label);
-    if (net.strategy.comet) labels.push('CompoundV3');
+    const labels = providerLabels(net);
     for (const label of Object.keys(net.strategy.capsBps)) assert.ok(labels.includes(label), `${key}: cap for unknown provider ${label}`);
     assert.equal(net.strategy.capsBps[labels[0]] ?? 0, 0, `${key}: the entry provider ${labels[0]} must stay uncapped`);
     for (const [label, bps] of Object.entries(net.strategy.capsBps)) assert.ok(bps >= 0 && bps <= 10_000, `${key}: cap ${label} ${bps} bps`);
+  }
+});
+
+test('strategy providers: entry first, fresh Compound second, fresh Fluid last, as phase 1 builds them', () => {
+  const mainnet = NETWORKS.mainnet;
+  const fresh = { CompoundV3Provider: '0x00000000000000000000000000000000000000c3', FluidProvider: '0x00000000000000000000000000000000000000f1' };
+  assert.deepEqual(
+    strategyProviders(mainnet, fresh).map((p) => p.label),
+    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'Fluid'],
+  );
+  assert.equal(strategyProviders(mainnet, fresh).at(-1)!.address, fresh.FluidProvider);
+  assert.deepEqual(
+    strategyProviders(mainnet, { CompoundV3Provider: fresh.CompoundV3Provider }).map((p) => p.label),
+    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho'],
+    'a fresh provider not deployed yet is absent',
+  );
+  for (const [key, net] of Object.entries(NETWORKS)) {
+    // the manifest phase 1 leaves: only the fresh providers the entry asks for
+    const deployed: Record<string, string> = {};
+    if (net.strategy.comet) deployed.CompoundV3Provider = fresh.CompoundV3Provider;
+    if (net.strategy.fluidFToken) deployed.FluidProvider = fresh.FluidProvider;
+    assert.deepEqual(strategyProviders(net, deployed).map((p) => p.label).sort(), providerLabels(net).sort(), `${key}: every label is listed once`);
   }
 });
 
