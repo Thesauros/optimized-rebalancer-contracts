@@ -1,0 +1,177 @@
+{
+  "address": "0x2Ed9B7fB6Bbe0920145B2a79c18C3f7cFCAE3C99",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_logic",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "initialOwner",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_data",
+          "type": "bytes"
+        }
+      ],
+      "stateMutability": "payable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        }
+      ],
+      "name": "AddressEmptyCode",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "admin",
+          "type": "address"
+        }
+      ],
+      "name": "ERC1967InvalidAdmin",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "ERC1967InvalidImplementation",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ERC1967NonPayable",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "FailedCall",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ProxyDeniedAdminAccess",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "previousAdmin",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "newAdmin",
+          "type": "address"
+        }
+      ],
+      "name": "AdminChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "Upgraded",
+      "type": "event"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "fallback"
+    }
+  ],
+  "args": [
+    "0x4382190FDbf4befA016Ea412f34eb54593312aD5",
+    "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "0x"
+  ],
+  "transactionHash": "0x63e87c9149749f9045ddc248c728867bb7b3c1d45da31ba6f0d89cd74b18bfda",
+  "receipt": {
+    "_type": "TransactionReceipt",
+    "blockHash": "0xf603d92d65a0d147209df3d2db0f4fbe33c5eedb1de7574da2860aa00da6f276",
+    "blockNumber": 29065973,
+    "contractAddress": "0x2Ed9B7fB6Bbe0920145B2a79c18C3f7cFCAE3C99",
+    "cumulativeGasUsed": "4027315",
+    "from": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "gasPrice": "9",
+    "blobGasUsed": null,
+    "blobGasPrice": null,
+    "gasUsed": "666356",
+    "hash": "0x63e87c9149749f9045ddc248c728867bb7b3c1d45da31ba6f0d89cd74b18bfda",
+    "index": 7,
+    "logs": [
+      {
+        "_type": "log",
+        "address": "0x2Ed9B7fB6Bbe0920145B2a79c18C3f7cFCAE3C99",
+        "blockHash": "0xf603d92d65a0d147209df3d2db0f4fbe33c5eedb1de7574da2860aa00da6f276",
+        "blockNumber": 29065973,
+        "data": "0x",
+        "index": 2,
+        "topics": [
+          "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+          "0x0000000000000000000000004382190fdbf4befa016ea412f34eb54593312ad5"
+        ],
+        "transactionHash": "0x63e87c9149749f9045ddc248c728867bb7b3c1d45da31ba6f0d89cd74b18bfda",
+        "transactionIndex": 7
+      },
+      {
+        "_type": "log",
+        "address": "0xb6Ccd1846BA0D2c7509Af8d603EE490B4D88E91e",
+        "blockHash": "0xf603d92d65a0d147209df3d2db0f4fbe33c5eedb1de7574da2860aa00da6f276",
+        "blockNumber": 29065973,
+        "data": "0x",
+        "index": 3,
+        "topics": [
+          "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d"
+        ],
+        "transactionHash": "0x63e87c9149749f9045ddc248c728867bb7b3c1d45da31ba6f0d89cd74b18bfda",
+        "transactionIndex": 7
+      },
+      {
+        "_type": "log",
+        "address": "0x2Ed9B7fB6Bbe0920145B2a79c18C3f7cFCAE3C99",
+        "blockHash": "0xf603d92d65a0d147209df3d2db0f4fbe33c5eedb1de7574da2860aa00da6f276",
+        "blockNumber": 29065973,
+        "data": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b6ccd1846ba0d2c7509af8d603ee490b4d88e91e",
+        "index": 4,
+        "topics": [
+          "0x7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f"
+        ],
+        "transactionHash": "0x63e87c9149749f9045ddc248c728867bb7b3c1d45da31ba6f0d89cd74b18bfda",
+        "transactionIndex": 7
+      }
+    ],
+    "logsBloom": "0x00000000000000000000000000000000400000000000000000800000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000002000001000000000000000000000000000000000000022000000000000000080800000000800000000000000001000402400000000000000000000000040000000000000000000000000000000040800000000000000000000000000000000000000000000000000001000000000000000000000020000000000000000000010000000000000400000000000000000020000000000000000000000000000000000000000000001000000000000004000000",
+    "status": 1,
+    "to": null
+  }
+}

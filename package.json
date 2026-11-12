@@ -1,8 +1,10 @@
 {
   "name": "thesauros-optimized-rebalancer",
   "scripts": {
-    "build": "hardhat compile",
+    "build": "FOUNDRY_AUTO_DETECT_REMAPPINGS=false hardhat compile",
     "test": "forge test",
+    "test:deploy": "FOUNDRY_AUTO_DETECT_REMAPPINGS=false node --require ts-node/register/transpile-only --test test/deploy/*.test.ts",
+    "prepare:gauntlet-v2": "node --require ts-node/register/transpile-only scripts/prepare-gauntlet-v2-deploy.ts",
     "compile:tron": "node scripts/compile-tron.js",
     "deploy:tron-connector": "npm run compile:tron && node scripts/deploy-tron-connector.js",
     "deploy:base-tron-connector": "hardhat deploy --network base --tags base-tron-connector",
@@ -20,5 +22,33 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0"
+  },
+  "overrides": {
+    "adm-zip": "0.6.1",
+    "axios@<1": "0.35.0",
+    "axios@>=1": "1.21.0",
+    "brace-expansion@^1": "1.1.21",
+    "brace-expansion@^2": "2.1.7",
+    "elliptic": "6.6.1",
+    "fast-uri@^3": "3.1.9",
+    "handlebars": "4.7.10",
+    "immutable@^4": "4.3.9",
+    "js-yaml@^3": "3.15.2",
+    "js-yaml@^4": "4.3.2",
+    "lodash": "4.18.1",
+    "minimatch@^3": "3.1.5",
+    "minimatch@^5": "5.1.9",
+    "minimatch@^9": "11.0.5",
+    "picomatch@^2": "2.3.2",
+    "serialize-javascript": "7.1.4",
+    "tmp": "0.2.7",
+    "undici": "6.29.1",
+    "ws@^7": "7.5.11",
+    "ws@^8": "8.22.2",
+    "tronbox": {
+      "mocha": {
+        "minimatch": "11.0.5"
+      }
+    }
   }
 }

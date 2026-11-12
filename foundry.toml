@@ -22,3 +22,4 @@ lint_on_build = false
 
 [rpc_endpoints]
 base = "${BASE_RPC_URL}"
+ethereum = "${ETHEREUM_RPC_URL}"

@@ -1,0 +1,297 @@
+/**
+ * Server preflight: verifies the environment before any service starts, and
+ * exits non-zero on the first class of problem that would otherwise surface as
+ * a silent stall hours later (a dead RPC, a key without its role, an empty gas
+ * tank, an unwritable state directory, two processes sharing one nonce).
+ *
+ *   npm run preflight -- --layout operators   # stand: nav+keeper+relayer share one key, one process
+ *   npm run preflight -- --layout separate    # production: one key and one process per role
+ *
+ * Read-only: it sends nothing.
+ */
+import fs from 'fs';
+import path from 'path';
+import { Contract, JsonRpcProvider, Wallet, formatEther, id } from 'ethers';
+import { CHAIN_AGENT, EPOCH_VAULT, TICK_ACCOUNTANT } from './abi';
+import { Chain, assertTrackedChainsConfigured, hubOf, loadChains, rpcUrl } from './config';
+import { TRANSFER_INDEX_FILE, TransferIndex } from './snapshot';
+import { loadNativeSpokes } from './native';
+import { PROFILE } from '../../deploy/crosschain/registry';
+
+type Result = { ok: boolean; warn?: boolean; label: string; detail?: string };
+const results: Result[] = [];
+const pass = (label: string, detail?: string) => results.push({ ok: true, label, detail });
+const fail = (label: string, detail?: string) => results.push({ ok: false, label, detail });
+const warn = (label: string, detail?: string) => results.push({ ok: true, warn: true, label, detail });
+
+const layoutArg = process.argv.indexOf('--layout');
+const layout = layoutArg > 0 ? process.argv[layoutArg + 1] : undefined;
+const MIN_GAS_WEI = BigInt(process.env.PREFLIGHT_MIN_GAS_WEI ?? '100000000000000'); // 0.0001 ETH
+
+/**
+ * Free, shared RPC endpoints that must never carry `eth_sendRawTransaction`. Two
+ * separate reasons: a free plan drops and delays broadcasts (this branch's
+ * rehearsal runs died on 408 "Request timeout on the free plan" and on 429, and a
+ * dropped send leaves a CCTP transfer in flight past maxTransit), and on Ethereum a
+ * broadcast through a public node publishes the signed transaction to the public
+ * mempool before inclusion, where its calldata - amount, destination, route - is
+ * readable to anyone watching.
+ *
+ * The chains' OWN public endpoints are deliberately not listed. `mainnet.base.org`
+ * and `arb1.arbitrum.io/rpc` are the reliable path into the sequencer (a paid data
+ * provider twice accepted a Base transaction and never propagated it), and sequencer
+ * ordering leaves no public mempool to be read. Ethereum has no equivalent, so its
+ * send path has to be a paid provider or a private/protected channel.
+ *
+ * Matching is by host suffix, so a paid or private tier served from one of these
+ * hosts is caught too. `OPS_ALLOW_PUBLIC_SEND_ENDPOINT=1` says that is deliberate
+ * and downgrades the failure to a warning; the default is to fail.
+ */
+const PUBLIC_SEND_ENDPOINTS = ['publicnode.com', 'drpc.org', 'llamarpc.com', 'ankr.com', '1rpc.io', 'cloudflare-eth.com', 'eth.public-rpc.com'];
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** True when `url` is a free shared endpoint; a local fork (the rehearsal) never is. */
+function isPublicSendEndpoint(url: string): boolean {
+  const host = hostOf(url);
+  if (!host || host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return false;
+  return PUBLIC_SEND_ENDPOINTS.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
+async function withTimeout<T>(p: Promise<T>, ms = 20_000): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timeout after ${ms} ms`)), ms))]);
+}
+
+function addressOf(envKey: string): string | undefined {
+  const pk = process.env[envKey];
+  if (!pk) return undefined;
+  try {
+    return new Wallet(pk).address;
+  } catch {
+    fail(`${envKey} is a valid private key`);
+    return undefined;
+  }
+}
+
+async function checkRpc(c: Chain) {
+  const read = rpcUrl(c.key);
+  const send = process.env[`RPC_SEND_${c.key.toUpperCase()}`];
+  for (const [label, url] of [['read', read], ['send', send]] as const) {
+    if (!url) {
+      if (label === 'send') warn(`${c.key} RPC_SEND_${c.key.toUpperCase()} set`, 'broadcasts go through the read RPC');
+      continue;
+    }
+    try {
+      const p = new JsonRpcProvider(url, undefined, { batchMaxCount: 1 });
+      const id = BigInt(await withTimeout(p.send('eth_chainId', [])));
+      if (id === c.chainId) pass(`${c.key} ${label} RPC chain id ${id}`);
+      else fail(`${c.key} ${label} RPC chain id`, `${id}, expected ${c.chainId}`);
+      p.destroy();
+    } catch (e) {
+      fail(`${c.key} ${label} RPC reachable`, String((e as Error).message).slice(0, 160));
+    }
+  }
+  // Where signed transactions actually go: RPC_SEND_<KEY>, or the read RPC when it is
+  // unset (config.providerFor only splits the two when both are set and differ). A
+  // failure, not a warning: the operator cannot see a dropped broadcast, and the
+  // symptom is a transfer stuck in flight rather than an error anywhere.
+  const broadcast = send ?? read;
+  if (isPublicSendEndpoint(broadcast)) {
+    const detail =
+      `${hostOf(broadcast)} would carry eth_sendRawTransaction: a free plan drops and delays sends, and on Ethereum it publishes the signed transaction to the public mempool before inclusion. ` +
+      `Set RPC_SEND_${c.key.toUpperCase()} to a paid provider (on Ethereum, a private or protected channel).`;
+    if (process.env.OPS_ALLOW_PUBLIC_SEND_ENDPOINT === '1') warn(`${c.key} broadcasts avoid free public endpoints`, `${detail} Accepted via OPS_ALLOW_PUBLIC_SEND_ENDPOINT=1.`);
+    else fail(`${c.key} broadcasts avoid free public endpoints`, detail);
+  } else {
+    pass(`${c.key} broadcasts avoid free public endpoints`, hostOf(broadcast) || broadcast);
+  }
+  try {
+    const head = await withTimeout(c.provider.getBlockNumber());
+    const logs = await withTimeout(c.provider.getLogs({ address: c.manifest.contracts.ChainAgent, fromBlock: head - 50, toBlock: head }));
+    pass(`${c.key} eth_getLogs`, `${logs.length} agent logs in the last 50 blocks`);
+    const past = await withTimeout(c.provider.getBalance(c.manifest.contracts.ChainAgent, c.manifest.startBlock));
+    pass(`${c.key} archive reads`, `state at the deployment block served (${past} wei)`);
+  } catch (e) {
+    fail(`${c.key} logs and archive reads`, String((e as Error).message).slice(0, 160));
+  }
+}
+
+async function checkContracts(c: Chain) {
+  for (const [name, address] of Object.entries(c.manifest.contracts)) {
+    const code = await withTimeout(c.provider.getCode(address));
+    if (code === '0x') fail(`${c.key} ${name} has code`, address);
+  }
+  pass(`${c.key} manifest contracts have code`, `${Object.keys(c.manifest.contracts).length} contracts, profile ${c.manifest.profile ?? 'production'}, phase ${c.manifest.phase}`);
+  if (c.manifest.phase < 3) fail(`${c.key} deployment finished`, `manifest at phase ${c.manifest.phase}; run phases 1-4 first`);
+}
+
+async function checkGas(c: Chain, label: string, address: string) {
+  const b = await withTimeout(c.provider.getBalance(address));
+  if (b === 0n) fail(`${label} has gas on ${c.key}`, `${address}: 0 ETH`);
+  else if (b < MIN_GAS_WEI) warn(`${label} gas on ${c.key}`, `${address}: ${formatEther(b)} ETH, below ${formatEther(MIN_GAS_WEI)}`);
+  else pass(`${label} gas on ${c.key}`, `${address}: ${formatEther(b)} ETH`);
+}
+
+function checkWritable(label: string, file: string) {
+  const dir = path.dirname(path.resolve(file));
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, `.preflight-${process.pid}`);
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    pass(`${label} writable`, path.resolve(file));
+  } catch (e) {
+    fail(`${label} writable`, `${dir}: ${(e as Error).message}`);
+  }
+}
+
+async function main() {
+  if (layout !== 'operators' && layout !== 'separate') {
+    console.error('usage: preflight --layout operators|separate');
+    process.exit(2);
+  }
+  let chains: Chain[];
+  try {
+    chains = loadChains();
+  } catch (e) {
+    console.error(`FAIL configuration: ${(e as Error).message}`);
+    process.exit(1);
+  }
+  const hub = hubOf(chains);
+
+  // the registry picks expected limits by CROSSCHAIN_PROFILE; a mismatch with the
+  // deployed profile makes every deployment check fail and the monitor page
+  // critical around the clock
+  for (const c of chains) {
+    const deployed = c.manifest.profile ?? 'production';
+    if (deployed === PROFILE) pass(`${c.key} CROSSCHAIN_PROFILE matches the deployment`, PROFILE);
+    else fail(`${c.key} CROSSCHAIN_PROFILE matches the deployment`, `env selects "${PROFILE}", manifest was deployed as "${deployed}"`);
+  }
+
+  for (const c of chains) {
+    await checkRpc(c);
+    await checkContracts(c);
+  }
+
+  // keys and roles
+  const nav = addressOf('NAV_UPDATER_PRIVATE_KEY');
+  const keeper = addressOf('KEEPER_PRIVATE_KEY');
+  const relayer = addressOf('RELAYER_PRIVATE_KEY');
+  const autofund = process.env.KEEPER_AUTOFUND === 'true';
+  const executor = addressOf('EXECUTOR_PRIVATE_KEY');
+  for (const [k, a] of [['NAV_UPDATER_PRIVATE_KEY', nav], ['KEEPER_PRIVATE_KEY', keeper], ['RELAYER_PRIVATE_KEY', relayer]] as const) {
+    if (!a) fail(`${k} set`);
+  }
+  if (autofund && !executor) fail('EXECUTOR_PRIVATE_KEY set', 'KEEPER_AUTOFUND=true needs it');
+
+  const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
+  const vault = new Contract(hub.manifest.contracts.EpochVault, EPOCH_VAULT, hub.provider);
+  try {
+    const tracked: bigint[] = (await accountant.chainIds()).map((chainId: bigint) => BigInt(chainId));
+    assertTrackedChainsConfigured(chains, tracked);
+    pass('every accountant chain is configured', tracked.join(','));
+  } catch (e) {
+    fail('every accountant chain is configured', (e as Error).message);
+  }
+  if (nav) {
+    if (await accountant.hasRole(id('NAV_UPDATER_ROLE'), nav)) pass('NAV updater holds NAV_UPDATER_ROLE', nav);
+    else fail('NAV updater holds NAV_UPDATER_ROLE', `${nav} does not`);
+  }
+  if (executor) {
+    const onVault = await vault.hasRole(id('EXECUTOR_ROLE'), executor);
+    const onAgents = await Promise.all(chains.map((c) => new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider).hasRole(id('EXECUTOR_ROLE'), executor)));
+    if (onVault && onAgents.every(Boolean)) pass('executor holds EXECUTOR_ROLE on the vault and every agent', executor);
+    else (autofund ? fail : warn)('executor holds EXECUTOR_ROLE', `${executor}: vault ${onVault}, agents ${onAgents.join(',')}`);
+  }
+
+  // one address sending from two processes overwrites its own transactions
+  const signing = [nav, keeper, relayer].filter(Boolean) as string[];
+  const distinct = new Set(signing.map((a) => a.toLowerCase())).size;
+  if (layout === 'separate' && distinct < signing.length) {
+    fail('one key per process', 'NAV updater, keeper and relayer share a key; run the operators layout (docker compose --profile stand)');
+  } else if (layout === 'operators' && distinct === signing.length && signing.length === 3) {
+    warn('operators layout', 'the three keys are distinct; the separate layout isolates them better');
+  } else {
+    pass(`signing layout ${layout}`, `${distinct} distinct signer(s) for nav, keeper, relayer`);
+  }
+
+  // gas where each role sends
+  if (nav) await checkGas(hub, 'NAV updater', nav);
+  if (keeper && keeper !== nav) await checkGas(hub, 'keeper', keeper);
+  if (relayer) for (const c of chains) await checkGas(c, 'relayer', relayer);
+
+  // state and external services
+  for (const native of loadNativeSpokes()) {
+    try {
+      const { SolanaSpoke } = await import('./solana/spoke');
+      const { solanaSigner } = await import('./solana/transactions');
+      if (!(native instanceof SolanaSpoke)) throw new Error('unsupported native preflight');
+      await withTimeout(native.sync(new TransferIndex()),60_000);
+      await native.referenceAt((await hub.provider.getBlock('latest'))!.timestamp);
+      const state = await native.state();
+      const {PublicKey}=await import('@solana/web3.js');
+      if (!native.manifest.localValidator) {
+        if (PublicKey.isOnCurve(state.governance.toBytes())) throw new Error('production native governance must be a reviewed timelocked PDA');
+        if (native.upgradeAuthority && !native.upgradeAuthority.equals(state.governance)) throw new Error('native upgrade authority must equal governance');
+      }
+      const executor = solanaSigner().publicKey;
+      if (!state.executor.equals(executor)) throw new Error('Solana executor differs from on-chain role');
+      const checkpointRent=await native.connection.getMinimumBalanceForRentExemption(133+48*state.strategies.length,'finalized');
+      const eventRent=await native.connection.getMinimumBalanceForRentExemption(492,'finalized');
+      const nonceRent=await native.connection.getMinimumBalanceForRentExemption(9,'finalized');
+      for (const role of ['SOLANA_EXECUTOR_KEYPAIR','SOLANA_RELAYER_KEYPAIR','SOLANA_CHECKPOINT_KEYPAIR']) {
+        const signer = solanaSigner(role);
+        const required=checkpointRent+(role==='SOLANA_EXECUTOR_KEYPAIR'?eventRent:role==='SOLANA_RELAYER_KEYPAIR'?nonceRent:0)+50_000;
+        if (await native.connection.getBalance(signer.publicKey,'finalized') < required) throw new Error(`${role} needs at least ${required} lamports for a checkpoint, fees and bridge rent`);
+      }
+      if (!process.env.SOLANA_TX_JOURNAL_DIR) throw new Error('durable SOLANA_TX_JOURNAL_DIR is required');
+      if (!process.env.SOLANA_CHECKPOINT_DB) throw new Error('durable SOLANA_CHECKPOINT_DB is required to avoid unbounded cold-start RPC replay');
+      if (!process.env.SOLANA_LOOKUP_TABLES) throw new Error('SOLANA_LOOKUP_TABLES is required for the atomic CCTP receive + checkpoint transaction');
+      for(const key of process.env.SOLANA_LOOKUP_TABLES.split(',').map(s=>s.trim()).filter(Boolean)) {
+        const table=(await native.connection.getAddressLookupTable(new PublicKey(key))).value;
+        if(!table||!table.isActive()) throw new Error(`native lookup table unavailable/inactive: ${key}`);
+      }
+      checkWritable('SOLANA_TX_JOURNAL_DIR',path.join(process.env.SOLANA_TX_JOURNAL_DIR,'journal-probe'));
+      pass('Solana program, PDA custody, roles, cluster, finalized checkpoint and fee payers');
+    } catch(e) { fail('Solana readiness',e instanceof Error?e.message:String(e)); }
+  }
+  checkWritable('TRANSFER_INDEX_FILE', TRANSFER_INDEX_FILE);
+  checkWritable('INDEXER_DB', process.env.INDEXER_DB ?? 'crosschain-indexer.sqlite');
+  const mode = process.env.RELAYER_ATTESTATION ?? 'iris';
+  if (mode !== 'iris') fail('RELAYER_ATTESTATION=iris', `is "${mode}"; the local attester exists only on forks`);
+  try {
+    const base = process.env.IRIS_API_URL ?? 'https://iris-api.circle.com';
+    const r = await withTimeout(fetch(`${base}/v2/messages/${hub.entry.cctp.domain}?transactionHash=0x${'00'.repeat(32)}`));
+    if (r.status === 404 || r.status === 400 || r.ok) pass('Circle Iris reachable', `${base} answered ${r.status}`);
+    else fail('Circle Iris reachable', `${base} answered ${r.status}`);
+  } catch (e) {
+    fail('Circle Iris reachable', (e as Error).message);
+  }
+  if (process.env.TELEGRAM_TOKEN && process.env.TELEGRAM_CHAT_ID) {
+    try {
+      const r = await withTimeout(fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getMe`));
+      if (r.ok) pass('Telegram bot token valid');
+      else fail('Telegram bot token valid', `getMe answered ${r.status}`);
+    } catch (e) {
+      fail('Telegram reachable', (e as Error).message);
+    }
+  } else {
+    warn('Telegram alerts configured', 'TELEGRAM_TOKEN / TELEGRAM_CHAT_ID unset: alerts go only to the logs');
+  }
+
+  for (const r of results) console.log(`${r.ok ? (r.warn ? 'WARN' : ' ok ') : 'FAIL'}  ${r.label}${r.detail ? `  (${r.detail})` : ''}`);
+  const failed = results.filter((r) => !r.ok).length;
+  console.log(failed ? `\nPREFLIGHT FAILED: ${failed} problem(s)` : `\nPREFLIGHT PASSED (${results.filter((r) => r.warn).length} warning(s))`);
+  process.exit(failed ? 1 : 0);
+}
+
+main().catch((e) => {
+  console.error(`FAIL preflight crashed: ${e instanceof Error ? e.stack : e}`);
+  process.exit(1);
+});

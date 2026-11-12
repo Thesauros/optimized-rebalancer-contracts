@@ -1,0 +1,63 @@
+name: Security Scan
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC — catches newly disclosed CVEs even with no code changes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slither:
+    name: Slither static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci --ignore-scripts
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install slither-analyzer==0.11.6
+
+      - name: Run Slither
+        # Inspect application contracts, keeping all detectors and the high gate.
+        # Dependency findings are tracked by their upstream maintainers/SCA.
+        run: slither contracts --compile-force-framework foundry --filter-paths '(^|/)(node_modules|lib)/' --fail-high
+
+  dependency-audit:
+    name: Dependency audit (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci --ignore-scripts
+
+      - name: npm audit (fails on high/critical advisories)
+        run: npm audit --audit-level=high
+
+      - name: Install ops dependencies
+        run: npm ci --ignore-scripts
+        working-directory: ops
+
+      - name: Audit ops dependencies (fails on high/critical advisories)
+        run: npm audit --audit-level=high
+        working-directory: ops

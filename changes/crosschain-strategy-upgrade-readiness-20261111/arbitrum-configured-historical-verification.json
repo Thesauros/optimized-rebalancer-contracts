@@ -1,0 +1,19 @@
+{
+  "network": "arbitrum",
+  "endpoint": "configured Arbitrum read RPC; URL withheld",
+  "deploymentBlock": 509725811,
+  "productionWrites": false,
+  "sources": {
+    "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664": {
+      "atDeployment": "0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf",
+      "current": "0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf",
+      "matches": true
+    },
+    "0xeB98d46937C537efF376361536D58d78c57c40d7": {
+      "atDeployment": "0x7e97fa6893871A2751B5fE961978DCCb2c201E65",
+      "current": "0x7e97fa6893871A2751B5fE961978DCCb2c201E65",
+      "matches": true
+    }
+  },
+  "allMissingSourcesAttested": true
+}

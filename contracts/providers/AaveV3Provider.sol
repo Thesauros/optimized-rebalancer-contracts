@@ -43,6 +43,12 @@ import {IProvider} from "../interfaces/IProvider.sol";
  * ```
  */
 contract AaveV3Provider is IProvider {
+    IPoolAddressesProvider private immutable _poolAddressesProvider;
+
+    constructor(address poolAddressesProvider_) {
+        _poolAddressesProvider = IPoolAddressesProvider(poolAddressesProvider_);
+    }
+
     /**
      * @inheritdoc IProvider
      */
@@ -80,11 +86,10 @@ contract AaveV3Provider is IProvider {
      */
     function _getPoolAddressesProvider()
         internal
-        pure
+        view
         returns (IPoolAddressesProvider)
     {
-        return
-            IPoolAddressesProvider(0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D);
+        return _poolAddressesProvider;
     }
 
     /**

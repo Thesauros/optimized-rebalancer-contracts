@@ -14,6 +14,44 @@ interface IRebalancer is IERC4626 {
     error InvalidCount();
     error ArrayMismatch();
     error InvalidProvider();
+    error InsufficientLiquidity();
+    error EntryProviderNotInProviders();
+    error ProviderHasAssets(address provider, uint256 assets);
+    error ProviderCapExceeded(address provider);
+    error ProviderUnavailable();
+    error ProviderHasReceiptShares(address provider, uint256 shares);
+    error DuplicateProviderSource();
+    error ProviderSourceChanged();
+    error SecurityAccountingNotInitialized();
+    /// @dev `forceRemoveProvider` only accepts a provider whose balance view actually fails.
+    error ProviderStillReadable(address provider);
+    /// @dev The entry provider cannot be force-removed; deposits would have nowhere to go.
+    error ProviderIsEntry(address provider);
+
+    event SecurityAccountingInitialized(uint256 highWaterMark);
+
+    /**
+     * @notice Emitted when an unreadable provider is dropped by `forceRemoveProvider`,
+     *         writing its position off. The written-off value leaves NAV at once.
+     *
+     * @param provider The removed provider.
+     */
+    event ProviderForcedOut(address indexed provider);
+
+    /**
+     * @notice Emitted when a provider's exposure cap changes.
+     *
+     * @param provider The provider.
+     * @param capBps The new cap in bps of total assets (0 = uncapped).
+     */
+    event ProviderCapUpdated(address indexed provider, uint256 capBps);
+
+    /**
+     * @notice Emitted when revoking a removed provider's approval failed.
+     *
+     * @param provider The removed provider.
+     */
+    event StaleApprovalRevokeFailed(address indexed provider);
 
     /**
      * @notice Emitted when the timelock contract is changed.
@@ -73,10 +111,7 @@ interface IRebalancer is IERC4626 {
      * @param managementFeeShares The amount of shares minted as management fee.
      */
     event FeesApplied(
-        uint256 lastTotalBalance,
-        uint256 currentTotalBalance,
-        uint256 performanceFeeShares,
-        uint256 managementFeeShares
+        uint256 lastTotalBalance, uint256 currentTotalBalance, uint256 performanceFeeShares, uint256 managementFeeShares
     );
 
     /**
@@ -86,11 +121,7 @@ interface IRebalancer is IERC4626 {
      * @param from The provider from which assets are rebalanced.
      * @param to The provider to which assets are rebalanced.
      */
-    event RebalanceExecuted(
-        uint256 assets,
-        address indexed from,
-        address indexed to
-    );
+    event RebalanceExecuted(uint256 assets, address indexed from, address indexed to);
 
     /**
      * @notice Performs rebalancing of the vault by moving funds across providers.
@@ -98,9 +129,7 @@ interface IRebalancer is IERC4626 {
      * @param sources An array of providers holding the assets.
      * @param destinations An array of providers receiving the assets.
      */
-    function rebalance(
-        uint256[] memory amounts,
-        IProvider[] memory sources,
-        IProvider[] memory destinations
-    ) external returns (bool);
+    function rebalance(uint256[] memory amounts, IProvider[] memory sources, IProvider[] memory destinations)
+        external
+        returns (bool);
 }

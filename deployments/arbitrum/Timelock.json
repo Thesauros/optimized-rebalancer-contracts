@@ -1,0 +1,788 @@
+{
+  "address": "0x694C38fb29fd14dECbBe11A15009aC7e728A686D",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "delay_",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Timelock__ExecutionFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Timelock__Expired",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Timelock__InvalidDelay",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Timelock__InvalidTimestamp",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Timelock__NotQueued",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Timelock__StillLocked",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Timelock__Unauthorized",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "signature",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "Cancelled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "newDelay",
+          "type": "uint256"
+        }
+      ],
+      "name": "DelayUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "signature",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "Executed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferStarted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "signature",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "Queued",
+      "type": "event"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "fallback"
+    },
+    {
+      "inputs": [],
+      "name": "GRACE_PERIOD",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_DELAY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MIN_DELAY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "acceptOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "signature",
+          "type": "string"
+        },
+        {
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        },
+        {
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "cancel",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "delay",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "signature",
+          "type": "string"
+        },
+        {
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        },
+        {
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "execute",
+      "outputs": [
+        {
+          "internalType": "bytes",
+          "name": "",
+          "type": "bytes"
+        }
+      ],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pendingOwner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "signature",
+          "type": "string"
+        },
+        {
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        },
+        {
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "queue",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "queued",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_delay",
+          "type": "uint256"
+        }
+      ],
+      "name": "setDelay",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
+  ],
+  "transactionHash": "0x45e205881f70ded70c06565467ec9f0dee36ac83bdffb5df1439a232944fa5b1",
+  "receipt": {
+    "to": null,
+    "from": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "contractAddress": "0x694C38fb29fd14dECbBe11A15009aC7e728A686D",
+    "transactionIndex": 1,
+    "gasUsed": "731974",
+    "logsBloom": "0x00000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000042040000002000000000000000000000000000100001000000000000000000000000000000000000020000000000000000000a00000000000000800000000000000000400000000000000000000000040000000000000000000000000000000000000000000400000000000000000000000000000000000000000001000000000000000000000000000000000000000000800000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000000000",
+    "blockHash": "0x7cabab0a9acaaccac800dd3dae7ca2c0c6057e65fb4b2e1f4f7bf4f970f2af89",
+    "transactionHash": "0x45e205881f70ded70c06565467ec9f0dee36ac83bdffb5df1439a232944fa5b1",
+    "logs": [
+      {
+        "transactionIndex": 1,
+        "blockNumber": 491424235,
+        "transactionHash": "0x45e205881f70ded70c06565467ec9f0dee36ac83bdffb5df1439a232944fa5b1",
+        "address": "0x694C38fb29fd14dECbBe11A15009aC7e728A686D",
+        "topics": [
+          "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d"
+        ],
+        "data": "0x",
+        "logIndex": 0,
+        "blockHash": "0x7cabab0a9acaaccac800dd3dae7ca2c0c6057e65fb4b2e1f4f7bf4f970f2af89"
+      },
+      {
+        "transactionIndex": 1,
+        "blockNumber": 491424235,
+        "transactionHash": "0x45e205881f70ded70c06565467ec9f0dee36ac83bdffb5df1439a232944fa5b1",
+        "address": "0x694C38fb29fd14dECbBe11A15009aC7e728A686D",
+        "topics": [
+          "0x7ed9288af3fe7320be9af1fcb6714d780e3ffd1a17c1a395594978fd6741ddcb",
+          "0x0000000000000000000000000000000000000000000000000000000000000e10"
+        ],
+        "data": "0x",
+        "logIndex": 1,
+        "blockHash": "0x7cabab0a9acaaccac800dd3dae7ca2c0c6057e65fb4b2e1f4f7bf4f970f2af89"
+      }
+    ],
+    "blockNumber": 491424235,
+    "cumulativeGasUsed": "731974",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    3600
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "9c5ea5f3f4c3378c95d0e1dffb2e0bfb",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.33+commit.64118f21\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"delay_\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Timelock__ExecutionFailed\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Timelock__Expired\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Timelock__InvalidDelay\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Timelock__InvalidTimestamp\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Timelock__NotQueued\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Timelock__StillLocked\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"Timelock__Unauthorized\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"txId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"signature\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"Cancelled\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"newDelay\",\"type\":\"uint256\"}],\"name\":\"DelayUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"txId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"signature\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"Executed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferStarted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"txId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"signature\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"Queued\",\"type\":\"event\"},{\"stateMutability\":\"payable\",\"type\":\"fallback\"},{\"inputs\":[],\"name\":\"GRACE_PERIOD\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"MAX_DELAY\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"MIN_DELAY\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"acceptOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"string\",\"name\":\"signature\",\"type\":\"string\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"cancel\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"delay\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"string\",\"name\":\"signature\",\"type\":\"string\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"execute\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pendingOwner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"string\",\"name\":\"signature\",\"type\":\"string\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"queue\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"name\":\"queued\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_delay\",\"type\":\"uint256\"}],\"name\":\"setDelay\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"stateMutability\":\"payable\",\"type\":\"receive\"}],\"devdoc\":{\"custom:security\":\"The timelock provides several security features: - Minimum delay of 30 minutes prevents immediate execution - Maximum delay of 30 days prevents indefinite delays - Grace period of 14 days for execution after delay expires - Only owner can queue and execute transactions - Transactions can be cancelled before execution \",\"custom:usage\":\"Example usage: ```solidity // Queue a transaction to update vault providers timelock.queue(     vaultAddress,     0,     \\\"setProviders(address[])\\\",     encodedData,     block.timestamp + delay );  // After delay period, execute the transaction timelock.execute(     vaultAddress,     0,     \\\"setProviders(address[])\\\",     encodedData,     executionTimestamp ); ```\",\"details\":\"This contract implements a governance mechanism that requires a time delay      before executing critical operations, providing security against malicious      or accidental changes to the protocol. \",\"errors\":{\"OwnableInvalidOwner(address)\":[{\"details\":\"The owner is not a valid owner account. (eg. `address(0)`)\"}],\"OwnableUnauthorizedAccount(address)\":[{\"details\":\"The caller account is not authorized to perform an operation.\"}],\"Timelock__Unauthorized()\":[{\"details\":\"Errors\"}]},\"events\":{\"Cancelled(bytes32,address,uint256,string,bytes,uint256)\":{\"details\":\"Emitted when a queued transaction is cancelled.\"},\"DelayUpdated(uint256)\":{\"details\":\"Emitted when the delay for queued transactions is updated.\"},\"Executed(bytes32,address,uint256,string,bytes,uint256)\":{\"details\":\"Emitted when a queued transaction is executed.\"},\"Queued(bytes32,address,uint256,string,bytes,uint256)\":{\"details\":\"Emitted when a transaction is queued.\"}},\"kind\":\"dev\",\"methods\":{\"acceptOwnership()\":{\"details\":\"The new owner accepts the ownership transfer.\"},\"cancel(address,uint256,string,bytes,uint256)\":{\"params\":{\"data\":\"The calldata for the function called on the target address.\",\"signature\":\"The function signature of the target contract.\",\"target\":\"The address of the contract to cancel the transaction for.\",\"timestamp\":\"The time when the transaction was scheduled to be executed.\",\"value\":\"The amount of ether that was to be sent with the call.\"}},\"constructor\":{\"details\":\"Initializes the Timelock contract with the specified parameters.\",\"params\":{\"delay_\":\"The initial delay for queued transactions.\",\"owner_\":\"The address of the initial owner of the contract.\"}},\"execute(address,uint256,string,bytes,uint256)\":{\"custom:example\":\"```solidity // Execute a previously queued transaction bytes memory result = timelock.execute(     vaultAddress,     0,     \\\"setProviders(address[])\\\",     data,     originalTimestamp ); ```\",\"details\":\"The transaction must have been previously queuedThe current timestamp must be >= the execution timestampThe transaction must not have expired (timestamp + GRACE_PERIOD)Only the contract owner can execute transactionsThe transaction is removed from the queue after execution \",\"params\":{\"data\":\"The ABI-encoded parameters for the function call\",\"signature\":\"The function signature of the target contract\",\"target\":\"The address of the contract to call\",\"timestamp\":\"The original timestamp when the transaction was queued\",\"value\":\"The amount of ether to send with the call\"},\"returns\":{\"_0\":\"returnData The return data from the executed function call \"}},\"owner()\":{\"details\":\"Returns the address of the current owner.\"},\"pendingOwner()\":{\"details\":\"Returns the address of the pending owner.\"},\"queue(address,uint256,string,bytes,uint256)\":{\"custom:example\":\"```solidity // Queue a transaction to update vault providers bytes memory data = abi.encode(newProviders); bytes32 txId = timelock.queue(     vaultAddress,     0,     \\\"setProviders(address[])\\\",     data,     block.timestamp + 24 hours ); ```\",\"details\":\"The transaction ID is computed as keccak256(abi.encode(target, value, signature, data, timestamp))The timestamp must be at least `delay` seconds in the futureOnly the contract owner can queue transactions \",\"params\":{\"data\":\"The ABI-encoded parameters for the function call (without function selector)\",\"signature\":\"The function signature of the target contract (e.g., \\\"setProviders(address[])\\\")\",\"target\":\"The address of the contract to call\",\"timestamp\":\"The timestamp when the transaction can be executed (must be >= block.timestamp + delay)\",\"value\":\"The amount of ether to send with the call (0 for most calls)\"},\"returns\":{\"_0\":\"txId The unique transaction ID for this queued transaction \"}},\"renounceOwnership()\":{\"details\":\"Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner.\"},\"setDelay(uint256)\":{\"params\":{\"_delay\":\"The new delay duration in seconds.\"}},\"transferOwnership(address)\":{\"details\":\"Starts the ownership transfer of the contract to a new account. Replaces the pending transfer if there is one. Can only be called by the current owner. Setting `newOwner` to the zero address is allowed; this can be used to cancel an initiated ownership transfer.\"}},\"stateVariables\":{\"GRACE_PERIOD\":{\"details\":\"After this period, transactions expire and cannot be executed\"},\"MAX_DELAY\":{\"details\":\"Prevents indefinite delays that could lock the protocol\"},\"MIN_DELAY\":{\"details\":\"Prevents immediate execution of critical operations\"},\"delay\":{\"details\":\"Can be updated by the contract itself through setDelay()\"},\"queued\":{\"details\":\"Transaction ID is computed as keccak256(abi.encode(target, value, signature, data, timestamp))\"}},\"title\":\"Timelock\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"GRACE_PERIOD()\":{\"notice\":\"Grace period for executing queued transactions (14 days)\"},\"MAX_DELAY()\":{\"notice\":\"Maximum delay for queued transactions (30 days)\"},\"MIN_DELAY()\":{\"notice\":\"Minimum delay for queued transactions (30 minutes)\"},\"cancel(address,uint256,string,bytes,uint256)\":{\"notice\":\"Cancels a queued transaction.\"},\"delay()\":{\"notice\":\"Current delay for queued transactions\"},\"execute(address,uint256,string,bytes,uint256)\":{\"notice\":\"Executes a previously queued transaction\"},\"queue(address,uint256,string,bytes,uint256)\":{\"notice\":\"Queues a transaction for delayed execution\"},\"queued(bytes32)\":{\"notice\":\"Mapping of transaction IDs to their queued status\"},\"setDelay(uint256)\":{\"notice\":\"Sets a new delay for queued transactions.\"}},\"notice\":\"A time-delayed execution contract for critical operations\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/access/Timelock.sol\":\"Timelock\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"@openzeppelin/contracts/access/Ownable.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Context} from \\\"../utils/Context.sol\\\";\\n\\n/**\\n * @dev Contract module which provides a basic access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * The initial owner is set to the address provided by the deployer. This can\\n * later be changed with {transferOwnership}.\\n *\\n * This module is used through inheritance. It will make available the modifier\\n * `onlyOwner`, which can be applied to your functions to restrict their use to\\n * the owner.\\n */\\nabstract contract Ownable is Context {\\n    address private _owner;\\n\\n    /**\\n     * @dev The caller account is not authorized to perform an operation.\\n     */\\n    error OwnableUnauthorizedAccount(address account);\\n\\n    /**\\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\\n     */\\n    error OwnableInvalidOwner(address owner);\\n\\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\\n     */\\n    constructor(address initialOwner) {\\n        if (initialOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(initialOwner);\\n    }\\n\\n    /**\\n     * @dev Throws if called by any account other than the owner.\\n     */\\n    modifier onlyOwner() {\\n        _checkOwner();\\n        _;\\n    }\\n\\n    /**\\n     * @dev Returns the address of the current owner.\\n     */\\n    function owner() public view virtual returns (address) {\\n        return _owner;\\n    }\\n\\n    /**\\n     * @dev Throws if the sender is not the owner.\\n     */\\n    function _checkOwner() internal view virtual {\\n        if (owner() != _msgSender()) {\\n            revert OwnableUnauthorizedAccount(_msgSender());\\n        }\\n    }\\n\\n    /**\\n     * @dev Leaves the contract without owner. It will not be possible to call\\n     * `onlyOwner` functions. Can only be called by the current owner.\\n     *\\n     * NOTE: Renouncing ownership will leave the contract without an owner,\\n     * thereby disabling any functionality that is only available to the owner.\\n     */\\n    function renounceOwnership() public virtual onlyOwner {\\n        _transferOwnership(address(0));\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Can only be called by the current owner.\\n     */\\n    function transferOwnership(address newOwner) public virtual onlyOwner {\\n        if (newOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual {\\n        address oldOwner = _owner;\\n        _owner = newOwner;\\n        emit OwnershipTransferred(oldOwner, newOwner);\\n    }\\n}\\n\",\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\"},\"@openzeppelin/contracts/access/Ownable2Step.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (access/Ownable2Step.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Ownable} from \\\"./Ownable.sol\\\";\\n\\n/**\\n * @dev Contract module which provides access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * This extension of the {Ownable} contract includes a two-step mechanism to transfer\\n * ownership, where the new owner must call {acceptOwnership} in order to replace the\\n * old one. This can help prevent common mistakes, such as transfers of ownership to\\n * incorrect accounts, or to contracts that are unable to interact with the\\n * permission system.\\n *\\n * The initial owner is specified at deployment time in the constructor for `Ownable`. This\\n * can later be changed with {transferOwnership} and {acceptOwnership}.\\n *\\n * This module is used through inheritance. It will make available all functions\\n * from parent (Ownable).\\n */\\nabstract contract Ownable2Step is Ownable {\\n    address private _pendingOwner;\\n\\n    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Returns the address of the pending owner.\\n     */\\n    function pendingOwner() public view virtual returns (address) {\\n        return _pendingOwner;\\n    }\\n\\n    /**\\n     * @dev Starts the ownership transfer of the contract to a new account. Replaces the pending transfer if there is one.\\n     * Can only be called by the current owner.\\n     *\\n     * Setting `newOwner` to the zero address is allowed; this can be used to cancel an initiated ownership transfer.\\n     */\\n    function transferOwnership(address newOwner) public virtual override onlyOwner {\\n        _pendingOwner = newOwner;\\n        emit OwnershipTransferStarted(owner(), newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`) and deletes any pending owner.\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual override {\\n        delete _pendingOwner;\\n        super._transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev The new owner accepts the ownership transfer.\\n     */\\n    function acceptOwnership() public virtual {\\n        address sender = _msgSender();\\n        if (pendingOwner() != sender) {\\n            revert OwnableUnauthorizedAccount(sender);\\n        }\\n        _transferOwnership(sender);\\n    }\\n}\\n\",\"keccak256\":\"0xdcad8898fda432696597752e8ec361b87d85c82cb258115427af006dacf7128c\",\"license\":\"MIT\"},\"@openzeppelin/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"contracts/access/Timelock.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity 0.8.33;\\n\\nimport {Ownable2Step, Ownable} from \\\"@openzeppelin/contracts/access/Ownable2Step.sol\\\";\\n\\n/**\\n * @title Timelock\\n * @notice A time-delayed execution contract for critical operations\\n * @dev This contract implements a governance mechanism that requires a time delay\\n *      before executing critical operations, providing security against malicious\\n *      or accidental changes to the protocol.\\n * \\n * @custom:security The timelock provides several security features:\\n * - Minimum delay of 30 minutes prevents immediate execution\\n * - Maximum delay of 30 days prevents indefinite delays\\n * - Grace period of 14 days for execution after delay expires\\n * - Only owner can queue and execute transactions\\n * - Transactions can be cancelled before execution\\n * \\n * @custom:usage Example usage:\\n * ```solidity\\n * // Queue a transaction to update vault providers\\n * timelock.queue(\\n *     vaultAddress,\\n *     0,\\n *     \\\"setProviders(address[])\\\",\\n *     encodedData,\\n *     block.timestamp + delay\\n * );\\n * \\n * // After delay period, execute the transaction\\n * timelock.execute(\\n *     vaultAddress,\\n *     0,\\n *     \\\"setProviders(address[])\\\",\\n *     encodedData,\\n *     executionTimestamp\\n * );\\n * ```\\n */\\ncontract Timelock is Ownable2Step {\\n    /**\\n     * @dev Errors\\n     */\\n    error Timelock__Unauthorized();\\n    error Timelock__InvalidDelay();\\n    error Timelock__InvalidTimestamp();\\n    error Timelock__NotQueued();\\n    error Timelock__StillLocked();\\n    error Timelock__Expired();\\n    error Timelock__ExecutionFailed();\\n\\n    /// @notice Mapping of transaction IDs to their queued status\\n    /// @dev Transaction ID is computed as keccak256(abi.encode(target, value, signature, data, timestamp))\\n    mapping(bytes32 => bool) public queued;\\n\\n    /// @notice Minimum delay for queued transactions (30 minutes)\\n    /// @dev Prevents immediate execution of critical operations\\n    uint256 public constant MIN_DELAY = 30 minutes;\\n    \\n    /// @notice Maximum delay for queued transactions (30 days)\\n    /// @dev Prevents indefinite delays that could lock the protocol\\n    uint256 public constant MAX_DELAY = 30 days;\\n    \\n    /// @notice Grace period for executing queued transactions (14 days)\\n    /// @dev After this period, transactions expire and cannot be executed\\n    uint256 public constant GRACE_PERIOD = 14 days;\\n\\n    /// @notice Current delay for queued transactions\\n    /// @dev Can be updated by the contract itself through setDelay()\\n    uint256 public delay;\\n\\n    /**\\n     * @dev Emitted when the delay for queued transactions is updated.\\n     */\\n    event DelayUpdated(uint256 indexed newDelay);\\n\\n    /**\\n     * @dev Emitted when a transaction is queued.\\n     */\\n    event Queued(\\n        bytes32 indexed txId,\\n        address indexed target,\\n        uint256 value,\\n        string signature,\\n        bytes data,\\n        uint256 timestamp\\n    );\\n\\n    /**\\n     * @dev Emitted when a queued transaction is executed.\\n     */\\n    event Executed(\\n        bytes32 indexed txId,\\n        address indexed target,\\n        uint256 value,\\n        string signature,\\n        bytes data,\\n        uint256 timestamp\\n    );\\n\\n    /**\\n     * @dev Emitted when a queued transaction is cancelled.\\n     */\\n    event Cancelled(\\n        bytes32 indexed txId,\\n        address indexed target,\\n        uint256 value,\\n        string signature,\\n        bytes data,\\n        uint256 timestamp\\n    );\\n\\n    /**\\n     * @dev Initializes the Timelock contract with the specified parameters.\\n     * @param owner_ The address of the initial owner of the contract.\\n     * @param delay_ The initial delay for queued transactions.\\n     */\\n    constructor(address owner_, uint256 delay_) Ownable(owner_) {\\n        _setDelay(delay_);\\n    }\\n\\n    receive() external payable {}\\n\\n    fallback() external payable {}\\n\\n    /**\\n     * @notice Queues a transaction for delayed execution\\n     * @param target The address of the contract to call\\n     * @param value The amount of ether to send with the call (0 for most calls)\\n     * @param signature The function signature of the target contract (e.g., \\\"setProviders(address[])\\\")\\n     * @param data The ABI-encoded parameters for the function call (without function selector)\\n     * @param timestamp The timestamp when the transaction can be executed (must be >= block.timestamp + delay)\\n     * @return txId The unique transaction ID for this queued transaction\\n     * \\n     * @dev The transaction ID is computed as keccak256(abi.encode(target, value, signature, data, timestamp))\\n     * @dev The timestamp must be at least `delay` seconds in the future\\n     * @dev Only the contract owner can queue transactions\\n     * \\n     * @custom:example\\n     * ```solidity\\n     * // Queue a transaction to update vault providers\\n     * bytes memory data = abi.encode(newProviders);\\n     * bytes32 txId = timelock.queue(\\n     *     vaultAddress,\\n     *     0,\\n     *     \\\"setProviders(address[])\\\",\\n     *     data,\\n     *     block.timestamp + 24 hours\\n     * );\\n     * ```\\n     */\\n    function queue(\\n        address target,\\n        uint256 value,\\n        string memory signature,\\n        bytes memory data,\\n        uint256 timestamp\\n    ) public onlyOwner returns (bytes32) {\\n        if (timestamp < block.timestamp + delay) {\\n            revert Timelock__InvalidTimestamp();\\n        }\\n\\n        bytes32 txId = keccak256(\\n            abi.encode(target, value, signature, data, timestamp)\\n        );\\n        queued[txId] = true;\\n\\n        emit Queued(txId, target, value, signature, data, timestamp);\\n        return txId;\\n    }\\n\\n    /**\\n     * @notice Cancels a queued transaction.\\n     * @param target The address of the contract to cancel the transaction for.\\n     * @param value The amount of ether that was to be sent with the call.\\n     * @param signature The function signature of the target contract.\\n     * @param data The calldata for the function called on the target address.\\n     * @param timestamp The time when the transaction was scheduled to be executed.\\n     */\\n    function cancel(\\n        address target,\\n        uint256 value,\\n        string memory signature,\\n        bytes memory data,\\n        uint256 timestamp\\n    ) public onlyOwner {\\n        bytes32 txId = keccak256(\\n            abi.encode(target, value, signature, data, timestamp)\\n        );\\n        queued[txId] = false;\\n\\n        emit Cancelled(txId, target, value, signature, data, timestamp);\\n    }\\n\\n    /**\\n     * @notice Executes a previously queued transaction\\n     * @param target The address of the contract to call\\n     * @param value The amount of ether to send with the call\\n     * @param signature The function signature of the target contract\\n     * @param data The ABI-encoded parameters for the function call\\n     * @param timestamp The original timestamp when the transaction was queued\\n     * @return returnData The return data from the executed function call\\n     * \\n     * @dev The transaction must have been previously queued\\n     * @dev The current timestamp must be >= the execution timestamp\\n     * @dev The transaction must not have expired (timestamp + GRACE_PERIOD)\\n     * @dev Only the contract owner can execute transactions\\n     * @dev The transaction is removed from the queue after execution\\n     * \\n     * @custom:example\\n     * ```solidity\\n     * // Execute a previously queued transaction\\n     * bytes memory result = timelock.execute(\\n     *     vaultAddress,\\n     *     0,\\n     *     \\\"setProviders(address[])\\\",\\n     *     data,\\n     *     originalTimestamp\\n     * );\\n     * ```\\n     */\\n    function execute(\\n        address target,\\n        uint256 value,\\n        string memory signature,\\n        bytes memory data,\\n        uint256 timestamp\\n    ) public payable onlyOwner returns (bytes memory) {\\n        bytes32 txId = keccak256(\\n            abi.encode(target, value, signature, data, timestamp)\\n        );\\n\\n        if (!queued[txId]) {\\n            revert Timelock__NotQueued();\\n        }\\n        if (block.timestamp < timestamp) {\\n            revert Timelock__StillLocked();\\n        }\\n        if (block.timestamp > timestamp + GRACE_PERIOD) {\\n            revert Timelock__Expired();\\n        }\\n\\n        queued[txId] = false;\\n\\n        bytes memory callData;\\n\\n        if (bytes(signature).length == 0) {\\n            callData = data;\\n        } else {\\n            callData = abi.encodePacked(\\n                bytes4(keccak256(bytes(signature))),\\n                data\\n            );\\n        }\\n        (bool success, bytes memory returnData) = target.call{value: value}(\\n            callData\\n        );\\n        if (!success) {\\n            revert Timelock__ExecutionFailed();\\n        }\\n\\n        emit Executed(txId, target, value, signature, data, timestamp);\\n\\n        return returnData;\\n    }\\n\\n    /**\\n     * @notice Sets a new delay for queued transactions.\\n     * @param _delay The new delay duration in seconds.\\n     */\\n    function setDelay(uint256 _delay) public {\\n        if (msg.sender != address(this)) {\\n            revert Timelock__Unauthorized();\\n        }\\n        _setDelay(_delay);\\n    }\\n\\n    /**\\n     * @dev Internal function to set the delay.\\n     * @param _delay The new delay duration in seconds.\\n     */\\n    function _setDelay(uint256 _delay) internal {\\n        if (_delay < MIN_DELAY || _delay > MAX_DELAY) {\\n            revert Timelock__InvalidDelay();\\n        }\\n\\n        delay = _delay;\\n        emit DelayUpdated(_delay);\\n    }\\n}\\n\",\"keccak256\":\"0xe1091e2efbf44da731d944166af4fa7399f19bbf116e10f0c06d997a480bd1b5\",\"license\":\"MIT\"}},\"version\":1}",
+  "bytecode": "0x608060405234801561001057600080fd5b50604051610ca9380380610ca983398101604081905261002f91610147565b816001600160a01b03811661005e57604051631e4fbdf760e01b81526000600482015260240160405180910390fd5b61006781610078565b5061007181610094565b5050610181565b600180546001600160a01b0319169055610091816100f7565b50565b6107088110806100a6575062278d0081115b156100c457604051633c6f231b60e11b815260040160405180910390fd5b600381905560405181907f7ed9288af3fe7320be9af1fcb6714d780e3ffd1a17c1a395594978fd6741ddcb90600090a250565b600080546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6000806040838503121561015a57600080fd5b82516001600160a01b038116811461017157600080fd5b6020939093015192949293505050565b610b19806101906000396000f3fe6080604052600436106100d45760003560e01c80638da5cb5b11610079578063c1a287e211610056578063c1a287e214610228578063e177246e1461023f578063e30c39781461025f578063f2fde38b1461027d57005b80638da5cb5b146101c05780639f81aed7146101f2578063b0f8b1421461020857005b80634cdbfad6116100b25780634cdbfad6146101605780636a42b8f814610180578063715018a61461019657806379ba5097146101ab57005b8063228250c9146100d65780634125ff901461011b5780634b9915a514610140575b005b3480156100e257600080fd5b506101066100f13660046107e9565b60026020526000908152604090205460ff1681565b60405190151581526020015b60405180910390f35b34801561012757600080fd5b5061013262278d0081565b604051908152602001610112565b34801561014c57600080fd5b5061013261015b3660046108ae565b61029d565b34801561016c57600080fd5b506100d461017b3660046108ae565b610373565b34801561018c57600080fd5b5061013260035481565b3480156101a257600080fd5b506100d4610415565b3480156101b757600080fd5b506100d4610429565b3480156101cc57600080fd5b506000546001600160a01b03165b6040516001600160a01b039091168152602001610112565b3480156101fe57600080fd5b5061013261070881565b61021b6102163660046108ae565b610472565b60405161011291906109b1565b34801561023457600080fd5b506101326212750081565b34801561024b57600080fd5b506100d461025a3660046107e9565b610656565b34801561026b57600080fd5b506001546001600160a01b03166101da565b34801561028957600080fd5b506100d46102983660046109cb565b61067f565b60006102a76106f0565b6003546102b490426109e6565b8210156102d457604051632da71e1160e11b815260040160405180910390fd5b600086868686866040516020016102ef959493929190610a0d565b60408051601f19818403018152828252805160209182012060008181526002909252919020805460ff1916600117905591506001600160a01b0388169082907fe6078611738a572e481d24f65dac585d324038a1b65b3ac7e16ad2975278a86b90610361908a908a908a908a90610a59565b60405180910390a39695505050505050565b61037b6106f0565b60008585858585604051602001610396959493929190610a0d565b60408051601f19818403018152828252805160209182012060008181526002909252919020805460ff1916905591506001600160a01b0387169082907f147c9d8001e3b0105fed2cf093029b86ccdc816c1beb9ba2746376c92f9c079690610405908990899089908990610a59565b60405180910390a3505050505050565b61041d6106f0565b610427600061071d565b565b60015433906001600160a01b031681146104665760405163118cdaa760e01b81526001600160a01b03821660048201526024015b60405180910390fd5b61046f8161071d565b50565b606061047c6106f0565b60008686868686604051602001610497959493929190610a0d565b60408051601f1981840301815291815281516020928301206000818152600290935291205490915060ff166104df57604051632f3585d560e11b815260040160405180910390fd5b8242101561050057604051630899d2f160e21b815260040160405180910390fd5b61050d62127500846109e6565b42111561052d576040516305183ff160e51b815260040160405180910390fd5b6000818152600260205260408120805460ff19169055855160609103610554575083610580565b85805190602001208560405160200161056e929190610a96565b60405160208183030381529060405290505b600080896001600160a01b0316898460405161059c9190610ac7565b60006040518083038185875af1925050503d80600081146105d9576040519150601f19603f3d011682016040523d82523d6000602084013e6105de565b606091505b509150915081610601576040516333fb06c160e21b815260040160405180910390fd5b896001600160a01b0316847f4d89696b1438d0f9c59a98b32692918d0505bb64c719b1f94f306b6333d7c77b8b8b8b8b6040516106419493929190610a59565b60405180910390a39998505050505050505050565b33301461067657604051637e6ae3c160e11b815260040160405180910390fd5b61046f81610736565b6106876106f0565b600180546001600160a01b0383166001600160a01b031990911681179091556106b86000546001600160a01b031690565b6001600160a01b03167f38d16b8cac22d99fc7c124b9cd0de2d3fa1faef420bfe791d8c362d765e2270060405160405180910390a350565b6000546001600160a01b031633146104275760405163118cdaa760e01b815233600482015260240161045d565b600180546001600160a01b031916905561046f81610799565b610708811080610748575062278d0081115b1561076657604051633c6f231b60e11b815260040160405180910390fd5b600381905560405181907f7ed9288af3fe7320be9af1fcb6714d780e3ffd1a17c1a395594978fd6741ddcb90600090a250565b600080546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6000602082840312156107fb57600080fd5b5035919050565b80356001600160a01b038116811461081957600080fd5b919050565b634e487b7160e01b600052604160045260246000fd5b60008067ffffffffffffffff84111561084f5761084f61081e565b50604051601f19601f85018116603f0116810181811067ffffffffffffffff8211171561087e5761087e61081e565b60405283815290508082840185101561089657600080fd5b83836020830137600060208583010152509392505050565b600080600080600060a086880312156108c657600080fd5b6108cf86610802565b945060208601359350604086013567ffffffffffffffff8111156108f257600080fd5b8601601f8101881361090357600080fd5b61091288823560208401610834565b935050606086013567ffffffffffffffff81111561092f57600080fd5b8601601f8101881361094057600080fd5b61094f88823560208401610834565b95989497509295608001359392505050565b60005b8381101561097c578181015183820152602001610964565b50506000910152565b6000815180845261099d816020860160208601610961565b601f01601f19169290920160200192915050565b6020815260006109c46020830184610985565b9392505050565b6000602082840312156109dd57600080fd5b6109c482610802565b80820180821115610a0757634e487b7160e01b600052601160045260246000fd5b92915050565b60018060a01b038616815284602082015260a060408201526000610a3460a0830186610985565b8281036060840152610a468186610985565b9150508260808301529695505050505050565b848152608060208201526000610a726080830186610985565b8281036040840152610a848186610985565b91505082606083015295945050505050565b6001600160e01b0319831681528151600090610ab9816004850160208701610961565b919091016004019392505050565b60008251610ad9818460208701610961565b919091019291505056fea26469706673582212201a6879cc48bff67b805a06c5356ec6932844913d622d977b4ab8e2a5d6e7d4c264736f6c63430008210033",
+  "deployedBytecode": "0x6080604052600436106100d45760003560e01c80638da5cb5b11610079578063c1a287e211610056578063c1a287e214610228578063e177246e1461023f578063e30c39781461025f578063f2fde38b1461027d57005b80638da5cb5b146101c05780639f81aed7146101f2578063b0f8b1421461020857005b80634cdbfad6116100b25780634cdbfad6146101605780636a42b8f814610180578063715018a61461019657806379ba5097146101ab57005b8063228250c9146100d65780634125ff901461011b5780634b9915a514610140575b005b3480156100e257600080fd5b506101066100f13660046107e9565b60026020526000908152604090205460ff1681565b60405190151581526020015b60405180910390f35b34801561012757600080fd5b5061013262278d0081565b604051908152602001610112565b34801561014c57600080fd5b5061013261015b3660046108ae565b61029d565b34801561016c57600080fd5b506100d461017b3660046108ae565b610373565b34801561018c57600080fd5b5061013260035481565b3480156101a257600080fd5b506100d4610415565b3480156101b757600080fd5b506100d4610429565b3480156101cc57600080fd5b506000546001600160a01b03165b6040516001600160a01b039091168152602001610112565b3480156101fe57600080fd5b5061013261070881565b61021b6102163660046108ae565b610472565b60405161011291906109b1565b34801561023457600080fd5b506101326212750081565b34801561024b57600080fd5b506100d461025a3660046107e9565b610656565b34801561026b57600080fd5b506001546001600160a01b03166101da565b34801561028957600080fd5b506100d46102983660046109cb565b61067f565b60006102a76106f0565b6003546102b490426109e6565b8210156102d457604051632da71e1160e11b815260040160405180910390fd5b600086868686866040516020016102ef959493929190610a0d565b60408051601f19818403018152828252805160209182012060008181526002909252919020805460ff1916600117905591506001600160a01b0388169082907fe6078611738a572e481d24f65dac585d324038a1b65b3ac7e16ad2975278a86b90610361908a908a908a908a90610a59565b60405180910390a39695505050505050565b61037b6106f0565b60008585858585604051602001610396959493929190610a0d565b60408051601f19818403018152828252805160209182012060008181526002909252919020805460ff1916905591506001600160a01b0387169082907f147c9d8001e3b0105fed2cf093029b86ccdc816c1beb9ba2746376c92f9c079690610405908990899089908990610a59565b60405180910390a3505050505050565b61041d6106f0565b610427600061071d565b565b60015433906001600160a01b031681146104665760405163118cdaa760e01b81526001600160a01b03821660048201526024015b60405180910390fd5b61046f8161071d565b50565b606061047c6106f0565b60008686868686604051602001610497959493929190610a0d565b60408051601f1981840301815291815281516020928301206000818152600290935291205490915060ff166104df57604051632f3585d560e11b815260040160405180910390fd5b8242101561050057604051630899d2f160e21b815260040160405180910390fd5b61050d62127500846109e6565b42111561052d576040516305183ff160e51b815260040160405180910390fd5b6000818152600260205260408120805460ff19169055855160609103610554575083610580565b85805190602001208560405160200161056e929190610a96565b60405160208183030381529060405290505b600080896001600160a01b0316898460405161059c9190610ac7565b60006040518083038185875af1925050503d80600081146105d9576040519150601f19603f3d011682016040523d82523d6000602084013e6105de565b606091505b509150915081610601576040516333fb06c160e21b815260040160405180910390fd5b896001600160a01b0316847f4d89696b1438d0f9c59a98b32692918d0505bb64c719b1f94f306b6333d7c77b8b8b8b8b6040516106419493929190610a59565b60405180910390a39998505050505050505050565b33301461067657604051637e6ae3c160e11b815260040160405180910390fd5b61046f81610736565b6106876106f0565b600180546001600160a01b0383166001600160a01b031990911681179091556106b86000546001600160a01b031690565b6001600160a01b03167f38d16b8cac22d99fc7c124b9cd0de2d3fa1faef420bfe791d8c362d765e2270060405160405180910390a350565b6000546001600160a01b031633146104275760405163118cdaa760e01b815233600482015260240161045d565b600180546001600160a01b031916905561046f81610799565b610708811080610748575062278d0081115b1561076657604051633c6f231b60e11b815260040160405180910390fd5b600381905560405181907f7ed9288af3fe7320be9af1fcb6714d780e3ffd1a17c1a395594978fd6741ddcb90600090a250565b600080546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6000602082840312156107fb57600080fd5b5035919050565b80356001600160a01b038116811461081957600080fd5b919050565b634e487b7160e01b600052604160045260246000fd5b60008067ffffffffffffffff84111561084f5761084f61081e565b50604051601f19601f85018116603f0116810181811067ffffffffffffffff8211171561087e5761087e61081e565b60405283815290508082840185101561089657600080fd5b83836020830137600060208583010152509392505050565b600080600080600060a086880312156108c657600080fd5b6108cf86610802565b945060208601359350604086013567ffffffffffffffff8111156108f257600080fd5b8601601f8101881361090357600080fd5b61091288823560208401610834565b935050606086013567ffffffffffffffff81111561092f57600080fd5b8601601f8101881361094057600080fd5b61094f88823560208401610834565b95989497509295608001359392505050565b60005b8381101561097c578181015183820152602001610964565b50506000910152565b6000815180845261099d816020860160208601610961565b601f01601f19169290920160200192915050565b6020815260006109c46020830184610985565b9392505050565b6000602082840312156109dd57600080fd5b6109c482610802565b80820180821115610a0757634e487b7160e01b600052601160045260246000fd5b92915050565b60018060a01b038616815284602082015260a060408201526000610a3460a0830186610985565b8281036060840152610a468186610985565b9150508260808301529695505050505050565b848152608060208201526000610a726080830186610985565b8281036040840152610a848186610985565b91505082606083015295945050505050565b6001600160e01b0319831681528151600090610ab9816004850160208701610961565b919091016004019392505050565b60008251610ad9818460208701610961565b919091019291505056fea26469706673582212201a6879cc48bff67b805a06c5356ec6932844913d622d977b4ab8e2a5d6e7d4c264736f6c63430008210033",
+  "devdoc": {
+    "custom:security": "The timelock provides several security features: - Minimum delay of 30 minutes prevents immediate execution - Maximum delay of 30 days prevents indefinite delays - Grace period of 14 days for execution after delay expires - Only owner can queue and execute transactions - Transactions can be cancelled before execution ",
+    "custom:usage": "Example usage: ```solidity // Queue a transaction to update vault providers timelock.queue(     vaultAddress,     0,     \"setProviders(address[])\",     encodedData,     block.timestamp + delay );  // After delay period, execute the transaction timelock.execute(     vaultAddress,     0,     \"setProviders(address[])\",     encodedData,     executionTimestamp ); ```",
+    "details": "This contract implements a governance mechanism that requires a time delay      before executing critical operations, providing security against malicious      or accidental changes to the protocol. ",
+    "errors": {
+      "OwnableInvalidOwner(address)": [
+        {
+          "details": "The owner is not a valid owner account. (eg. `address(0)`)"
+        }
+      ],
+      "OwnableUnauthorizedAccount(address)": [
+        {
+          "details": "The caller account is not authorized to perform an operation."
+        }
+      ],
+      "Timelock__Unauthorized()": [
+        {
+          "details": "Errors"
+        }
+      ]
+    },
+    "events": {
+      "Cancelled(bytes32,address,uint256,string,bytes,uint256)": {
+        "details": "Emitted when a queued transaction is cancelled."
+      },
+      "DelayUpdated(uint256)": {
+        "details": "Emitted when the delay for queued transactions is updated."
+      },
+      "Executed(bytes32,address,uint256,string,bytes,uint256)": {
+        "details": "Emitted when a queued transaction is executed."
+      },
+      "Queued(bytes32,address,uint256,string,bytes,uint256)": {
+        "details": "Emitted when a transaction is queued."
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "acceptOwnership()": {
+        "details": "The new owner accepts the ownership transfer."
+      },
+      "cancel(address,uint256,string,bytes,uint256)": {
+        "params": {
+          "data": "The calldata for the function called on the target address.",
+          "signature": "The function signature of the target contract.",
+          "target": "The address of the contract to cancel the transaction for.",
+          "timestamp": "The time when the transaction was scheduled to be executed.",
+          "value": "The amount of ether that was to be sent with the call."
+        }
+      },
+      "constructor": {
+        "details": "Initializes the Timelock contract with the specified parameters.",
+        "params": {
+          "delay_": "The initial delay for queued transactions.",
+          "owner_": "The address of the initial owner of the contract."
+        }
+      },
+      "execute(address,uint256,string,bytes,uint256)": {
+        "custom:example": "```solidity // Execute a previously queued transaction bytes memory result = timelock.execute(     vaultAddress,     0,     \"setProviders(address[])\",     data,     originalTimestamp ); ```",
+        "details": "The transaction must have been previously queuedThe current timestamp must be >= the execution timestampThe transaction must not have expired (timestamp + GRACE_PERIOD)Only the contract owner can execute transactionsThe transaction is removed from the queue after execution ",
+        "params": {
+          "data": "The ABI-encoded parameters for the function call",
+          "signature": "The function signature of the target contract",
+          "target": "The address of the contract to call",
+          "timestamp": "The original timestamp when the transaction was queued",
+          "value": "The amount of ether to send with the call"
+        },
+        "returns": {
+          "_0": "returnData The return data from the executed function call "
+        }
+      },
+      "owner()": {
+        "details": "Returns the address of the current owner."
+      },
+      "pendingOwner()": {
+        "details": "Returns the address of the pending owner."
+      },
+      "queue(address,uint256,string,bytes,uint256)": {
+        "custom:example": "```solidity // Queue a transaction to update vault providers bytes memory data = abi.encode(newProviders); bytes32 txId = timelock.queue(     vaultAddress,     0,     \"setProviders(address[])\",     data,     block.timestamp + 24 hours ); ```",
+        "details": "The transaction ID is computed as keccak256(abi.encode(target, value, signature, data, timestamp))The timestamp must be at least `delay` seconds in the futureOnly the contract owner can queue transactions ",
+        "params": {
+          "data": "The ABI-encoded parameters for the function call (without function selector)",
+          "signature": "The function signature of the target contract (e.g., \"setProviders(address[])\")",
+          "target": "The address of the contract to call",
+          "timestamp": "The timestamp when the transaction can be executed (must be >= block.timestamp + delay)",
+          "value": "The amount of ether to send with the call (0 for most calls)"
+        },
+        "returns": {
+          "_0": "txId The unique transaction ID for this queued transaction "
+        }
+      },
+      "renounceOwnership()": {
+        "details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
+      },
+      "setDelay(uint256)": {
+        "params": {
+          "_delay": "The new delay duration in seconds."
+        }
+      },
+      "transferOwnership(address)": {
+        "details": "Starts the ownership transfer of the contract to a new account. Replaces the pending transfer if there is one. Can only be called by the current owner. Setting `newOwner` to the zero address is allowed; this can be used to cancel an initiated ownership transfer."
+      }
+    },
+    "stateVariables": {
+      "GRACE_PERIOD": {
+        "details": "After this period, transactions expire and cannot be executed"
+      },
+      "MAX_DELAY": {
+        "details": "Prevents indefinite delays that could lock the protocol"
+      },
+      "MIN_DELAY": {
+        "details": "Prevents immediate execution of critical operations"
+      },
+      "delay": {
+        "details": "Can be updated by the contract itself through setDelay()"
+      },
+      "queued": {
+        "details": "Transaction ID is computed as keccak256(abi.encode(target, value, signature, data, timestamp))"
+      }
+    },
+    "title": "Timelock",
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {
+      "GRACE_PERIOD()": {
+        "notice": "Grace period for executing queued transactions (14 days)"
+      },
+      "MAX_DELAY()": {
+        "notice": "Maximum delay for queued transactions (30 days)"
+      },
+      "MIN_DELAY()": {
+        "notice": "Minimum delay for queued transactions (30 minutes)"
+      },
+      "cancel(address,uint256,string,bytes,uint256)": {
+        "notice": "Cancels a queued transaction."
+      },
+      "delay()": {
+        "notice": "Current delay for queued transactions"
+      },
+      "execute(address,uint256,string,bytes,uint256)": {
+        "notice": "Executes a previously queued transaction"
+      },
+      "queue(address,uint256,string,bytes,uint256)": {
+        "notice": "Queues a transaction for delayed execution"
+      },
+      "queued(bytes32)": {
+        "notice": "Mapping of transaction IDs to their queued status"
+      },
+      "setDelay(uint256)": {
+        "notice": "Sets a new delay for queued transactions."
+      }
+    },
+    "notice": "A time-delayed execution contract for critical operations",
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 1563,
+        "contract": "contracts/access/Timelock.sol:Timelock",
+        "label": "_owner",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_address"
+      },
+      {
+        "astId": 1711,
+        "contract": "contracts/access/Timelock.sol:Timelock",
+        "label": "_pendingOwner",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_address"
+      },
+      {
+        "astId": 12229,
+        "contract": "contracts/access/Timelock.sol:Timelock",
+        "label": "queued",
+        "offset": 0,
+        "slot": "2",
+        "type": "t_mapping(t_bytes32,t_bool)"
+      },
+      {
+        "astId": 12244,
+        "contract": "contracts/access/Timelock.sol:Timelock",
+        "label": "delay",
+        "offset": 0,
+        "slot": "3",
+        "type": "t_uint256"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_bool": {
+        "encoding": "inplace",
+        "label": "bool",
+        "numberOfBytes": "1"
+      },
+      "t_bytes32": {
+        "encoding": "inplace",
+        "label": "bytes32",
+        "numberOfBytes": "32"
+      },
+      "t_mapping(t_bytes32,t_bool)": {
+        "encoding": "mapping",
+        "key": "t_bytes32",
+        "label": "mapping(bytes32 => bool)",
+        "numberOfBytes": "32",
+        "value": "t_bool"
+      },
+      "t_uint256": {
+        "encoding": "inplace",
+        "label": "uint256",
+        "numberOfBytes": "32"
+      }
+    }
+  }
+}

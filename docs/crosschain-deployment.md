@@ -1,0 +1,509 @@
+# Cross-chain vault: deployment and operations runbook
+
+Scope: the deployment on **Base (hub)** with **Arbitrum** and **Ethereum**
+(spokes), the services that run it, and the procedure to add networks.
+Ethereum was added to the running Base + Arbitrum deployment (TS-419, §6a).
+
+The whole procedure has been rehearsed end to end on local forks of Base and
+Arbitrum: `ops/rehearsal/run.sh`, run 2026-09-28, result `REHEARSAL PASSED`.
+That two-chain run covered:
+
+* phase 4: 56/56 checks on Base and 32/32 on Arbitrum;
+* phase 5: an empty governance plan on both;
+* a full deposit → tick → epoch → clearing → claim cycle;
+* a real CCTP V2 burn on Base, delivered by the relayer on Arbitrum;
+* independent re-derivation of a Tick;
+* the monitor, with no critical check.
+
+With Ethereum in the set the rehearsal has **not** passed end to end. Both
+deployment stages and steps 1-7 of the cycle have run; the redemption, return-path
+and indexer/API steps (8, 8b and 9) are unproven, and a claimed full pass has no
+committed artifact. `changes/ts-419-ethereum-crosschain-spoke/verification.md` is
+the single record of what was and was not observed, and of the divergence between
+the rehearsal's environment and production.
+
+---
+
+## 1. What is deployed
+
+| Contract | Base | Arbitrum | Ethereum | Upgradeable | Owner / admin after handover |
+|---|---|---|---|---|---|
+| `Timelock` | ✓ | ✓ | ✓ | no | Safe |
+| `Rebalancer` strategy (proxy, via `VaultFactory`) | ✓ | ✓ | ✓ | yes | ProxyAdmin → Safe; ADMIN Safe; timelock Timelock |
+| `ProviderManager` + `CompoundV3Provider` (fresh, not the EOA-owned live one) | ✓ | ✓ | ✓ | no | Safe (Ownable2Step, Safe accepts) |
+| Aave/Morpho providers | reused | reused | reused (Morpho only) | no | stateless, immutable config |
+| `ChainAgent` (proxy) | ✓ | ✓ | ✓ | yes | ProxyAdmin → Safe; ADMIN Safe; timelock Timelock |
+| `CctpV2Adapter` | ✓ | ✓ | ✓ | no | governance Timelock |
+| `TickAccountant` (proxy) | ✓ | — | — | yes | ProxyAdmin → Safe; ADMIN Safe; timelock Timelock |
+| `EpochVaultLogic` library + `EpochVault` (proxy) | ✓ | — | — | yes | ProxyAdmin → Safe; ADMIN Safe; timelock Timelock |
+
+Ethereum strategy providers: Steakhouse USDC (entry, uncapped), Compound V3
+cUSDCv3 (cap 50%), Gauntlet USDC Prime (40%), Smokehouse USDC (30%), Fluid fUSDC
+(30%). The three Morpho providers are the ones the Ethereum vault already uses;
+their vaults are MetaMorpho V1.0, the same version as GauntletCore on Base, and
+the provider code is byte-identical to Base and Arbitrum. Compound and Fluid get
+fresh providers in phase 1: `CompoundV3Provider` and `FluidProvider` (TS-420, a
+new contract) over the immutable fToken `0x9Fb7…1B33`. No Aave on Ethereum.
+
+Fluid limits withdrawals at its Liquidity layer: at most about half of the
+fToken's supply at once, re-expanding over 6 hours, and never more than the USDC
+the layer holds. On 2026-11-05 (LiquidityResolver `getUserSupplyData`): supply
+132.1 M USDC, limit 66.0 M (expand 50% over 21 600 s), withdrawable 22.0 M, the
+layer's idle USDC. A withdrawal beyond that reverts and can be retried once the
+limit expands or liquidity returns. `getDepositRate` is the rate the Liquidity
+supply exchange price accrues at (fToken rewards left out; they are inactive).
+
+* **Registry.** Addresses and parameters come from `deploy/crosschain/registry.ts`.
+* **Manifests.** Results are written to `deployments/<network>/crosschain.json`.
+  Commit them: the services read them.
+* **Proxy ownership.** Every proxy is created with the Safe as ProxyAdmin owner
+  and initialized in the same transaction, so there is no SEC-001 window.
+
+## 1a. Stand profile (test stand with 50–100 USD)
+
+Founder decision (2026-09-28): the first deployment is a test stand where the
+Thesauros deployer address `0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D` holds
+governance and every operational role until the stand has been tested.
+
+```bash
+export CROSSCHAIN_PROFILE=stand
+export CROSSCHAIN_SAFE=0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D
+export CROSSCHAIN_NAV_UPDATER=$CROSSCHAIN_SAFE CROSSCHAIN_EXECUTOR=$CROSSCHAIN_SAFE CROSSCHAIN_GUARDIAN=$CROSSCHAIN_SAFE
+export CROSSCHAIN_TIMELOCK_DELAY=86400
+# services: NAV_UPDATER_PRIVATE_KEY = EXECUTOR_PRIVATE_KEY = KEEPER_PRIVATE_KEY = RELAYER_PRIVATE_KEY = the deployer key
+```
+
+What the stand profile changes:
+
+* **Relaxed identity checks.** Phases 1–4 accept an EOA as governance and roles
+  that are the deployer itself.
+* **Limits.** They are sized for 50–100 USD (`docs/crosschain-limits.md`).
+* **Visibility.** The manifest records `profile: stand`, and the monitor keeps a
+  permanent warning until rotation.
+
+Leaving it:
+
+1. Run `06-rotate-governance.ts` with `NEW_SAFE`, `NEW_NAV_UPDATER`,
+   `NEW_EXECUTOR`, `NEW_GUARDIAN` on both chains.
+2. Queue the treasury change on the Timelock (the script prints it).
+3. The Safe calls `acceptOwnership` on the Timelock and on the ProviderManager.
+4. Run phase 4 with the new identities.
+5. Run phase 5 with `CROSSCHAIN_PROFILE=production` to raise the limits through
+   the Timelock.
+
+Rehearsed on forks (`REHEARSAL_PROFILE=stand ops/rehearsal/run.sh`), result
+`STAND ROTATION PASSED`.
+
+## 2. Prerequisites
+
+### Identities
+
+Use four distinct keys, none of them the deployer:
+
+| Variable | Holds | Used by |
+|---|---|---|
+| `CROSSCHAIN_SAFE` | Safe multisig, the same address on Base and Arbitrum (today `0x3CDD9470…bfF1`, 2-of-2) | governance, ratification, unpause |
+| `CROSSCHAIN_NAV_UPDATER` | `NAV_UPDATER_ROLE` | NAV service |
+| `CROSSCHAIN_EXECUTOR` | `EXECUTOR_ROLE` on vault, agents and strategies | rebalancer bot (and keeper autofund) |
+| `CROSSCHAIN_GUARDIAN` | `GUARDIAN_ROLE` | pause and freeze only |
+| `CROSSCHAIN_TIMELOCK_DELAY` | seconds, default 86400 | Timelock constructor |
+
+### Deployer funds
+
+| Chain | ETH (gas) | USDC |
+|---|---|---|
+| Base | ≈ 0.01 ETH | 2 USDC (vault seed + strategy seed) |
+| Arbitrum | ≈ 0.01 ETH | 1 USDC (strategy seed) |
+| Ethereum | ≈ 0.1 ETH (phases 1-3: 31 transactions, 16.7 M gas; see §6a) | 1 USDC (strategy seed) |
+
+Hot wallets (NAV updater, keeper/relayer, executor) need gas on **every** chain,
+and the amounts are not comparable: on Ethereum budget at least 0.1 ETH per hot
+wallet, because one strategy operation costs 2.4-3.9 M gas and the relayer pays L1
+gas to deliver every CCTP transfer. The monitor watches their balances through
+`MONITOR_WATCH_BALANCES`, with a per-chain threshold
+(`MONITOR_MIN_GAS_WEI_<KEY>`, falling back to `MONITOR_MIN_GAS_WEI`) - a single
+value sized for the L2s never fires on Ethereum.
+
+### RPC
+
+`BASE_RPC_URL`, `ARBITRUM_RPC_URL`, `ETHEREUM_RPC_URL` (hardhat) and
+`RPC_BASE`, `RPC_ARBITRUM`, `RPC_MAINNET` (services; the registry key of
+Ethereum is `mainnet`, like its hardhat network and `deployments/mainnet`). Use paid providers. Run the monitor on a **different provider**
+from the NAV service, so its re-derivation is independent.
+
+The stand uses Moralis nodes for reads (`RPC_BASE`, `RPC_ARBITRUM`,
+`RPC_MAINNET`, and `BASE_RPC_URL` / `ARBITRUM_RPC_URL` / `ETHEREUM_RPC_URL` for
+hardhat). Moralis caps `eth_getLogs` at 100 blocks; the services detect the
+cap and adapt (`ops/README.md`, RPC limits), so no setting is needed.
+
+Signed transactions do not go through Moralis: during the Base deployment it
+twice accepted a transaction and never propagated it. Services broadcast through
+`RPC_SEND_BASE=https://mainnet.base.org`, `RPC_SEND_ARBITRUM=https://arb1.arbitrum.io/rpc`
+and `RPC_SEND_MAINNET=<your Ethereum provider>`, and read everything else from
+`RPC_<NETWORK>`. Hardhat deploys use the public endpoints directly
+(`BASE_RPC_URL`, `ARBITRUM_RPC_URL`, `ETHEREUM_RPC_URL`).
+
+The two L2s broadcast through their own public endpoints on purpose: that is the
+reliable path into the sequencer, and sequencer ordering leaves no public mempool.
+**Ethereum is different and has no such endpoint.** Broadcasting a signed bridge or
+allocate transaction through a free shared node publishes its calldata - amount,
+destination chain, route - to the public mempool before inclusion, which is
+readable by anyone watching, and free plans also drop and delay sends under load.
+Use a paid provider, or a private / MEV-protected channel. `preflight` fails, not
+warns, when a broadcast URL for a loaded chain is a known free endpoint
+(`ops/src/preflight.ts`, `PUBLIC_SEND_ENDPOINTS`).
+
+## 3. Deployment
+
+```bash
+export DEPLOYER_PRIVATE_KEY=...        # deployer only; rotate/retire after phase 3
+export CROSSCHAIN_SAFE=0x3CDD947001afBa4C334D49125fd4bac3E4a3bfF1
+export CROSSCHAIN_NAV_UPDATER=0x... CROSSCHAIN_EXECUTOR=0x... CROSSCHAIN_GUARDIAN=0x...
+export CROSSCHAIN_TIMELOCK_DELAY=86400
+
+# phase 1: contracts (each chain)
+npx hardhat run deploy/crosschain/01-deploy.ts --network base
+npx hardhat run deploy/crosschain/01-deploy.ts --network arbitrum
+# phase 2: wiring (needs both manifests)
+npx hardhat run deploy/crosschain/02-configure.ts --network base
+npx hardhat run deploy/crosschain/02-configure.ts --network arbitrum
+# phase 3: handover to Safe + Timelock
+npx hardhat run deploy/crosschain/03-handover.ts --network base
+npx hardhat run deploy/crosschain/03-handover.ts --network arbitrum
+```
+
+**Safe action**, on each chain: call `acceptOwnership()` on the `ProviderManager`
+from the manifest.
+
+```bash
+# phase 4: read-only verification, must print N/N
+npx hardhat run deploy/crosschain/04-verify.ts --network base
+npx hardhat run deploy/crosschain/04-verify.ts --network arbitrum
+git add deployments/*/crosschain.json && git commit -m "crosschain: deployed"
+```
+
+* **Idempotent phases.** Every phase can be re-run after a failure; it sends only
+  what is missing.
+* **Verification.** Verify the contracts on the explorers with
+  `npx hardhat verify` and the args recorded in the manifest.
+
+## 4. Services
+
+Services run only on the server, in Docker: `docs/crosschain-server.md`.
+
+All four services live in `ops/` (TypeScript, ethers v6), with `npm install` in
+`ops/`. Each exposes `/health` (200 or 503) and `/status`; the monitor also
+exposes `/metrics` (Prometheus). `--once` runs a single pass.
+
+| Service | Command | Key | What it does |
+|---|---|---|---|
+| NAV updater | `npm run nav` | `NAV_UPDATER_PRIVATE_KEY` | Builds the snapshot across chains and commits a Tick hourly, and immediately when a closed epoch waits for a post-cutoff Tick. While a quarantine already stands it skips a commit whose move still exceeds the refilled bucket — the contract would reject it, so it would settle nothing — and sends one alert per episode rather than one per cadence; `--force` overrides |
+| Keeper | `npm run keeper` | `KEEPER_PRIVATE_KEY` (+ `EXECUTOR_PRIVATE_KEY` if `KEEPER_AUTOFUND=true`) | Closes epochs, clears both sides, funds, optionally claims for users and recalls hub-local liquidity |
+| Relayer | `npm run relayer` | `RELAYER_PRIVATE_KEY` | Delivers every CCTP transfer (Circle Iris attestation) to the destination agent |
+| Monitor | `npm run monitor` | none | 20+ check groups, Telegram alerts on change, independent Tick re-derivation |
+| Indexer + API | `npm run indexer` | none | Indexes vault, accountant and agent events into SQLite (a cache, rebuildable); serves `/v1/vault`, `/v1/users/:address`, `/v1/requests/:id`, `/v1/epochs`, `/v1/ticks`, `/v1/allocation`, `/v1/transfers` for the frontend (`INDEXER_DB`, `PORT_INDEXER`, `INDEXER_CORS_ORIGIN`) |
+
+**Common environment:** `RPC_BASE`, `RPC_ARBITRUM`, `RPC_MAINNET` (reads) and
+`RPC_SEND_BASE`, `RPC_SEND_ARBITRUM`, `RPC_SEND_MAINNET` (broadcasts; see the RPC
+section above for why Ethereum's must not be a free public endpoint),
+`CROSSCHAIN_SAFE`,
+`CROSSCHAIN_NAV_UPDATER`, `CROSSCHAIN_EXECUTOR`, `CROSSCHAIN_GUARDIAN` (the
+monitor verifies roles against them), `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`
+(same as the Rebalance-Engine), and ports via `PORT_NAV`, `PORT_KEEPER`,
+`PORT_RELAYER`, `PORT_MONITOR`.
+
+**Persistent state.** `TRANSFER_INDEX_FILE` (default `./crosschain-transfer-index.json`)
+holds the `BridgeOut`/`BridgeIn` index and the per-chain scan progress, shared by
+`nav`, `monitor`, `relayer` and `verify-tick`. It **must live on persistent disk**:
+without it every restart re-scans all bridge history from `startBlock`, and because
+the commit window is a fixed 256 blocks (about 490 s of usable budget on Base) a
+cold start that outgrows that budget makes every commit revert `InvalidHubReference`
+— Ticks stop, and settlement and instant exits stop with them. It is written
+atomically, bound to a fingerprint of the deployed `ChainAgent` addresses so fork or
+stand state can never be loaded by production, and rewound `INDEX_REWIND_BLOCKS`
+(default 5000) on load as reorg insurance. `INDEXER_DB` is the API's cache and is
+rebuildable. Neither file may be shared between two deployments; the rehearsal
+points both into `/tmp/xc-rehearsal`. See `ops/README.md`.
+
+**Hook into the existing healthchecker** (Thesauros-Rebalance-Engine
+`apps/healthchecker`):
+
+```
+HEALTHCHECK_URLS=...,xc-nav=https://<nav>/health,xc-keeper=https://<keeper>/health,xc-relayer=https://<relayer>/health,xc-monitor=https://<monitor>/health
+```
+
+The monitor's `/health` turns 503 while any critical check fails, so the
+existing Telegram channel pages on it without extra wiring.
+
+### Monitor checks
+
+| Group | Critical when | Warning when |
+|---|---|---|
+| RPC | head older than 5 min / RPC failing | head older than 60 s |
+| Tick age | older than `maxTickAge` | older than 75% of it |
+| Quarantine / freeze | any | — |
+| Tick flags | overdue in flight | down-move beyond deposit threshold, in-flight above limit |
+| Rate buckets | — | below 10% |
+| Tick re-derivation | any of the last 50 committed Ticks does not reproduce from chain data (five verified per pass) | verification error |
+| Agent set | the accountant allows any agent on a chain other than exactly the manifest agent (rebuilt from `AgentUpdated`) | — |
+| Vault solvency / backing | `cash < pending + reserved`, or USDC balance below cash | — |
+| Epochs | clearing stuck more than 6 h, funding stuck more than 72 h | open past max duration + 1 h, clearing more than 2 h, funding more than 24 h, unfunded liabilities |
+| Transfers | undelivered for more than 4 × `maxTransit` | undelivered for more than `maxTransit` |
+| Strategies | a provider view failing (deposits blocked), or the strategy's Withdraw action paused (blocks recalls and every queued redemption) | a provider above its cap, strategy deposits paused |
+| Routes / pauses | — | route disabled or bucket below 10%, any paused domain |
+| Governance | any deployment check fails: ProxyAdmin/Timelock owner, implementation code drift, deployer roles, routes, remotes, caps, chain set | — |
+| Timelock | — | any queued, unexecuted governance tx (with signature and ETA) |
+| Hot wallet gas | — | below `MONITOR_MIN_GAS_WEI_<KEY>` for that chain, or `MONITOR_MIN_GAS_WEI` when no per-chain value is set |
+
+## 5. Operations
+
+### Executor (the only role that moves capital)
+
+Every step below is one `npm run exec` command (`ops/README.md`, Operator CLI);
+the raw calls are listed for reference.
+
+1. **Deploy capital.** Call `EpochVault.pushToAgent` (the buffer is enforced),
+   then `ChainAgent.allocate` into the strategy.
+2. **Spread within each chain.** Call `Rebalancer.rebalance` between providers,
+   within their caps.
+3. **Move across chains.** Call `ChainAgent.bridgeOut(routeId, amount, minReceive, rebalanceId)`.
+   Route ids are `keccak256("thesauros.route.v1:<src>-><dst>")`. The relayer
+   delivers; then `allocate` on the destination.
+4. **Fund redemptions.** On the hub, `deallocate` + `returnToVault` (the keeper
+   does this with `KEEPER_AUTOFUND=true`). From a spoke, `deallocate` +
+   `bridgeOut` to the hub, then `returnToVault`.
+
+### Guardian (fast, cannot unpause)
+
+| Situation | Action |
+|---|---|
+| Wrong NAV suspected | `TickAccountant.freeze()` (stops clearing, instant exits, hub sends) |
+| Deposit/redeem abuse | `EpochVault.pause(domain)`: 0 deposit requests, 1 redeem requests, 2 deposit clearing, 3 redeem clearing, 4 instant exit, 5 allocate |
+| Bridge problem | `ChainAgent.disableRoute(routeId)`, `ChainAgent.pause(1)` (bridge out) on each chain |
+| Strategy problem | `ChainAgent.pause(0)` (allocate). Deallocate always stays open |
+
+Claims of funded redemptions, cancels before cutoff, deallocations, returns to
+the vault and CCTP deliveries **cannot** be paused. That is by design.
+
+### Safe (ADMIN)
+
+* **Quarantined Tick.** Investigate with `ts-node ops/src/verify-tick.ts <id>`.
+  If the move is real and downward, the Safe calls `TickAccountant.ratifyTick(id)`
+  at once. A real upward move must be ratified through the Timelock
+  (`05-governance-plan.ts`-style queue, 24 h in production); the NAV service keeps
+  the Tick the latest meanwhile, because it does not re-commit while the move
+  exceeds the bucket. If the move is not real, the NAV service's next honest Tick
+  clears it; rotate the NAV key if it was compromised.
+* **Lost transfer.** Call `ChainAgent.writeDown(transferId, amount, reason)` on
+  the source agent. A late delivery still books the recovery.
+* **Freeze and pauses.** `unfreeze()` and `unpause(domain)` after the incident.
+* **Roles.** Grant and revoke. Lowering a strategy cap is also allowed directly.
+
+### Timelock (every risk-increasing change)
+
+Change the registry, then run
+`npx hardhat run deploy/crosschain/05-governance-plan.ts --network <net>`. It
+writes Safe Transaction Builder batches: queue now, execute after the delay,
+plus direct ADMIN actions. The monitor shows queued transactions until they
+execute.
+
+## 5a. Frontend
+
+`thesauros-app`, branch `feat/crosschain-vault`, page `/crosschain`:
+
+* request deposit (with approve), request redeem, instant exit, claim and cancel;
+* the user's requests with statuses;
+* the epoch countdown;
+* capital per chain and provider;
+* the share-price history.
+
+Environment:
+
+```
+NEXT_PUBLIC_CROSSCHAIN_VAULT=<EpochVault proxy on Base, from deployments/base/crosschain.json>
+NEXT_PUBLIC_CROSSCHAIN_API_URL=<public URL of the ops indexer>
+```
+
+The menu item is disabled until both are set.
+
+## 6. Adding a network
+
+1. **Registry and hardhat.** Add the entry to `deploy/crosschain/registry.ts`
+   (USDC, CCTP domain — check `localDomain()` —, providers, caps, routes to and
+   from its peers) and its hardhat network to `network-config.ts`. Deploy the
+   Safe at the same address there first (SEC-019 lesson).
+2. **New chain.** Run phases 1, 2, 3 and the Safe `acceptOwnership` on it. Its
+   phase 2 wires its own side to the existing chains.
+3. **Existing chains.** Run phase 5 on each. It produces the Timelock batch:
+   adapter remote, agent peer, routes, and on the hub the accountant chain set
+   plus the new agent. The Safe queues it, then executes it after the delay.
+4. **Services.** The NAV engine takes the chain set **from the accountant**, so
+   it starts including the new chain in the first Tick after `setChains`
+   executes, not when the registry changes. Add `RPC_<NEW>` to every service
+   before execution.
+5. **Verify.** Run phase 4 on all chains, and check that the monitor is green.
+
+## 6a. Adding Ethereum (TS-419)
+
+The registry entry is `mainnet` (spoke, CCTP domain 0, route to and from Base
+only). Use the profile of the running deployment (`CROSSCHAIN_PROFILE=stand`
+today) and the same identities; the governance address must exist on Ethereum
+(the stand EOA does; the production Safe `0x3CDD…bfF1` is deployed there too).
+
+```bash
+# 1. the new chain (deployer: gas + 1 USDC strategy seed on Ethereum)
+npx hardhat run deploy/crosschain/01-deploy.ts --network mainnet
+npx hardhat run deploy/crosschain/02-configure.ts --network mainnet
+npx hardhat run deploy/crosschain/03-handover.ts --network mainnet
+#    production profile only: the Safe calls acceptOwnership() on the new ProviderManager
+git add deployments/mainnet/crosschain.json && git commit   # the services read it
+
+# 2. the existing chains: Timelock batches (route, peer, remote; on Base the chain set + agent)
+npx hardhat run deploy/crosschain/05-governance-plan.ts --network base
+npx hardhat run deploy/crosschain/05-governance-plan.ts --network arbitrum
+#    the Safe sends safeQueueBatch from each plan now, safeExecuteBatch after the delay
+```
+
+Phase 5 refuses to plan a `setChains` that drops a chain the accountant already
+tracks, and names the chain it would drop. The realistic cause is not a deliberate
+removal but `REHEARSAL_NETWORKS` left exported in the operator's shell, which
+narrows the registry the plan is built from. `TickAccountant._setChains` has no
+such guard on-chain, so this refusal is the only thing between a stray environment
+variable and an executed batch that stops the accountant tracking a funded chain.
+If a removal really is intended, `CROSSCHAIN_ALLOW_DROP_CHAINS=1` overrides it.
+
+**Order of the service rollout.** Roll the services out from this release
+**after the batches are queued and before they are executed**:
+
+* **Registry support alone does not activate Ethereum.** The image includes the
+  cross-chain manifests present in the release. Before step 1 it builds and runs
+  Base/Arbitrum only: `loadRuntimeManifests()` defaults to the registry networks
+  that actually have a `crosschain.json`, so an undeployed spoke is not loaded
+  rather than fatal. After step 1, include the real Ethereum manifest and RPC in
+  the service release (and in `CROSSCHAIN_NETWORKS` if explicitly configured).
+* **Too late stops Ticks.** Once `setChains` executes, a NAV service that does
+  not know Ethereum refuses to build snapshots (`accountant tracks chains not
+  configured here: 1`).
+* **In between is safe.** The NAV service takes the chain set from the
+  accountant, so it ignores Ethereum until the batch executes.
+
+Before the rollout, add `RPC_MAINNET` and `RPC_SEND_MAINNET` to `.env.server` - the
+send URL must be a paid provider or a private/MEV-protected channel, not a free
+public endpoint; `preflight` fails on one, and §2 explains why Ethereum differs
+from the two L2s here. Fund the hot wallets with ETH on Ethereum (at least 0.1 ETH
+each), keep them in `MONITOR_WATCH_BALANCES`, and set `MONITOR_MIN_GAS_WEI_MAINNET`
+so the gas alert is sized for L1 rather than for an L2.
+
+**Back up the transfer index before rolling the services.** The new release
+rewrites `/data/transfer-index.json` under a three-chain fingerprint. Take a copy
+first and confirm it is there:
+
+```bash
+docker compose -f ops/docker-compose.yml --profile tools run --rm -T --entrypoint sh exec \
+  -c 'test -f /data/transfer-index.json && cp -a /data/transfer-index.json /data/transfer-index.pre-ts419.json && ls -l /data/'
+```
+
+The copy lives on the `ops-data` volume, so it survives `down` and a rebuild but
+not `docker volume rm`.
+
+**Rollback.** Until the point of no return below, rolling back is: stop the new
+release, restore the copy, start the old one.
+
+```bash
+docker compose -f ops/docker-compose.yml --profile <stand|production> down
+docker compose -f ops/docker-compose.yml --profile tools run --rm -T --entrypoint sh exec \
+  -c 'cp -a /data/transfer-index.pre-ts419.json /data/transfer-index.json'
+git checkout <previous release commit>
+docker compose -f ops/docker-compose.yml build
+docker compose -f ops/docker-compose.yml --profile <stand|production> up -d
+```
+
+The restore is the part that matters. A pre-TS-419 release accepts the file only
+if its fingerprint covers exactly the chains it saved; faced with the three-chain
+index it rejects it and re-scans Base (~1.6 M blocks) and Arbitrum (~11.5 M blocks)
+from their start blocks - the cold start that outgrows the 256-block commit window
+and stops Ticks.
+
+**Point of no return: the Timelock executing `setChains` on Base.** After that the
+accountant tracks chain id 1, and a pre-TS-419 release cannot produce a Tick at all
+(`accountant tracks chains not configured here: 1`). Restoring the old index does
+not help, because the old code cannot build a snapshot that includes Ethereum. From
+that moment only forward fixes are possible: repair the TS-419 services, or have
+governance queue a `setChains` that removes Ethereum again - which first requires
+the Ethereum strategy and agent to be empty (`deallocate`, then `bridgeOut` back to
+the hub) and is itself Timelock-delayed. Plan the execution accordingly: everything
+before it is reversible, nothing after it is.
+
+**What to expect meanwhile.**
+
+* **Transfer index.** It keeps the saved Base and Arbitrum scan progress and
+  scans only Ethereum from its start block. Before TS-419 a new network
+  discarded the whole index: a full re-scan, the cold start described in §4.
+* **Monitor.** Between the rollout and the execution it reports
+  `governance.base` and `governance.arbitrum` as critical (peer, remote, route
+  and chain set for `mainnet` are still queued) and lists the queued Timelock
+  transactions. It turns green once both batches execute; then run phase 4 on
+  all three chains.
+
+**Gas on Ethereum** (fork measurement, 2026-11-04), so budget the executor and
+relayer wallets accordingly:
+
+| Operation | Gas |
+|---|---|
+| Strategy `deposit` (`ChainAgent.allocate`) | ≈ 2.4 M |
+| Strategy `withdraw` (`deallocate`) | ≈ 2.8 M |
+| `rebalance` between providers | ≈ 3.9 M |
+| Heaviest provider view, Smokehouse (21 markets) | ≈ 1.2 M, under the 3 M `PROVIDER_VIEW_CALL_GAS` stipend |
+| Fluid: fUSDC deposit / balance view / rate view | ≈ 99 k / 15 k / 7 k |
+| Deployer, phases 1-3 (31 transactions) | ≈ 16.7 M: 0.017 ETH at 1 gwei, 0.08 ETH at 5 gwei |
+
+**Left out on purpose.**
+
+* **Chain exposure cap.** `maxChainExposure` stays **disabled**, and TS-419 does
+  not change that even though it adds the third chain. The comment in `registry.ts`
+  used to say the cap would be set "once a target allocation exists or a third chain
+  is added"; the third chain is here and there is still no target allocation, so the
+  decision is explicitly to leave it at `0`, and the comment now says that instead of
+  promising an action that was declined. Accepted consequence: nothing on-chain
+  limits how much of the vault can sit on one chain, and the Ethereum per-provider
+  caps already sum to 120% of strategy assets (Compound 50% + Gauntlet Prime 40% +
+  Smokehouse 30%, entry uncapped), 150% once TS-420 adds Fluid. Enabling it needs a
+  written target allocation first, then `setMaxChainExposure` through the Timelock;
+  `05-governance-plan.ts` picks the value up from the registry and queues the call
+  when the two differ.
+* **Aave and Morpho Vault V2.** Not part of TS-419. Neither the Ethereum Aave
+  provider nor the Gauntlet Prime V2 vault (`MorphoV2Provider`) is in the
+  strategy.
+
+**Fluid ships with the Ethereum strategy (TS-420).** Phase 1 initializes the
+strategy with its full provider list, Fluid included. On a strategy already
+initialized without it, phase 1 deploys `FluidProvider` but cannot add it:
+`setProviders` is a Timelock call that phase 5 does not plan (it plans caps
+only), and phase 4 then reports `strategy providers` until that call executes.
+Deploy TS-419 and TS-420 together, or queue `setProviders` with the full list
+(`strategyProviders` in `registry.ts`) through the Timelock first.
+
+## 7. Rehearsal
+
+```bash
+BASE_RPC_URL=<archive-capable Base RPC> ops/rehearsal/run.sh
+```
+
+**Setup.** It starts three anvil forks (Base, Arbitrum, Ethereum) with preserved
+chain ids and generates fresh keys for every role. It uses the real Safe,
+impersonated for `acceptOwnership` and for the governance batches.
+
+**Stage 1: the existing deployment.** With `REHEARSAL_NETWORKS=base,arbitrum`
+it runs phases 1–4 on Base and Arbitrum and expects an empty phase 5 plan.
+
+**Stage 2: adding Ethereum.** It then adds Ethereum the way §6a does: phases
+1–3 on Ethereum, phase 5 on Base and Arbitrum, and the Safe queues and executes
+the plans' batches through the Timelock. Phase 4 must pass and phase 5 must be
+empty on all three chains.
+
+**End-to-end cycle.** Capital is then bridged to and from both spokes.
+
+**CCTP on the forks.** It enables a local attester on the forked CCTP
+transmitters. The relayer's `RELAYER_ATTESTATION=local` mode then fills in the
+nonce and finality the way Circle does and signs `keccak256(message)`. The burns
+and mints are the real CCTP V2 contracts.

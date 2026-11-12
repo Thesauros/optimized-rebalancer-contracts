@@ -1,0 +1,46 @@
+{
+  "targetCommit": "62d8a6ffe4c20c7b8545b13ac34d67be6c6e01e7",
+  "syntheticMergeTree": "7d7a79d568a44fcee33eef7eaad4fd74f4d97870",
+  "node": "v22.23.4",
+  "platform": "linux",
+  "architecture": "x64",
+  "sourceMountedReadOnly": true,
+  "network": "none",
+  "runtimeDependencyLockMatchesCandidate": true,
+  "dependencyLockSha256": "0a413a22dc6fcde5943bf4157905dd9b1a6fd629da952a081b2ebcb0950fe010",
+  "productionWrites": false,
+  "testStatus": 0,
+  "tests": [
+    "# tests 73",
+    "# pass 65",
+    "# fail 0",
+    "# cancelled 0",
+    "# skipped 8",
+    "# todo 0",
+    "# duration_ms 21079.176051"
+  ],
+  "skips": [
+    "ok 1 - TickAccountant: ops ABI fragments match the compiled artifact # SKIP run `npx hardhat compile` first",
+    "ok 2 - EpochVault: ops ABI fragments match the compiled artifact # SKIP run `npx hardhat compile` first",
+    "ok 3 - ChainAgent: ops ABI fragments match the compiled artifact # SKIP run `npx hardhat compile` first",
+    "ok 4 - Rebalancer: ops ABI fragments match the compiled artifact # SKIP run `npx hardhat compile` first",
+    "ok 5 - CctpV2Adapter: ops ABI fragments match the compiled artifact # SKIP run `npx hardhat compile` first",
+    "ok 6 - Timelock: ops ABI fragments match the compiled artifact # SKIP run `npx hardhat compile` first",
+    "ok 7 - src/errors.json matches the compiled artifacts (re-run scripts/extract-errors.js) # SKIP run `npx hardhat compile` first",
+    "ok 37 - signed transactions go to the send RPC, everything else to the read RPC # SKIP anvil not installed"
+  ],
+  "typecheckStatus": 0,
+  "typecheckOutput": "",
+  "offlineConfigStatus": 0,
+  "offlineConfigOutput": "{\"networks\":[{\"network\":\"base\",\"chainId\":\"8453\",\"role\":\"hub\",\"profile\":\"stand\"},{\"network\":\"arbitrum\",\"chainId\":\"42161\",\"role\":\"spoke\",\"profile\":\"stand\"}]}",
+  "toolchain": {
+    "ethers": "6.16.0",
+    "typescript": "5.9.3",
+    "@types/node": "22.19.0"
+  },
+  "runtimeImage": {
+    "localTag": "thesauros/crosschain-ops:e56b42e-clean",
+    "id": "sha256:d095fde03e092f76ccedd609df53edc0d9a2ff04dd52a6f18ea38d4675ae0731",
+    "limitation": "Existing pinned-runtime image with candidate sources mounted read-only; not a newly packaged production image."
+  }
+}

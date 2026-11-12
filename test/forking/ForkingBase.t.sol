@@ -7,6 +7,7 @@ import {IProvider} from "../../contracts/interfaces/IProvider.sol";
 import {IRebalancer} from "../../contracts/interfaces/IRebalancer.sol";
 import {Rebalancer} from "../../contracts/Rebalancer.sol";
 import {Test} from "forge-std/Test.sol";
+import {ForkPins} from "./ForkPins.sol";
 import "../../contracts/libraries/Constants.sol";
 
 contract ForkingBase is Test {
@@ -27,6 +28,9 @@ contract ForkingBase is Test {
     address public constant MORPHO_GAUNTLET_CORE_VAULT_ADDRESS =
         0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12;
 
+    address public constant AAVE_V3_POOL_ADDRESSES_PROVIDER =
+        0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D;
+
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public treasury = makeAddr("treasury");
@@ -42,7 +46,7 @@ contract ForkingBase is Test {
 
     function setUp() public virtual {
         string memory BASE_RPC_URL = vm.envString("BASE_RPC_URL");
-        vm.createSelectFork(BASE_RPC_URL);
+        ForkPins.selectFork(vm, BASE_RPC_URL, ForkPins.BASE_VAR, ForkPins.BASE);
 
         usdc = IERC20Metadata(USDC_ADDRESS);
         vm.label(address(usdc), "USDC");
