@@ -1,0 +1,145 @@
+[
+  {
+    "id": "c62df5f4986012f64a4ff5370ae92abdae948249afb8bec91138c7c602b0eb44",
+    "description": "Reentrancy in EvmTronConnector.processRedeem(bytes32) (contracts/connectors/EvmTronConnector.sol#255-297):\n\tExternal call allowing reentrancy:\n\t- reportedAssets = vault.redeem(request.shares,address(this),address(this)) (contracts/connectors/EvmTronConnector.sol#261-265)\n\tBalance read before the call:\n\t- balanceBefore = asset.balanceOf(address(this)) (contracts/connectors/EvmTronConnector.sol#260)\n\tPossible stale balance used after the call in a condition:\n\t- asset.balanceOf(address(this)) != balanceBefore (contracts/connectors/EvmTronConnector.sol#291)\n\t\t- stale variable `balanceBefore`\n\t- reportedAssets != received || received < request.minVaultAssets (contracts/connectors/EvmTronConnector.sol#267)\n\t\t- stale variable `received`\n",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "processRedeem",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "93c1a3cd449d9823b52580ba2ac8489227a8b695f2c1607b9deb22dd7fd229fa",
+    "description": "Reentrancy in EvmTronConnector.processRedeem(bytes32) (contracts/connectors/EvmTronConnector.sol#255-297):\n\tExternal call allowing reentrancy:\n\t- transferId = assetBridge.bridgeAsset{value: msg.value}(address(asset),received,tronChain,tronGateway,ConnectorCodec.encodeWithdrawal(requestId,request.minTronAssets,request.tronReceiver),msg.sender) (contracts/connectors/EvmTronConnector.sol#277-288)\n\tBalance read before the call:\n\t- balanceBefore = asset.balanceOf(address(this)) (contracts/connectors/EvmTronConnector.sol#260)\n\tPossible stale balance used after the call in a condition:\n\t- asset.balanceOf(address(this)) != balanceBefore (contracts/connectors/EvmTronConnector.sol#291)\n\t\t- stale variable `balanceBefore`\n",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "processRedeem",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "7ef7eacf21a76ec749e213b7e2797fceaab35c805855bfb2e471beff35290397",
+    "description": "Reentrancy in EvmTronConnector.receiveBridgedDeposit(uint256,bytes) (contracts/connectors/EvmTronConnector.sol#135-178):\n\tExternal call allowing reentrancy:\n\t- shares = vault.deposit(received,address(this)) (contracts/connectors/EvmTronConnector.sol#161)\n\tBalance read before the call:\n\t- balanceBefore = asset.balanceOf(address(this)) (contracts/connectors/EvmTronConnector.sol#155)\n\tPossible stale balance used after the call in a condition:\n\t- shares < minShares || shares == 0 (contracts/connectors/EvmTronConnector.sol#163)\n\t\t- stale variable `shares`\n",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "receiveBridgedDeposit",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "0d4c6a6664d5e21ba5255af6f308f8eafb277b6b93e825d34e7cade065403f49",
+    "description": "Reentrancy in EvmTronConnector.receiveBridgedDeposit(uint256,bytes) (contracts/connectors/EvmTronConnector.sol#135-178):\n\tExternal call allowing reentrancy:\n\t- shares = vault.deposit(received,address(this)) (contracts/connectors/EvmTronConnector.sol#161)\n\tBalance read before the call:\n\t- received = asset.balanceOf(address(this)) - balanceBefore (contracts/connectors/EvmTronConnector.sol#157)\n\tPossible stale balance used after the call in a condition:\n\t- shares < minShares || shares == 0 (contracts/connectors/EvmTronConnector.sol#163)\n\t\t- stale variable `shares`\n",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "receiveBridgedDeposit",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "25c95cc9e74cf5cd126b8b9b1c59d66587d007b52913106d21880e6b2ab97a6c",
+    "description": "Reentrancy in EvmTronConnector.retryRedeemBridge(bytes32) (contracts/connectors/EvmTronConnector.sol#299-332):\n\tExternal call allowing reentrancy:\n\t- transferId = assetBridge.bridgeAsset{value: msg.value}(address(asset),amount,tronChain,tronGateway,ConnectorCodec.encodeWithdrawal(requestId,request.minTronAssets,request.tronReceiver),msg.sender) (contracts/connectors/EvmTronConnector.sol#312-323)\n\tBalance read before the call:\n\t- balanceBefore = asset.balanceOf(address(this)) (contracts/connectors/EvmTronConnector.sol#308)\n\tPossible stale balance used after the call in a condition:\n\t- asset.balanceOf(address(this)) != balanceBefore - amount (contracts/connectors/EvmTronConnector.sol#326)\n\t\t- stale variable `balanceBefore`\n",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "retryRedeemBridge",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "5b01b4d33cf3bf15b5d996a2888b7d0777f576aa9ef15b0660b92f0258e40026",
+    "description": "Reentrancy in TronGateway.requestDeposit(uint256,uint256,uint256,uint64,address) (contracts/connectors/TronGateway.sol#142-201):\n\tExternal call allowing reentrancy:\n\t- request.bridgeTransferId = assetBridge.bridgeAsset{value: msg.value}(address(usdt),received,evmChain,evmConnector,payload,msg.sender) (contracts/connectors/TronGateway.sol#178-185)\n\tBalance read before the call:\n\t- balanceBefore = usdt.balanceOf(address(this)) (contracts/connectors/TronGateway.sol#154)\n\tPossible stale balance used after the call in a condition:\n\t- usdt.balanceOf(address(this)) != balanceBefore (contracts/connectors/TronGateway.sol#188)\n\t\t- stale variable `balanceBefore`\n",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "requestDeposit",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "8596ff6cfd4196a8f45074437cc096a8075265a6d6f7240e4a4aeb970fafeeeb",
+    "description": "Reentrancy in TronGateway.retryDepositBridge(bytes32) (contracts/connectors/TronGateway.sol#350-381):\n\tExternal call allowing reentrancy:\n\t- transferId = assetBridge.bridgeAsset{value: msg.value}(address(usdt),request.assets,evmChain,evmConnector,payload,request.account) (contracts/connectors/TronGateway.sol#366-373)\n\tBalance read before the call:\n\t- balanceBefore = usdt.balanceOf(address(this)) (contracts/connectors/TronGateway.sol#355)\n\tPossible stale balance used after the call in a condition:\n\t- usdt.balanceOf(address(this)) != balanceBefore - request.assets (contracts/connectors/TronGateway.sol#375)\n\t\t- stale variable `balanceBefore`\n",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "retryDepositBridge",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "e3f6ea3f18808c77b7d941df611866906d351aa219f0940de2163b9da1c796ab",
+    "description": "Reentrancy in EvmTronConnector.processRedeem(bytes32) (contracts/connectors/EvmTronConnector.sol#255-297):\n\tExternal calls:\n\t- reportedAssets = vault.redeem(request.shares,address(this),address(this)) (contracts/connectors/EvmTronConnector.sol#261-265)\n\t- transferId = assetBridge.bridgeAsset{value: msg.value}(address(asset),received,tronChain,tronGateway,ConnectorCodec.encodeWithdrawal(requestId,request.minTronAssets,request.tronReceiver),msg.sender) (contracts/connectors/EvmTronConnector.sol#277-288)\n\tExternal calls sending eth:\n\t- transferId = assetBridge.bridgeAsset{value: msg.value}(address(asset),received,tronChain,tronGateway,ConnectorCodec.encodeWithdrawal(requestId,request.minTronAssets,request.tronReceiver),msg.sender) (contracts/connectors/EvmTronConnector.sol#277-288)\n\tState variables written after the call(s):\n\t- request.bridgeTransferId = transferId (contracts/connectors/EvmTronConnector.sol#294)\n\tEvmTronConnector.redeems (contracts/connectors/EvmTronConnector.sol#75) can be used in cross function reentrancies:\n\t- EvmTronConnector.redeems (contracts/connectors/EvmTronConnector.sol#75)\n",
+    "check": "reentrancy-eth",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "processRedeem",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "3de9309d5cc5b75803daa197693c847e0dc809a0bf0e82d2771b4c495cb8691c",
+    "description": "Reentrancy in EvmTronConnector.retryRedeemBridge(bytes32) (contracts/connectors/EvmTronConnector.sol#299-332):\n\tExternal calls:\n\t- transferId = assetBridge.bridgeAsset{value: msg.value}(address(asset),amount,tronChain,tronGateway,ConnectorCodec.encodeWithdrawal(requestId,request.minTronAssets,request.tronReceiver),msg.sender) (contracts/connectors/EvmTronConnector.sol#312-323)\n\tState variables written after the call(s):\n\t- request.bridgeTransferId = transferId (contracts/connectors/EvmTronConnector.sol#329)\n\tEvmTronConnector.redeems (contracts/connectors/EvmTronConnector.sol#75) can be used in cross function reentrancies:\n\t- EvmTronConnector.redeems (contracts/connectors/EvmTronConnector.sol#75)\n",
+    "check": "reentrancy-eth",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "retryRedeemBridge",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "01085611202345debe4e5144dd1541e6aac58eb51c42d48a0d15c57291d417a2",
+    "description": "Reentrancy in EvmTronConnector.sendDepositAck(bytes32) (contracts/connectors/EvmTronConnector.sol#180-199):\n\tExternal calls:\n\t- messageId = messenger.sendMessage{value: msg.value}(tronChain,tronGateway,ConnectorCodec.encodeDepositAck(requestId,request.shares,IERC20Metadata(address(vaultShare)).decimals()),msg.sender) (contracts/connectors/EvmTronConnector.sol#186-195)\n\tState variables written after the call(s):\n\t- request.lastAckMessageId = messageId (contracts/connectors/EvmTronConnector.sol#196)\n\tEvmTronConnector.deposits (contracts/connectors/EvmTronConnector.sol#74) can be used in cross function reentrancies:\n\t- EvmTronConnector.deposits (contracts/connectors/EvmTronConnector.sol#74)\n",
+    "check": "reentrancy-eth",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "sendDepositAck",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  },
+  {
+    "id": "5654e2faa7c26fb0824771982203cc468794680fd7df8ee3014896674ef58c51",
+    "description": "Reentrancy in TronGateway.retryDepositBridge(bytes32) (contracts/connectors/TronGateway.sol#350-381):\n\tExternal calls:\n\t- transferId = assetBridge.bridgeAsset{value: msg.value}(address(usdt),request.assets,evmChain,evmConnector,payload,request.account) (contracts/connectors/TronGateway.sol#366-373)\n\tState variables written after the call(s):\n\t- request.bridgeTransferId = transferId (contracts/connectors/TronGateway.sol#379)\n\tTronGateway.deposits (contracts/connectors/TronGateway.sol#76) can be used in cross function reentrancies:\n\t- TronGateway.deposits (contracts/connectors/TronGateway.sol#76)\n",
+    "check": "reentrancy-eth",
+    "impact": "High",
+    "confidence": "Medium",
+    "_triage": {
+      "contract": "?",
+      "function": "retryDepositBridge",
+      "reason": "False positive: function is nonReentrant and the state written after the external call (bridgeTransferId / lastAckMessageId) is bookkeeping only - it is read by no conditional, solely emitted in events. Callees are immutable, owner-configured contracts (DLN source, messenger), not arbitrary addresses.",
+      "triaged": "2026-11-12"
+    }
+  }
+]
