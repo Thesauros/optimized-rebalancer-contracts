@@ -53,6 +53,8 @@ export interface NetworkEntry {
     comet?: string;
     /** Fluid fToken for USDC; a fresh FluidProvider is deployed for it. */
     fluidFToken?: string;
+    /** Additional Morpho Vault V2 source; deployed separately from the V1 providers. */
+    morphoV2Vault?: string;
     /**
      * Per-provider cap in bps of strategy assets; label -> bps; 0 or missing = uncapped.
      * The entry provider (first reused provider) must stay uncapped: every deposit
@@ -125,12 +127,18 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1' },
       ],
       comet: '0xb125E6687d4313864e53df431d5425969c15Eb2F',
+      // Official Fluid Base deployment: fluid-contracts-public/deployments/base/fToken_fUSDC.json.
+      fluidFToken: '0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169',
+      morphoV2Vault: '0x050cE30b927Da55177A4914EC73480238BAD56f0',
       capsBps: {
         AaveV3: 0,
         CompoundV3: 5_000,
         GauntletCoreMorpho: 4_000,
         SteakhouseHighYieldMorpho: 3_000,
         SteakhousePrimeMorpho: 4_000,
+        // Release ceilings, not target allocations; activation requires governance review.
+        Fluid: 3_000,
+        GauntletPrimeV2Morpho: 2_000,
       },
     },
     routes: { '1': DEFAULT_ROUTE, '42161': DEFAULT_ROUTE },
@@ -414,13 +422,19 @@ export function hubEntry(): [string, NetworkEntry] {
 /**
  * The strategy's providers in the order phase 1 initializes them: the entry
  * provider, the fresh Compound provider, the other reused providers, then the
- * fresh Fluid provider. Fresh providers are read from the chain's manifest; one
+ * fresh Fluid and Morpho V2 providers. Fresh providers are read from the chain's manifest; one
  * not deployed (yet) is absent.
  */
 export function strategyProviders(entry: NetworkEntry, contracts: Record<string, string>): { label: string; address: string }[] {
   const [first, ...rest] = entry.strategy.reusedProviders;
   const fresh = (label: string, key: string) => (contracts[key] ? [{ label, address: contracts[key] }] : []);
-  return [first, ...fresh('CompoundV3', 'CompoundV3Provider'), ...rest, ...fresh('Fluid', 'FluidProvider')];
+  return [
+    first,
+    ...(entry.strategy.comet ? fresh('CompoundV3', 'CompoundV3Provider') : []),
+    ...rest,
+    ...(entry.strategy.fluidFToken ? fresh('Fluid', 'FluidProvider') : []),
+    ...(entry.strategy.morphoV2Vault ? fresh('GauntletPrimeV2Morpho', 'GauntletPrimeV2MorphoProvider') : []),
+  ];
 }
 
 /** The labels a cap may name: the reused providers and the fresh ones the entry asks for. */
@@ -428,6 +442,7 @@ export function providerLabels(entry: NetworkEntry): string[] {
   const labels = entry.strategy.reusedProviders.map((p) => p.label);
   if (entry.strategy.comet) labels.push('CompoundV3');
   if (entry.strategy.fluidFToken) labels.push('Fluid');
+  if (entry.strategy.morphoV2Vault) labels.push('GauntletPrimeV2Morpho');
   return labels;
 }
 
