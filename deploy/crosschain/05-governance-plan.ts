@@ -16,7 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ethers } from 'hardhat';
-import { HUB_PARAMS, NETWORKS, PROFILE, fullNetworks, identities, routeId } from './registry';
+import { HUB_PARAMS, NETWORKS, PROFILE, fullNetworks, identities, routeId, strategyProviders } from './registry';
 import { EXECUTOR_ROLE, GUARDIAN_ROLE, NAV_UPDATER_ROLE, banner, currentEntry, manifestRoot, peers, requireManifest } from './lib';
 
 interface Call {
@@ -81,8 +81,7 @@ async function main() {
     }
   }
 
-  const labelled: Record<string, string> = Object.fromEntries(entry.strategy.reusedProviders.map((p) => [p.label, p.address]));
-  if (c.CompoundV3Provider) labelled.CompoundV3 = c.CompoundV3Provider;
+  const labelled: Record<string, string> = Object.fromEntries(strategyProviders(entry, c).map((p) => [p.label, p.address]));
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
     const current = BigInt(await strategy.getProviderCap(labelled[label]));
     if (current !== BigInt(bps)) {
