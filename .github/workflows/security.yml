@@ -37,6 +37,17 @@ jobs:
       - name: Run Slither
         # Inspect application contracts, keeping all detectors and the high gate.
         # Dependency findings are tracked by their upstream maintainers/SCA.
+        #
+        # slither.db.json in the repo root is loaded automatically and holds
+        # individually triaged false positives - it is not a detector exclusion.
+        # Every entry is keyed by a sha3_256 of the finding's own content, so a
+        # new or edited High finding gets a new id and still fails this gate
+        # (verified: dropping one entry from the file returns exit 255).
+        # Each entry carries the contract, function and the reason it was triaged.
+        # The entries are slither's own result objects, narrowed to id, check,
+        # impact, confidence and description - the only fields the triage filter
+        # reads - so the file stays reviewable at 15 KB instead of the 850 KB
+        # `slither --triage-mode` would write. Regenerate from `slither --json`.
         run: slither contracts --compile-force-framework foundry --filter-paths '(^|/)(node_modules|lib)/' --fail-high
 
   dependency-audit:

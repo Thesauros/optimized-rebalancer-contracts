@@ -27,6 +27,8 @@ bin
 cache/
 cache_forge/
 out/
+/build/
+/.tron-contracts/
 
 # Forge coverage
 lcov.info

@@ -27,6 +27,11 @@
  },
  {
   "inputs": [],
+  "name": "AlreadyConfigured",
+  "type": "error"
+ },
+ {
+  "inputs": [],
   "name": "AlreadyReceived",
   "type": "error"
  },
@@ -47,12 +52,27 @@
  },
  {
   "inputs": [],
+  "name": "BackingTokenRescueForbidden",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "BridgeDidNotPullAssets",
+  "type": "error"
+ },
+ {
+  "inputs": [],
   "name": "ChainSetMismatch",
   "type": "error"
  },
  {
   "inputs": [],
   "name": "CompoundV3Provider__AddressZero",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "DeadlineExpired",
   "type": "error"
  },
  {
@@ -112,6 +132,11 @@
    }
   ],
   "name": "ECDSAInvalidSignatureS",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "EnforcedPause",
   "type": "error"
  },
  {
@@ -239,12 +264,22 @@
  },
  {
   "inputs": [],
+  "name": "ExpectedPause",
+  "type": "error"
+ },
+ {
+  "inputs": [],
   "name": "FailedCall",
   "type": "error"
  },
  {
   "inputs": [],
   "name": "HubStateMismatch",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InsufficientBacking",
   "type": "error"
  },
  {
@@ -280,12 +315,42 @@
  },
  {
   "inputs": [],
+  "name": "InvalidAmount",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidAsset",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidChain",
+  "type": "error"
+ },
+ {
+  "inputs": [],
   "name": "InvalidConfig",
   "type": "error"
  },
  {
   "inputs": [],
   "name": "InvalidCount",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidDeadline",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidDecimals",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidDestination",
   "type": "error"
  },
  {
@@ -315,7 +380,17 @@
  },
  {
   "inputs": [],
+  "name": "InvalidMessageOrigin",
+  "type": "error"
+ },
+ {
+  "inputs": [],
   "name": "InvalidMorphoVault",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidProtocolFee",
   "type": "error"
  },
  {
@@ -325,7 +400,17 @@
  },
  {
   "inputs": [],
+  "name": "InvalidRequest",
+  "type": "error"
+ },
+ {
+  "inputs": [],
   "name": "InvalidSource",
+  "type": "error"
+ },
+ {
+  "inputs": [],
+  "name": "InvalidState",
   "type": "error"
  },
  {
