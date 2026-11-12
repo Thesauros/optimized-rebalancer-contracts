@@ -56,3 +56,10 @@ ops/.env.keys
 # Python watchdog bytecode
 __pycache__/
 *.pyc
+
+# Native build outputs and local signing material
+solana/target/
+solana/.anchor/
+solana/*-keypair.json
+solana-native-cache*.json
+solana-checkpoints.sqlite*

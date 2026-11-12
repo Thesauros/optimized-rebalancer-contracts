@@ -14,7 +14,8 @@ import path from 'path';
 import { Contract, JsonRpcProvider, Wallet, formatEther, id } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, TICK_ACCOUNTANT } from './abi';
 import { Chain, hubOf, loadChains, rpcUrl } from './config';
-import { TRANSFER_INDEX_FILE } from './snapshot';
+import { TRANSFER_INDEX_FILE, TransferIndex } from './snapshot';
+import { loadNativeSpokes } from './native';
 import { PROFILE } from '../../deploy/crosschain/registry';
 
 type Result = { ok: boolean; warn?: boolean; label: string; detail?: string };
@@ -219,6 +220,40 @@ async function main() {
   if (relayer) for (const c of chains) await checkGas(c, 'relayer', relayer);
 
   // state and external services
+  for (const native of loadNativeSpokes()) {
+    try {
+      const { SolanaSpoke } = await import('./solana/spoke');
+      const { solanaSigner } = await import('./solana/transactions');
+      if (!(native instanceof SolanaSpoke)) throw new Error('unsupported native preflight');
+      await withTimeout(native.sync(new TransferIndex()),60_000);
+      await native.referenceAt((await hub.provider.getBlock('latest'))!.timestamp);
+      const state = await native.state();
+      const {PublicKey}=await import('@solana/web3.js');
+      if (!native.manifest.localValidator) {
+        if (PublicKey.isOnCurve(state.governance.toBytes())) throw new Error('production native governance must be a reviewed timelocked PDA');
+        if (native.upgradeAuthority && !native.upgradeAuthority.equals(state.governance)) throw new Error('native upgrade authority must equal governance');
+      }
+      const executor = solanaSigner().publicKey;
+      if (!state.executor.equals(executor)) throw new Error('Solana executor differs from on-chain role');
+      const checkpointRent=await native.connection.getMinimumBalanceForRentExemption(133+48*state.strategies.length,'finalized');
+      const eventRent=await native.connection.getMinimumBalanceForRentExemption(492,'finalized');
+      const nonceRent=await native.connection.getMinimumBalanceForRentExemption(9,'finalized');
+      for (const role of ['SOLANA_EXECUTOR_KEYPAIR','SOLANA_RELAYER_KEYPAIR','SOLANA_CHECKPOINT_KEYPAIR']) {
+        const signer = solanaSigner(role);
+        const required=checkpointRent+(role==='SOLANA_EXECUTOR_KEYPAIR'?eventRent:role==='SOLANA_RELAYER_KEYPAIR'?nonceRent:0)+50_000;
+        if (await native.connection.getBalance(signer.publicKey,'finalized') < required) throw new Error(`${role} needs at least ${required} lamports for a checkpoint, fees and bridge rent`);
+      }
+      if (!process.env.SOLANA_TX_JOURNAL_DIR) throw new Error('durable SOLANA_TX_JOURNAL_DIR is required');
+      if (!process.env.SOLANA_CHECKPOINT_DB) throw new Error('durable SOLANA_CHECKPOINT_DB is required to avoid unbounded cold-start RPC replay');
+      if (!process.env.SOLANA_LOOKUP_TABLES) throw new Error('SOLANA_LOOKUP_TABLES is required for the atomic CCTP receive + checkpoint transaction');
+      for(const key of process.env.SOLANA_LOOKUP_TABLES.split(',').map(s=>s.trim()).filter(Boolean)) {
+        const table=(await native.connection.getAddressLookupTable(new PublicKey(key))).value;
+        if(!table||!table.isActive()) throw new Error(`native lookup table unavailable/inactive: ${key}`);
+      }
+      checkWritable('SOLANA_TX_JOURNAL_DIR',path.join(process.env.SOLANA_TX_JOURNAL_DIR,'journal-probe'));
+      pass('Solana program, PDA custody, roles, cluster, finalized checkpoint and fee payers');
+    } catch(e) { fail('Solana readiness',e instanceof Error?e.message:String(e)); }
+  }
   checkWritable('TRANSFER_INDEX_FILE', TRANSFER_INDEX_FILE);
   checkWritable('INDEXER_DB', process.env.INDEXER_DB ?? 'crosschain-indexer.sqlite');
   const mode = process.env.RELAYER_ATTESTATION ?? 'iris';
