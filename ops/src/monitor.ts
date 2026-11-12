@@ -21,6 +21,7 @@ import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, STRATEGY, TICK_ACCOUNTANT, T
 import { Chain, envNumber, hubOf, identities, loadChains } from './config';
 import { checkDeployment } from './checks/deployment';
 import { TRANSFER_INDEX_FILE, TransferIndex, openTransferIndex, verifyTick } from './snapshot';
+import { readableTotalAssets, strategyShareValue } from './strategy-value';
 import { routeId } from '../../deploy/crosschain/registry';
 import { EventCache, log, loop, serveStatus, telegram } from './util';
 
@@ -197,21 +198,37 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
       withdrawPaused ? 'crit' : depositPaused ? 'warn' : 'ok',
       withdrawPaused ? `${c.key} strategy WITHDRAW paused: recalls and all queued redemptions are blocked` : depositPaused ? `${c.key} strategy deposits paused` : `${c.key} strategy not paused`,
     );
-    const healthy: boolean = await strategy.providersHealthy();
-    add(`strategy.${c.key}.health`, healthy ? 'ok' : 'crit', healthy ? `${c.key} strategy providers healthy` : `${c.key} strategy has a failing provider view: deposits blocked, NAV understated`);
-    const total: bigint = await strategy.totalAssets();
-    if (total > 0n) {
-      for (const p of (await strategy.getProviders()) as string[]) {
-        const cap = Number(await strategy.getProviderCap(p));
-        if (cap === 0) continue;
-        let balance = 0n;
-        try {
-          balance = await new Contract(p, PROVIDER, c.provider).getDepositBalance(c.manifest.contracts.Strategy, c.manifest.contracts.Strategy);
-        } catch {
-          continue;
+    // one block for every strategy read: a view that starts failing between two
+    // calls would otherwise make totalAssets() revert and abort the whole pass
+    const at = { blockTag: await c.provider.getBlockNumber() };
+    const healthy: boolean = await strategy.providersHealthy(at);
+    if (!healthy) {
+      // totalAssets() reverts on the current Rebalancer; name what fails instead
+      const { blocked, readable } = await strategyShareValue(strategy, 0n, at.blockTag);
+      const failing = (readable ?? (await readableTotalAssets(strategy, at.blockTag))).failing;
+      add(
+        `strategy.${c.key}.health`,
+        'crit',
+        `${c.key} strategy provider view failing (${failing.join(', ') || 'provider not identified'}): deposits refused` +
+          (blocked ? ', withdrawals, deallocations and queued redemptions revert' : '') +
+          '; NAV values the strategy at its readable lower bound',
+      );
+    } else {
+      add(`strategy.${c.key}.health`, 'ok', `${c.key} strategy providers healthy`);
+      const total: bigint = await strategy.totalAssets(at);
+      if (total > 0n) {
+        for (const p of (await strategy.getProviders(at)) as string[]) {
+          const cap = Number(await strategy.getProviderCap(p, at));
+          if (cap === 0) continue;
+          let balance = 0n;
+          try {
+            balance = await new Contract(p, PROVIDER, c.provider).getDepositBalance(c.manifest.contracts.Strategy, c.manifest.contracts.Strategy, at);
+          } catch {
+            continue;
+          }
+          const bps = Number((balance * 10_000n) / total);
+          add(`strategy.${c.key}.cap.${p.slice(0, 8)}`, bps > cap ? 'warn' : 'ok', `${c.key} provider ${p} at ${bps} bps of strategy (cap ${cap})`, bps);
         }
-        const bps = Number((balance * 10_000n) / total);
-        add(`strategy.${c.key}.cap.${p.slice(0, 8)}`, bps > cap ? 'warn' : 'ok', `${c.key} provider ${p} at ${bps} bps of strategy (cap ${cap})`, bps);
       }
     }
     for (const [peerKey, peer] of chains.filter((x) => x.key !== c.key).map((x) => [x.key, x] as const)) {
