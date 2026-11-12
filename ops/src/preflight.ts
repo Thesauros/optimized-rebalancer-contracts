@@ -13,8 +13,9 @@ import fs from 'fs';
 import path from 'path';
 import { Contract, JsonRpcProvider, Wallet, formatEther, id } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, TICK_ACCOUNTANT } from './abi';
-import { Chain, hubOf, loadChains, rpcUrl } from './config';
-import { TRANSFER_INDEX_FILE } from './snapshot';
+import { Chain, assertTrackedChainsConfigured, hubOf, loadChains, rpcUrl } from './config';
+import { TRANSFER_INDEX_FILE, TransferIndex } from './snapshot';
+import { loadNativeSpokes } from './native';
 import { PROFILE } from '../../deploy/crosschain/registry';
 
 type Result = { ok: boolean; warn?: boolean; label: string; detail?: string };
@@ -26,6 +27,42 @@ const warn = (label: string, detail?: string) => results.push({ ok: true, warn: 
 const layoutArg = process.argv.indexOf('--layout');
 const layout = layoutArg > 0 ? process.argv[layoutArg + 1] : undefined;
 const MIN_GAS_WEI = BigInt(process.env.PREFLIGHT_MIN_GAS_WEI ?? '100000000000000'); // 0.0001 ETH
+
+/**
+ * Free, shared RPC endpoints that must never carry `eth_sendRawTransaction`. Two
+ * separate reasons: a free plan drops and delays broadcasts (this branch's
+ * rehearsal runs died on 408 "Request timeout on the free plan" and on 429, and a
+ * dropped send leaves a CCTP transfer in flight past maxTransit), and on Ethereum a
+ * broadcast through a public node publishes the signed transaction to the public
+ * mempool before inclusion, where its calldata - amount, destination, route - is
+ * readable to anyone watching.
+ *
+ * The chains' OWN public endpoints are deliberately not listed. `mainnet.base.org`
+ * and `arb1.arbitrum.io/rpc` are the reliable path into the sequencer (a paid data
+ * provider twice accepted a Base transaction and never propagated it), and sequencer
+ * ordering leaves no public mempool to be read. Ethereum has no equivalent, so its
+ * send path has to be a paid provider or a private/protected channel.
+ *
+ * Matching is by host suffix, so a paid or private tier served from one of these
+ * hosts is caught too. `OPS_ALLOW_PUBLIC_SEND_ENDPOINT=1` says that is deliberate
+ * and downgrades the failure to a warning; the default is to fail.
+ */
+const PUBLIC_SEND_ENDPOINTS = ['publicnode.com', 'drpc.org', 'llamarpc.com', 'ankr.com', '1rpc.io', 'cloudflare-eth.com', 'eth.public-rpc.com'];
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** True when `url` is a free shared endpoint; a local fork (the rehearsal) never is. */
+function isPublicSendEndpoint(url: string): boolean {
+  const host = hostOf(url);
+  if (!host || host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return false;
+  return PUBLIC_SEND_ENDPOINTS.some((d) => host === d || host.endsWith(`.${d}`));
+}
 
 async function withTimeout<T>(p: Promise<T>, ms = 20_000): Promise<T> {
   return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timeout after ${ms} ms`)), ms))]);
@@ -59,6 +96,20 @@ async function checkRpc(c: Chain) {
     } catch (e) {
       fail(`${c.key} ${label} RPC reachable`, String((e as Error).message).slice(0, 160));
     }
+  }
+  // Where signed transactions actually go: RPC_SEND_<KEY>, or the read RPC when it is
+  // unset (config.providerFor only splits the two when both are set and differ). A
+  // failure, not a warning: the operator cannot see a dropped broadcast, and the
+  // symptom is a transfer stuck in flight rather than an error anywhere.
+  const broadcast = send ?? read;
+  if (isPublicSendEndpoint(broadcast)) {
+    const detail =
+      `${hostOf(broadcast)} would carry eth_sendRawTransaction: a free plan drops and delays sends, and on Ethereum it publishes the signed transaction to the public mempool before inclusion. ` +
+      `Set RPC_SEND_${c.key.toUpperCase()} to a paid provider (on Ethereum, a private or protected channel).`;
+    if (process.env.OPS_ALLOW_PUBLIC_SEND_ENDPOINT === '1') warn(`${c.key} broadcasts avoid free public endpoints`, `${detail} Accepted via OPS_ALLOW_PUBLIC_SEND_ENDPOINT=1.`);
+    else fail(`${c.key} broadcasts avoid free public endpoints`, detail);
+  } else {
+    pass(`${c.key} broadcasts avoid free public endpoints`, hostOf(broadcast) || broadcast);
   }
   try {
     const head = await withTimeout(c.provider.getBlockNumber());
@@ -141,6 +192,13 @@ async function main() {
 
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
   const vault = new Contract(hub.manifest.contracts.EpochVault, EPOCH_VAULT, hub.provider);
+  try {
+    const tracked: bigint[] = (await accountant.chainIds()).map((chainId: bigint) => BigInt(chainId));
+    assertTrackedChainsConfigured(chains, tracked);
+    pass('every accountant chain is configured', tracked.join(','));
+  } catch (e) {
+    fail('every accountant chain is configured', (e as Error).message);
+  }
   if (nav) {
     if (await accountant.hasRole(id('NAV_UPDATER_ROLE'), nav)) pass('NAV updater holds NAV_UPDATER_ROLE', nav);
     else fail('NAV updater holds NAV_UPDATER_ROLE', `${nav} does not`);
@@ -169,6 +227,40 @@ async function main() {
   if (relayer) for (const c of chains) await checkGas(c, 'relayer', relayer);
 
   // state and external services
+  for (const native of loadNativeSpokes()) {
+    try {
+      const { SolanaSpoke } = await import('./solana/spoke');
+      const { solanaSigner } = await import('./solana/transactions');
+      if (!(native instanceof SolanaSpoke)) throw new Error('unsupported native preflight');
+      await withTimeout(native.sync(new TransferIndex()),60_000);
+      await native.referenceAt((await hub.provider.getBlock('latest'))!.timestamp);
+      const state = await native.state();
+      const {PublicKey}=await import('@solana/web3.js');
+      if (!native.manifest.localValidator) {
+        if (PublicKey.isOnCurve(state.governance.toBytes())) throw new Error('production native governance must be a reviewed timelocked PDA');
+        if (native.upgradeAuthority && !native.upgradeAuthority.equals(state.governance)) throw new Error('native upgrade authority must equal governance');
+      }
+      const executor = solanaSigner().publicKey;
+      if (!state.executor.equals(executor)) throw new Error('Solana executor differs from on-chain role');
+      const checkpointRent=await native.connection.getMinimumBalanceForRentExemption(133+48*state.strategies.length,'finalized');
+      const eventRent=await native.connection.getMinimumBalanceForRentExemption(492,'finalized');
+      const nonceRent=await native.connection.getMinimumBalanceForRentExemption(9,'finalized');
+      for (const role of ['SOLANA_EXECUTOR_KEYPAIR','SOLANA_RELAYER_KEYPAIR','SOLANA_CHECKPOINT_KEYPAIR']) {
+        const signer = solanaSigner(role);
+        const required=checkpointRent+(role==='SOLANA_EXECUTOR_KEYPAIR'?eventRent:role==='SOLANA_RELAYER_KEYPAIR'?nonceRent:0)+50_000;
+        if (await native.connection.getBalance(signer.publicKey,'finalized') < required) throw new Error(`${role} needs at least ${required} lamports for a checkpoint, fees and bridge rent`);
+      }
+      if (!process.env.SOLANA_TX_JOURNAL_DIR) throw new Error('durable SOLANA_TX_JOURNAL_DIR is required');
+      if (!process.env.SOLANA_CHECKPOINT_DB) throw new Error('durable SOLANA_CHECKPOINT_DB is required to avoid unbounded cold-start RPC replay');
+      if (!process.env.SOLANA_LOOKUP_TABLES) throw new Error('SOLANA_LOOKUP_TABLES is required for the atomic CCTP receive + checkpoint transaction');
+      for(const key of process.env.SOLANA_LOOKUP_TABLES.split(',').map(s=>s.trim()).filter(Boolean)) {
+        const table=(await native.connection.getAddressLookupTable(new PublicKey(key))).value;
+        if(!table||!table.isActive()) throw new Error(`native lookup table unavailable/inactive: ${key}`);
+      }
+      checkWritable('SOLANA_TX_JOURNAL_DIR',path.join(process.env.SOLANA_TX_JOURNAL_DIR,'journal-probe'));
+      pass('Solana program, PDA custody, roles, cluster, finalized checkpoint and fee payers');
+    } catch(e) { fail('Solana readiness',e instanceof Error?e.message:String(e)); }
+  }
   checkWritable('TRANSFER_INDEX_FILE', TRANSFER_INDEX_FILE);
   checkWritable('INDEXER_DB', process.env.INDEXER_DB ?? 'crosschain-indexer.sqlite');
   const mode = process.env.RELAYER_ATTESTATION ?? 'iris';

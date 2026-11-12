@@ -30,6 +30,8 @@ export interface RouteLimits {
 }
 
 export interface NetworkEntry {
+  /** This registry is EVM-only; native spokes use native-registry.ts. */
+  family: 'evm';
   /** hardhat network name in network-config.ts */
   hardhatName: string;
   chainId: bigint;
@@ -49,6 +51,8 @@ export interface NetworkEntry {
     reusedProviders: { label: string; address: string }[];
     /** Compound V3 Comet for USDC; a fresh ProviderManager + provider are deployed for it. */
     comet?: string;
+    /** Fluid fToken for USDC; a fresh FluidProvider is deployed for it. */
+    fluidFToken?: string;
     /**
      * Per-provider cap in bps of strategy assets; label -> bps; 0 or missing = uncapped.
      * The entry provider (first reused provider) must stay uncapped: every deposit
@@ -100,6 +104,7 @@ const DEFAULT_ROUTE: RouteLimits = ROUTE_BY_PROFILE[PROFILE];
 
 const ALL_NETWORKS: Record<string, NetworkEntry> = {
   base: {
+    family: 'evm',
     hardhatName: 'base',
     chainId: 8453n,
     role: 'hub',
@@ -132,6 +137,7 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     confirmations: 10,
   },
   arbitrum: {
+    family: 'evm',
     hardhatName: 'arbitrum',
     chainId: 42161n,
     role: 'spoke',
@@ -164,6 +170,7 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     confirmations: 20,
   },
   mainnet: {
+    family: 'evm',
     hardhatName: 'mainnet',
     chainId: 1n,
     role: 'spoke',
@@ -177,21 +184,24 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     strategy: {
       name: 'Thesauros Cross-Chain Strategy (Ethereum)',
       symbol: 'tcsUSDC-eth',
-      // Compound and Morpho only (TS-419). The Morpho providers are the ones the
-      // Ethereum vault already runs: MetaMorpho V1.0, the version GauntletCore
-      // uses on Base, with the same MorphoProvider code. Steakhouse is the entry
-      // provider as the largest of the three.
+      // Compound and Morpho (TS-419), Fluid (TS-420). The Morpho providers are the
+      // ones the Ethereum vault already runs: MetaMorpho V1.0, the version
+      // GauntletCore uses on Base, with the same MorphoProvider code. Steakhouse is
+      // the entry provider as the largest of the three.
       reusedProviders: [
         { label: 'SteakhouseMorpho', address: '0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622' },
         { label: 'GauntletPrimeMorpho', address: '0xBC64abbCa87289746f2B01C8ab02A78c9fC92B89' },
         { label: 'SmokehouseMorpho', address: '0x2fe36048F394A0732E8F28C43DbF351F0253C6E5' },
       ],
       comet: '0xc3d688B66703497DAA19211EEdff47f25384cdc3',
+      // fUSDC: an immutable fToken (no proxy) over the Fluid Liquidity layer
+      fluidFToken: '0x9Fb7b4477576Fe5B32be4C1843aFB1e55F251B33',
       capsBps: {
         SteakhouseMorpho: 0,
         CompoundV3: 5_000,
         GauntletPrimeMorpho: 4_000,
         SmokehouseMorpho: 3_000,
+        Fluid: 3_000,
       },
     },
     routes: { '8453': DEFAULT_ROUTE },
@@ -206,6 +216,14 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
  * Rehearsal only: REHEARSAL_NETWORKS=base,arbitrum narrows the registry to those
  * keys, so ops/rehearsal/run.sh can hand over the existing chains first and then
  * add a network the way production does (phase 5 through the Timelock).
+ *
+ * A narrowed registry is not harmless. `05-governance-plan.ts` derives the hub
+ * accountant's chain set from NETWORKS, so a plan built from a narrowed registry
+ * queues a `setChains` that drops every chain left out, and
+ * `TickAccountant._setChains` has no guard against removing one: the accountant
+ * would stop tracking a chain that still holds capital and NAV would book none of
+ * it. Phase 5 refuses to plan such a removal; `fullNetworks()` below is what it
+ * compares against.
  */
 function selectNetworks(only?: string): Record<string, NetworkEntry> {
   if (!only) return ALL_NETWORKS;
@@ -215,6 +233,14 @@ function selectNetworks(only?: string): Record<string, NetworkEntry> {
 }
 
 export const NETWORKS: Record<string, NetworkEntry> = selectNetworks(process.env.REHEARSAL_NETWORKS);
+
+/**
+ * The registry as written, ignoring REHEARSAL_NETWORKS. A function rather than an
+ * exported constant so that reading the unnarrowed set stays a deliberate act.
+ */
+export function fullNetworks(): Record<string, NetworkEntry> {
+  return ALL_NETWORKS;
+}
 
 /**
  * Derived protocol bounds. Three of the configured values are not independent;
@@ -290,11 +316,21 @@ const COMMON_ACCOUNTANT = {
    * Per-chain concentration cap as a 1e18 fraction of gross bid assets; 0 disables
    * it. Gross rather than NAV, because NAV nets off pending deposits and
    * liabilities, which would inflate every chain's apparent share during a large
-   * deposit or redemption epoch. Left off at launch deliberately: with two chains
-   * all capital starts on the hub, so any cap below 100% is breached on day one and
-   * the flag would be permanent noise. Set it through the Timelock once a target
-   * allocation exists or a third chain is added (`05-governance-plan.ts`). It blocks
-   * sends INTO a chain that is over, never sends out of it and never settlement.
+   * deposit or redemption epoch. It blocks sends INTO a chain that is over, never
+   * sends out of it and never settlement.
+   *
+   * Decision, restated because TS-419 met the condition an earlier version of this
+   * comment set for enabling it: the cap stays DISABLED with three chains
+   * (docs/crosschain-deployment.md §6a, "Left out on purpose"). There is still no
+   * target allocation to size a cap against - capital is moved by hand through the
+   * operator CLI - so any value would either be breached on day one (all capital
+   * starts on the hub) or would be an arbitrary ceiling on a decision nobody has
+   * taken. Accepted consequence: no on-chain ceiling limits how much of the vault
+   * can sit on one chain, and the per-provider caps on Ethereum already sum to 120%
+   * of strategy assets (Compound 50% + GauntletPrime 40% + Smokehouse 30%, entry
+   * uncapped), 150% once TS-420 adds Fluid. Enabling it stays a separate Timelock
+   * decision (`setMaxChainExposure` through `05-governance-plan.ts`) and needs a
+   * written target allocation first.
    */
   maxChainExposure: 0n,
 };
@@ -373,6 +409,26 @@ export function hubEntry(): [string, NetworkEntry] {
   const hubs = Object.entries(NETWORKS).filter(([, n]) => n.role === 'hub');
   if (hubs.length !== 1) throw new Error('registry must contain exactly one hub');
   return hubs[0];
+}
+
+/**
+ * The strategy's providers in the order phase 1 initializes them: the entry
+ * provider, the fresh Compound provider, the other reused providers, then the
+ * fresh Fluid provider. Fresh providers are read from the chain's manifest; one
+ * not deployed (yet) is absent.
+ */
+export function strategyProviders(entry: NetworkEntry, contracts: Record<string, string>): { label: string; address: string }[] {
+  const [first, ...rest] = entry.strategy.reusedProviders;
+  const fresh = (label: string, key: string) => (contracts[key] ? [{ label, address: contracts[key] }] : []);
+  return [first, ...fresh('CompoundV3', 'CompoundV3Provider'), ...rest, ...fresh('Fluid', 'FluidProvider')];
+}
+
+/** The labels a cap may name: the reused providers and the fresh ones the entry asks for. */
+export function providerLabels(entry: NetworkEntry): string[] {
+  const labels = entry.strategy.reusedProviders.map((p) => p.label);
+  if (entry.strategy.comet) labels.push('CompoundV3');
+  if (entry.strategy.fluidFToken) labels.push('Fluid');
+  return labels;
 }
 
 export function entryByChainId(chainId: bigint): [string, NetworkEntry] {

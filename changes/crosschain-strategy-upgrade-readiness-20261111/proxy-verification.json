@@ -1,0 +1,74 @@
+[
+  {
+    "network": "base",
+    "blockNumber": 56148628,
+    "blockHash": "0xfe30cd492c55ef6a1bfe669db98db37440af1bb0c737ccae8d7c164cdf3d88a0",
+    "observedAtUtc": "2026-11-11T18:01:41.000Z",
+    "proxies": [
+      {
+        "name": "Strategy",
+        "proxy": "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33",
+        "implementation": "0xfcE142db5FD78F64c97b04d9a587E2C53341b910",
+        "proxyAdmin": "0xDb00Ea4B591aA220bf97e16D4c965196EC223e0e",
+        "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+        "implementationRuntimeHash": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+        "matchesManifest": true
+      },
+      {
+        "name": "EpochVault",
+        "proxy": "0x33c4F5Efc49DCEa72bfA8Fe62e5Cb7B3226d7cB6",
+        "implementation": "0x8E5D91AF547D78Bc9A1036b41e255d129013539d",
+        "proxyAdmin": "0x068F9cf18AEd8687AA1b75069F5ED18735fe7452",
+        "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+        "implementationRuntimeHash": "0x78b92497708e20558e4e4fc958d945e3a801702c627704f840e6a44ac5bf2b07",
+        "matchesManifest": true
+      },
+      {
+        "name": "TickAccountant",
+        "proxy": "0xB45819B6844708915c5d7936A847186A6a078b27",
+        "implementation": "0x94d45d301aa89d426F5CF9c6cf5F773DCFFC2c5B",
+        "proxyAdmin": "0x118982ee9B8A461961b7ee9ED9eC17d2386Be02f",
+        "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+        "implementationRuntimeHash": "0x01f451a78607a3f67b8dbccfbca02a73b9942e44d74cb3d7adbe9695bae01bb1",
+        "matchesManifest": true
+      },
+      {
+        "name": "ChainAgent",
+        "proxy": "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83",
+        "implementation": "0x6baa35EcB2d83c80654071362269206DdA2CdCB8",
+        "proxyAdmin": "0xCA29C9C3b65848C3444F2f1F0D7FC9129C7719Bb",
+        "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+        "implementationRuntimeHash": "0xe55493176a611f9137ce67c128b581a60c6f868b0d9ef55c116ecad1e5d7b50f",
+        "matchesManifest": true
+      }
+    ],
+    "productionWrites": false
+  },
+  {
+    "network": "arbitrum",
+    "blockNumber": 523348452,
+    "blockHash": "0xfcae6a9fa8abe6e25270d56007b53fd4312d002e221bbad52f88b0349edd4fbf",
+    "observedAtUtc": "2026-11-11T18:01:40.000Z",
+    "proxies": [
+      {
+        "name": "Strategy",
+        "proxy": "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+        "implementation": "0x84163d2d9CFfe0e53078C3Cd02ee3db1975117d5",
+        "proxyAdmin": "0x1565857f8bfF76F1452e32d479D174b55DFc2bBe",
+        "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+        "implementationRuntimeHash": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+        "matchesManifest": true
+      },
+      {
+        "name": "ChainAgent",
+        "proxy": "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+        "implementation": "0x96528a41D3e5a2AfE29Bbf61ae8704eDCB01b67C",
+        "proxyAdmin": "0x7703Fe691a568E3525980BB4Df94193BD6Ff624d",
+        "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+        "implementationRuntimeHash": "0xe55493176a611f9137ce67c128b581a60c6f868b0d9ef55c116ecad1e5d7b50f",
+        "matchesManifest": true
+      }
+    ],
+    "productionWrites": false
+  }
+]

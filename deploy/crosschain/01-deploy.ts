@@ -15,7 +15,7 @@
  * seed; spoke: strategy seed).
  */
 import { ethers } from 'hardhat';
-import { HUB_PARAMS, NETWORKS, PROFILE, identities } from './registry';
+import { HUB_PARAMS, NETWORKS, PROFILE, identities, strategyProviders } from './registry';
 import { EMPTY_CODEHASH, Manifest, banner, codehash, currentEntry, deployer, readManifest, send, settle, writeManifest } from './lib';
 
 async function main() {
@@ -112,18 +112,18 @@ async function main() {
   // governance
   await deploy('Timelock', 'Timelock', [ids.safe, ids.timelockDelay]);
 
-  // strategy: Rebalancer over reused Aave/Morpho providers + a fresh Compound provider
+  // strategy: Rebalancer over reused Aave/Morpho providers + fresh Compound and Fluid providers
   await deploy('VaultFactory', 'VaultFactory');
-  const providers = entry.strategy.reusedProviders.map((p) => p.address);
   if (entry.strategy.comet) {
     const pm = await deploy('ProviderManager', 'ProviderManager', [me]);
     const pmc = await ethers.getContractAt('ProviderManager', pm, signer);
     if ((await pmc.getYieldToken('Compound_V3_Provider', entry.usdc)) === ethers.ZeroAddress) {
       await send('ProviderManager.setYieldToken(Compound)', pmc.setYieldToken('Compound_V3_Provider', entry.usdc, entry.strategy.comet));
     }
-    const comp = await deploy('CompoundV3Provider', 'CompoundV3Provider', [pm]);
-    providers.splice(1, 0, comp); // entry provider stays first
+    await deploy('CompoundV3Provider', 'CompoundV3Provider', [pm]);
   }
+  if (entry.strategy.fluidFToken) await deploy('FluidProvider', 'FluidProvider', [entry.strategy.fluidFToken]);
+  const providers = strategyProviders(entry, m.contracts).map((p) => p.address); // entry provider first
   await deploy('StrategyImplementation', 'Rebalancer');
   if (!m.contracts.Strategy) {
     const seed = HUB_PARAMS.strategySeedAssets;

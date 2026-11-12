@@ -43,7 +43,7 @@ git checkout <release commit>          # the commit that carries deployments/*/c
 cp ops/.env.server.example ops/.env.server
 cp ops/.env.keys.example   ops/.env.keys
 chmod 600 ops/.env.server ops/.env.keys
-# fill both: Moralis project URLs in RPC_BASE / RPC_ARBITRUM / RPC_MAINNET, the deployer key in
+# fill both: RPC_BASE / RPC_ARBITRUM (RPC_MAINNET only after its deployment), the deployer key in
 # all four *_PRIVATE_KEY on the stand, Telegram token and chat id, CORS origin
 
 docker compose -f ops/docker-compose.yml build
@@ -99,16 +99,52 @@ pass.
 
 ## Upgrading
 
+Runtime networks are discovered from the `crosschain.json` manifests included in
+the release, not from every supported registry entry. The existing release needs
+only Base and Arbitrum RPCs. `CROSSCHAIN_NETWORKS=base,arbitrum` optionally pins an
+explicit runtime set: a missing selected manifest/RPC or invalid network is a
+startup error. Preflight rejects any accountant chain omitted from that set;
+NAV retains the same independent check before publishing a snapshot. When adding
+a network, include its real manifest and RPC before activating it on-chain.
+
+Build each release under its commit tag. Keep the previous image reference for
+rollback, and use the same new image for preflight and the running services:
+
+Use the checked-out repository directory as the build context, as below. Do not
+pipe a source tar archive to Docker: that context mode does not apply this
+checkout's `.dockerignore` allowlist. CI verifies the directory-context image.
+
 ```bash
 git fetch && git checkout <new release commit>
-docker compose -f ops/docker-compose.yml build
-docker compose -f ops/docker-compose.yml --profile tools run --rm preflight
-docker compose -f ops/docker-compose.yml --profile stand up -d
+export CROSSCHAIN_OPS_IMAGE=thesauros/crosschain-ops:$(git rev-parse HEAD)
+docker compose --env-file ops/.env.server -f ops/docker-compose.yml build --pull preflight
+
+# offline configuration smoke check: no keys or RPC requests
+docker run --rm --network none \
+  -e RPC_BASE=http://127.0.0.1:1 -e RPC_ARBITRUM=http://127.0.0.1:1 \
+  "$CROSSCHAIN_OPS_IMAGE" src/check-config.ts
+
+# read-only checks using the actual server environment; do not bypass failures
+docker compose --env-file ops/.env.server -f ops/docker-compose.yml --profile tools run --rm preflight
+docker compose --env-file ops/.env.server -f ops/docker-compose.yml --profile stand up -d --no-build
+docker compose --env-file ops/.env.server -f ops/docker-compose.yml ps
 ```
 
-The volume survives upgrades. After a contract redeploy (new manifests) wipe it,
-because the cached index belongs to the old agents (it would be discarded anyway,
-it is bound to their addresses): `docker volume rm <project>_ops-data`.
+Use the deployment's existing Compose profile and signing layout. This procedure
+does not rotate keys, change on-chain limits, migrate contracts, or alter funding.
+The `ops-data` volume survives a service update; do not run `down -v` or remove it.
+After a restart, check service health and that accepted Ticks continue advancing.
+Never share the state volume between different contract deployments.
+
+For rollback, set `CROSSCHAIN_OPS_IMAGE` to the recorded previous image reference
+and repeat `up -d --no-build` with the same profile and environment files. Keep
+the volume and existing host recovery tooling in place. An image update does not
+install or replace host-side cron/systemd jobs.
+
+The base image digest and `ops/package-lock.json` pin build inputs. Do not pass
+credentials as build arguments. CI builds the clean checkout, checks the image
+offline (including SQLite and excluded files), and runs ops regressions on that
+same Node runtime and locked dependency set.
 
 ## Moving from the stand to production
 

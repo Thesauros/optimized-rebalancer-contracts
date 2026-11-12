@@ -11,6 +11,7 @@ Off-chain services for the cross-chain vault:
 | `npm run indexer` | Indexer + read API for the frontend (requests, epochs, NAV history, allocation) |
 | `npm run verify-tick -- <ids>` | Independent Tick verification for partners |
 | `npm run exec -- <command>` | Operator CLI: status, transfers, capital moves, user and keeper actions. Every write is simulated; nothing is sent without `--yes` |
+| `npm run check:config` | Offline startup check: deployed manifests and required RPC configuration, without RPC requests or signing keys |
 
 ## Operator CLI
 
@@ -42,6 +43,11 @@ incrementally; nothing re-reads history on every pass.
 `npm run preflight -- --layout operators|separate` checks an environment before start.
 
 Configuration, deployment and operations: `docs/crosschain-deployment.md`.
+Runtime networks default to the available cross-chain manifests. Optional
+`CROSSCHAIN_NETWORKS=base,arbitrum` requires exactly that configured set; a
+supported registry network without a manifest is not automatically required.
+Preflight and NAV reject an omitted active accountant chain. Reproducible image
+updates and rollback: `docs/crosschain-server.md`, Upgrading.
 Snapshot rules: `docs/nav-reproduction.md`.
 Open items: `docs/crosschain-open-items.md`.
 
@@ -68,27 +74,36 @@ and rewinds `INDEX_REWIND_BLOCKS` (default 5000) on load as reorg insurance.
 Tests: `npm test` (unit tests + ABI drift guard; run `npx hardhat compile` in the
 repo root first). The full rehearsal on local forks is `ops/rehearsal/run.sh`.
 
-## Autonomous recovery
+## Recovery
 
-The server cron in `ops/deploy/xc-watchdog.cron` starts `xc-watchdog.service`
-at 00:00, 02:00, … UTC. `ops/scripts/autofix-watchdog.py` checks all five health
-endpoints, monitor incidents and accepted tick freshness. It confirms a failure
-after 10 seconds, recreates only affected Docker services or restarts the systemd
-indexer, then verifies recovery. A tick older than 75% of `maxTickAge` triggers
-recovery before settlement expires. At most two attempts run, each with an
-eight-minute verification window; systemd limits the whole job to 25 minutes.
+Recovery is manual. The watchdog that restarted failed services on a cron
+(`ops/deploy/xc-watchdog.service` and `.cron`, `ops/scripts/autofix-watchdog.py`)
+was deleted in commit `0c420d3` together with its tests, and nothing replaced it;
+this section documented it as live tooling until TS-419. What exists is detection,
+not repair: the monitor's `/health` turns 503 while any critical check fails and
+the Telegram bot pages on every state change, and an operator restarts the
+affected service by hand (`docs/crosschain-server.md`, Daily operation).
 
-The existing Telegram bot receives explicitly labelled autonomous-auto-fix start,
-success and failure messages. Healthy checks are silent. Failed notifications
-stay in `/var/lib/xc-watchdog/state.json` for retry. State and logs contain no bot
-credentials; credentials come from the existing `ops/.env.server`. systemd and a
-file lock prevent overlapping runs. Contract freezes and quarantine are reported
-as unresolved when service restarts cannot resolve them.
+Two consequences of that deletion are still open:
 
-Inspect: `systemctl status xc-watchdog.service`,
-`journalctl -u xc-watchdog.service`, `/var/lib/xc-watchdog/state.json`.
-Read-only check: `python3 ops/scripts/autofix-watchdog.py --check`.
-Tests: `python3 -m unittest discover -s ops/test -p 'test_autofix_watchdog.py'`.
+* `ops/src/util.ts` (`LOG_RANGE`, `scanMany`, `EventCache`, `retryTransient`) has no
+  dedicated test suite. `ops/test/util.test.ts` was deleted with the watchdog and
+  the code it covered was not; those functions are exercised only indirectly, by
+  the snapshot and indexer tests.
+* No automated restart means a service that exits on a transient upstream failure
+  stays down until someone notices. Docker's `restart: unless-stopped` covers
+  process exits, not a process that is alive and stuck.
+
+### Hosts that still run the legacy watchdog
+
+Those `ops/scripts` and `ops/deploy` files are absent from this checkout and are
+not dependencies of the service image, but a host provisioned from an earlier
+release may still have them installed under cron and systemd. Preserve that
+installation across an image update: this release neither installs nor replaces
+cron/systemd recovery jobs. Its operational reference — poll times, confirmation
+window, attempt limit, Telegram labelling, state path — is in this file's history
+at the revision before commit `0c420d3`.
+
 # RPC rate budget
 
 All read providers in one process share `RPC_REQUESTS_PER_SECOND` (default 10)

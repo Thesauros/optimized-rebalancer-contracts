@@ -57,7 +57,7 @@ function rpcErrorText(e: unknown): string {
  * reset connections, DNS hiccups and request timeouts. Deliberately does not match a contract
  * revert or a bad argument, because those are deterministic and retrying only wastes the budget.
  */
-function isTransient(e: unknown): boolean {
+export function isTransient(e: unknown): boolean {
   const text = rpcErrorText(e);
   return RPC_HEAD_LAG.test(text) || /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|connection is closed|timeout|timed out|bad gateway|not valid json|rate limit exceeded|409 conflict|error code: 1001|502|503|504|429/i.test(text);
 }

@@ -4,7 +4,9 @@
  *   MONITOR_POLL_SECONDS      loop period (default 60)
  *   MONITOR_VERIFY_TICKS      "true" (default) to re-derive every new accepted Tick
  *   MONITOR_WATCH_BALANCES    comma list "label=address" of hot wallets to watch for gas
- *   MONITOR_MIN_GAS_WEI       warn threshold for watched wallets (default 0.005 ETH)
+ *   MONITOR_MIN_GAS_WEI       warn threshold for watched wallets (default 0.005 ETH,
+ *                             sized for an L2; MONITOR_MIN_GAS_WEI_<KEY> overrides it
+ *                             per chain - Ethereum needs about 0.1 ETH per wallet)
  *   PORT_MONITOR              status port (default 8084)
  *   TELEGRAM_TOKEN, TELEGRAM_CHAT_ID   alerts (same as Rebalance-Engine)
  *
@@ -19,6 +21,7 @@ import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, STRATEGY, TICK_ACCOUNTANT, T
 import { Chain, envNumber, hubOf, identities, loadChains } from './config';
 import { checkDeployment } from './checks/deployment';
 import { TRANSFER_INDEX_FILE, TransferIndex, openTransferIndex, verifyTick } from './snapshot';
+import { readableTotalAssets, strategyShareValue } from './strategy-value';
 import { routeId } from '../../deploy/crosschain/registry';
 import { EventCache, log, loop, serveStatus, telegram } from './util';
 
@@ -195,21 +198,37 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
       withdrawPaused ? 'crit' : depositPaused ? 'warn' : 'ok',
       withdrawPaused ? `${c.key} strategy WITHDRAW paused: recalls and all queued redemptions are blocked` : depositPaused ? `${c.key} strategy deposits paused` : `${c.key} strategy not paused`,
     );
-    const healthy: boolean = await strategy.providersHealthy();
-    add(`strategy.${c.key}.health`, healthy ? 'ok' : 'crit', healthy ? `${c.key} strategy providers healthy` : `${c.key} strategy has a failing provider view: deposits blocked, NAV understated`);
-    const total: bigint = await strategy.totalAssets();
-    if (total > 0n) {
-      for (const p of (await strategy.getProviders()) as string[]) {
-        const cap = Number(await strategy.getProviderCap(p));
-        if (cap === 0) continue;
-        let balance = 0n;
-        try {
-          balance = await new Contract(p, PROVIDER, c.provider).getDepositBalance(c.manifest.contracts.Strategy, c.manifest.contracts.Strategy);
-        } catch {
-          continue;
+    // one block for every strategy read: a view that starts failing between two
+    // calls would otherwise make totalAssets() revert and abort the whole pass
+    const at = { blockTag: await c.provider.getBlockNumber() };
+    const healthy: boolean = await strategy.providersHealthy(at);
+    if (!healthy) {
+      // totalAssets() reverts on the current Rebalancer; name what fails instead
+      const { blocked, readable } = await strategyShareValue(strategy, 0n, at.blockTag);
+      const failing = (readable ?? (await readableTotalAssets(strategy, at.blockTag))).failing;
+      add(
+        `strategy.${c.key}.health`,
+        'crit',
+        `${c.key} strategy provider view failing (${failing.join(', ') || 'provider not identified'}): deposits refused` +
+          (blocked ? ', withdrawals, deallocations and queued redemptions revert' : '') +
+          '; NAV values the strategy at its readable lower bound',
+      );
+    } else {
+      add(`strategy.${c.key}.health`, 'ok', `${c.key} strategy providers healthy`);
+      const total: bigint = await strategy.totalAssets(at);
+      if (total > 0n) {
+        for (const p of (await strategy.getProviders(at)) as string[]) {
+          const cap = Number(await strategy.getProviderCap(p, at));
+          if (cap === 0) continue;
+          let balance = 0n;
+          try {
+            balance = await new Contract(p, PROVIDER, c.provider).getDepositBalance(c.manifest.contracts.Strategy, c.manifest.contracts.Strategy, at);
+          } catch {
+            continue;
+          }
+          const bps = Number((balance * 10_000n) / total);
+          add(`strategy.${c.key}.cap.${p.slice(0, 8)}`, bps > cap ? 'warn' : 'ok', `${c.key} provider ${p} at ${bps} bps of strategy (cap ${cap})`, bps);
         }
-        const bps = Number((balance * 10_000n) / total);
-        add(`strategy.${c.key}.cap.${p.slice(0, 8)}`, bps > cap ? 'warn' : 'ok', `${c.key} provider ${p} at ${bps} bps of strategy (cap ${cap})`, bps);
       }
     }
     for (const [peerKey, peer] of chains.filter((x) => x.key !== c.key).map((x) => [x.key, x] as const)) {
@@ -232,9 +251,10 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
   }
   const ids = identities();
   const manifests = Object.fromEntries(chains.map((c) => [c.key, c.manifest]));
+  const networks = Object.fromEntries(chains.map((c) => [c.key, c.entry]));
   for (const c of chains) {
     if (ids.safe) {
-      const results = await checkDeployment(c.provider, c.key, c.manifest, manifests, ids);
+      const results = await checkDeployment(c.provider, c.key, c.manifest, manifests, ids, networks);
       const failed = results.filter((r) => !r.ok);
       add(`governance.${c.key}`, failed.length ? 'crit' : 'ok', failed.length ? `${c.key}: ${failed.map((f) => `${f.label} (${f.detail})`).join('; ').slice(0, 400)}` : `${c.key}: ${results.length} deployment checks pass`);
     }
@@ -247,13 +267,19 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
     add(`timelock.${c.key}`, open.length ? 'warn' : 'ok', open.length ? `${c.key}: ${open.length} queued governance tx: ${open.map((q) => `${q.args.signature}@${q.args.target} eta ${new Date(Number(q.args.timestamp) * 1000).toISOString()}`).join('; ')}` : `${c.key}: no queued governance tx`);
   }
 
-  // Hot wallet gas
-  const minGas = BigInt(process.env.MONITOR_MIN_GAS_WEI ?? '5000000000000000');
+  // Hot wallet gas. The threshold is per chain because the cost of running out is
+  // not the same everywhere: one Ethereum strategy operation is 2.4-3.9 M gas
+  // (0.005-0.02 ETH at 2-5 gwei) and the relayer pays L1 gas to deliver every CCTP
+  // transfer, while a Base or Arbitrum operation costs a fraction of a cent. One
+  // global value sized for the L2s never fires on Ethereum, so the wallet runs dry
+  // silently and transfers sit in flight past maxTransit.
+  // MONITOR_MIN_GAS_WEI_<KEY> overrides MONITOR_MIN_GAS_WEI for one chain.
+  const minGasFor = (c: Chain) => BigInt(process.env[`MONITOR_MIN_GAS_WEI_${c.key.toUpperCase()}`] || process.env.MONITOR_MIN_GAS_WEI || '5000000000000000');
   for (const item of (process.env.MONITOR_WATCH_BALANCES ?? '').split(',').filter(Boolean)) {
     const [label, address] = item.includes('=') ? item.split('=') : [item, item];
     for (const c of chains) {
       const b = await c.provider.getBalance(address);
-      add(`gas.${label}.${c.key}`, b < minGas ? 'warn' : 'ok', `${label} on ${c.key}: ${formatUnits(b, 18)} ETH`, Number(formatUnits(b, 18)));
+      add(`gas.${label}.${c.key}`, b < minGasFor(c) ? 'warn' : 'ok', `${label} on ${c.key}: ${formatUnits(b, 18)} ETH`, Number(formatUnits(b, 18)));
     }
   }
   return out;
