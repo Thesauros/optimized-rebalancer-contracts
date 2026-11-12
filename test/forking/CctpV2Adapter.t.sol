@@ -4,6 +4,7 @@ pragma solidity 0.8.33;
 import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CctpV2Adapter, IMessageTransmitterV2} from "../../contracts/crosschain/bridges/CctpV2Adapter.sol";
+import {ForkPins} from "./ForkPins.sol";
 
 /**
  * @notice Verifies CctpV2Adapter against the live CCTP V2 deployment:
@@ -33,33 +34,51 @@ contract CctpV2AdapterForkTest is Test {
     address internal dstAgent = makeAddr("dstAgent");
     address internal dstAdapterAddr;
 
-    function _fork(string memory envName, string memory fallbackUrl) internal returns (bool) {
+    function _fork(
+        string memory envName,
+        string memory fallbackUrl,
+        string memory pinVar,
+        uint256 pinFallback
+    ) internal returns (bool) {
         string memory url = vm.envOr(envName, fallbackUrl);
         if (bytes(url).length == 0) return false;
-        vm.createSelectFork(url);
+        ForkPins.selectFork(vm, url, pinVar, pinFallback);
         return true;
     }
 
+    function _forkBase() internal returns (bool) {
+        return _fork("BASE_RPC_URL", "", ForkPins.BASE_VAR, ForkPins.BASE);
+    }
+
+    function _forkEthereum() internal returns (bool) {
+        return _fork("ETHEREUM_RPC_URL", "", ForkPins.ETHEREUM_VAR, ForkPins.ETHEREUM);
+    }
+
     function testDomainsMatchLiveDeployment() public {
-        if (_fork("BASE_RPC_URL", "")) {
+        if (_forkBase()) {
             assertEq(IMessageTransmitterV2(MESSAGE_TRANSMITTER_V2).localDomain(), DOMAIN_BASE, "Base domain");
         }
-        if (_fork("ETHEREUM_RPC_URL", "")) {
+        if (_forkEthereum()) {
             assertEq(IMessageTransmitterV2(MESSAGE_TRANSMITTER_V2).localDomain(), DOMAIN_ETHEREUM, "Ethereum domain");
         }
-        vm.createSelectFork("https://arb1.arbitrum.io/rpc");
+        ForkPins.selectFork(
+            vm,
+            vm.envOr("ARBITRUM_RPC_URL", string("https://arb1.arbitrum.io/rpc")),
+            ForkPins.ARBITRUM_VAR,
+            ForkPins.ARBITRUM
+        );
         assertEq(IMessageTransmitterV2(MESSAGE_TRANSMITTER_V2).localDomain(), DOMAIN_ARBITRUM, "Arbitrum domain");
     }
 
     function testRealBurnMessageRoundTrip() public {
-        if (!_fork("BASE_RPC_URL", "")) return;
+        if (!_forkBase()) return;
         _roundTrip(USDC_BASE, 8453, DOMAIN_BASE, 42161, DOMAIN_ARBITRUM);
     }
 
     /// @dev Ethereum runs its own MessageTransmitterV2 implementation (the code
     ///      differs from Base's), so the message layout is checked there too.
     function testRealBurnMessageRoundTripFromEthereum() public {
-        if (!_fork("ETHEREUM_RPC_URL", "")) return;
+        if (!_forkEthereum()) return;
         _roundTrip(USDC_ETHEREUM, 1, DOMAIN_ETHEREUM, 8453, DOMAIN_BASE);
     }
 

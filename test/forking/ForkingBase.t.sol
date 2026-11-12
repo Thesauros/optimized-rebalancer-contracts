@@ -7,6 +7,7 @@ import {IProvider} from "../../contracts/interfaces/IProvider.sol";
 import {IRebalancer} from "../../contracts/interfaces/IRebalancer.sol";
 import {Rebalancer} from "../../contracts/Rebalancer.sol";
 import {Test} from "forge-std/Test.sol";
+import {ForkPins} from "./ForkPins.sol";
 import "../../contracts/libraries/Constants.sol";
 
 contract ForkingBase is Test {
@@ -45,7 +46,7 @@ contract ForkingBase is Test {
 
     function setUp() public virtual {
         string memory BASE_RPC_URL = vm.envString("BASE_RPC_URL");
-        vm.createSelectFork(BASE_RPC_URL);
+        ForkPins.selectFork(vm, BASE_RPC_URL, ForkPins.BASE_VAR, ForkPins.BASE);
 
         usdc = IERC20Metadata(USDC_ADDRESS);
         vm.label(address(usdc), "USDC");

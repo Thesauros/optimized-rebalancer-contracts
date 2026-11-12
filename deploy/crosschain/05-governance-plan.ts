@@ -16,7 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ethers } from 'hardhat';
-import { HUB_PARAMS, NETWORKS, PROFILE, identities, routeId } from './registry';
+import { HUB_PARAMS, NETWORKS, PROFILE, fullNetworks, identities, routeId, strategyProviders } from './registry';
 import { EXECUTOR_ROLE, GUARDIAN_ROLE, NAV_UPDATER_ROLE, banner, currentEntry, manifestRoot, peers, requireManifest } from './lib';
 
 interface Call {
@@ -81,8 +81,7 @@ async function main() {
     }
   }
 
-  const labelled: Record<string, string> = Object.fromEntries(entry.strategy.reusedProviders.map((p) => [p.label, p.address]));
-  if (c.CompoundV3Provider) labelled.CompoundV3 = c.CompoundV3Provider;
+  const labelled: Record<string, string> = Object.fromEntries(strategyProviders(entry, c).map((p) => [p.label, p.address]));
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
     const current = BigInt(await strategy.getProviderCap(labelled[label]));
     if (current !== BigInt(bps)) {
@@ -110,6 +109,23 @@ async function main() {
       }
     }
     if (have.join() !== want.join()) {
+      // Refuse to plan a removal. `_setChains` clears `_isChain` for everything not
+      // in the new list and has no guard against dropping a chain, so an executed
+      // batch would stop the accountant tracking a chain that may still hold
+      // capital, and NAV would book none of it. The realistic cause is not a
+      // deliberate removal but a narrowed registry: REHEARSAL_NETWORKS left exported
+      // in an operator shell makes `want` shorter than the chains actually deployed.
+      const dropped = have.filter((id) => !want.includes(id));
+      if (dropped.length && process.env.CROSSCHAIN_ALLOW_DROP_CHAINS !== '1') {
+        const all = fullNetworks();
+        const name = (id: bigint) => Object.keys(all).find((k) => all[k].chainId === id) ?? `unknown chain ${id}`;
+        throw new Error(
+          `phase 5 on ${key} would DROP ${dropped.map(name).join(', ')} (${dropped.join(',')}) from the accountant chain set ` +
+            `${have.join(',')} -> ${want.join(',')}. This process sees ${Object.keys(NETWORKS).length} of ${Object.keys(all).length} registered networks` +
+            (process.env.REHEARSAL_NETWORKS ? ` (REHEARSAL_NETWORKS=${process.env.REHEARSAL_NETWORKS})` : '') +
+            `. Unset the narrowing and re-run; set CROSSCHAIN_ALLOW_DROP_CHAINS=1 only if removing ${dropped.map(name).join(', ')} is intended.`,
+        );
+      }
       tl(c.TickAccountant, 'setChains(uint64[])', [want], `accountant chain set ${have.join(',')} -> ${want.join(',')}`);
       for (const [netKey, net] of Object.entries(NETWORKS)) {
         if (have.includes(net.chainId)) continue;

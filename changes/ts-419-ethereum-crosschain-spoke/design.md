@@ -39,11 +39,61 @@ Routes: hub <-> spoke only, as for Arbitrum. Confirmations: 12 blocks.
   agent has no events. Harmless on a live chain; on a fork those blocks go to
   the upstream RPC, and the public endpoint answered 429, failing NAV. The scan
   now starts no lower than the start block, as `EventCache` already does.
-- **Image.** `ops/Dockerfile` and `.dockerignore` list each manifest by hand; the
-  Ethereum manifest is added, so the image cannot be built before phase 1.
+- **Image.** `ops/Dockerfile` and `.dockerignore` listed each manifest by hand, so
+  the image could not be built before phase 1 produced the Ethereum one - and
+  `COPY ops/scripts` named a directory commit `0c420d3` had deleted, so it could not
+  be built at all. Both are fixed: the Dockerfile copies `deployments` once, the
+  allowlist admits `deployments/*/crosschain.json` by glob, and `ops/scripts` is
+  restored. A registered-but-undeployed network no longer breaks a build; it breaks
+  service startup instead, which is where `missing manifest` belongs.
 - **Order.** The services must know Ethereum before `setChains` executes, or the
   NAV service rejects the accountant's chain set; until then they ignore it. The
-  runbook (§6a) fixes the order: queue, roll the services, execute.
+  runbook (§6a) fixes the order: queue, roll the services, execute. §6a now also
+  carries the transfer-index backup, the rollback steps and the point of no return
+  (the Timelock executing `setChains`), because the order alone did not say what to
+  do when the rollout has to be undone.
+
+## Review fixes (2026-11-11)
+
+Behaviour changes made while implementing the open findings of `419-rewiev_codex.md`
+and `419-rewiev_qwen.md`. `verification.md` holds the per-item list and the results.
+
+- **NAV prices an unhealthy strategy instead of throwing.** `positionsAt` read
+  `providersHealthy` after `convertToAssets`, but `convertToAssets` reverts
+  `ProviderUnavailable` while any provider view fails, so one bad provider view on
+  one chain stopped Ticks for the whole vault and the documented offer-carry rule
+  could never run. Health is now read first and the unhealthy path prices the
+  position from readable balances: the strategy's own USDC balance plus every
+  provider's `getDepositBalance` at the same block tag, times the agent's share of
+  `totalSupply`. It refuses rather than approximates in two cases - an unreadable
+  provider balance, and a non-zero management or performance fee, whose share
+  accrual it cannot reproduce. Cross-chain strategies are initialized with both
+  fees at 0, so the normal degraded case prices; the fee case is a loud stop if
+  governance ever changes it. The independent verifier shares `positionsAt`, so it
+  stays consistent by construction.
+- **Phase 5 refuses to drop a chain.** `05-governance-plan.ts` builds the hub's
+  `setChains` from `NETWORKS`, which `REHEARSAL_NETWORKS` narrows. A stray exported
+  variable therefore queued a batch that removed Ethereum from the accountant, and
+  `_setChains` has no on-chain guard against removing a funded chain. The plan now
+  compares the chain set it is about to propose against the chains the accountant
+  actually tracks, names any chain it would drop, and stops unless
+  `CROSSCHAIN_ALLOW_DROP_CHAINS=1`. The guard is off-chain only, by choice: adding
+  one to `TickAccountant` is a contract change to a live proxy.
+- **The gas alert is per chain.** One `MONITOR_MIN_GAS_WEI` for every chain cannot
+  be right: 0.0002 ETH is a sensible L2 floor and is about twenty times below one
+  Ethereum strategy operation. `MONITOR_MIN_GAS_WEI_<KEY>` overrides the shared
+  value, which keeps existing environments working unchanged.
+- **Preflight blocks a public send path.** Broadcasting through a free shared
+  endpoint fails in two ways an operator cannot see - the send is dropped under
+  free-plan limits, and on Ethereum the signed transaction is published to the
+  public mempool before inclusion. It is now a preflight failure rather than a
+  warning. The chains' own endpoints (`mainnet.base.org`, `arb1.arbitrum.io/rpc`)
+  are deliberately not in the list: they are the reliable path into a sequencer and
+  there is no public mempool to read there. Matching is by host suffix, so a paid
+  tier on a listed host is caught too; `OPS_ALLOW_PUBLIC_SEND_ENDPOINT=1` says that
+  is deliberate and downgrades it to a warning.
+- **`RPC_TIMEOUT_MS=""` means unset.** It produced a zero timeout through
+  `Number('')`; `envNumber` already handled the empty-string case.
 
 ## Tooling
 

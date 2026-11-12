@@ -8,14 +8,17 @@ import {Rebalancer} from "../../contracts/Rebalancer.sol";
 import {ProviderManager} from "../../contracts/utils/ProviderManager.sol";
 import {VaultFactory} from "../../contracts/utils/VaultFactory.sol";
 import {CompoundV3Provider} from "../../contracts/providers/CompoundV3Provider.sol";
+import {FluidProvider} from "../../contracts/providers/FluidProvider.sol";
 import {Test} from "forge-std/Test.sol";
+import {ForkPins} from "./ForkPins.sol";
 
 /**
  * The cross-chain strategy on Ethereum exactly as deploy/crosschain/01-deploy.ts
  * builds it from the `mainnet` registry entry: the Morpho providers the Ethereum
  * vault already runs, reused at their deployed addresses, plus a fresh
- * ProviderManager and CompoundV3Provider for Comet cUSDCv3, with the registry
- * caps. Needs ETHEREUM_RPC_URL; skipped without it.
+ * ProviderManager and CompoundV3Provider for Comet cUSDCv3 and a fresh
+ * FluidProvider for fUSDC, with the registry caps. Needs ETHEREUM_RPC_URL;
+ * skipped without it.
  */
 contract CrossChainStrategyEthereumForkTest is Test {
     uint256 internal constant ONE = 1e6;
@@ -23,6 +26,7 @@ contract CrossChainStrategyEthereumForkTest is Test {
 
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address internal constant COMET = 0xc3d688B66703497DAA19211EEdff47f25384cdc3;
+    address internal constant FUSDC = 0x9Fb7b4477576Fe5B32be4C1843aFB1e55F251B33;
 
     // registry `mainnet.strategy.reusedProviders`, entry provider first
     IProvider internal constant STEAKHOUSE = IProvider(0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622);
@@ -37,6 +41,7 @@ contract CrossChainStrategyEthereumForkTest is Test {
     uint256 internal constant CAP_COMPOUND = 5_000;
     uint256 internal constant CAP_GAUNTLET_PRIME = 4_000;
     uint256 internal constant CAP_SMOKEHOUSE = 3_000;
+    uint256 internal constant CAP_FLUID = 3_000;
 
     address internal agent = makeAddr("chainAgent");
     address internal executor = makeAddr("executor");
@@ -44,24 +49,28 @@ contract CrossChainStrategyEthereumForkTest is Test {
 
     IERC20Metadata internal usdc = IERC20Metadata(USDC);
     CompoundV3Provider internal compound;
+    FluidProvider internal fluid;
     Rebalancer internal strategy;
     bool internal forked;
 
     function setUp() public {
         string memory url = vm.envOr("ETHEREUM_RPC_URL", string(""));
         if (bytes(url).length == 0) return;
-        vm.createSelectFork(url);
+        ForkPins.selectFork(vm, url, ForkPins.ETHEREUM_VAR, ForkPins.ETHEREUM);
         forked = true;
 
-        // 01-deploy.ts: fresh ProviderManager + CompoundV3Provider, spliced in after the entry
+        // 01-deploy.ts (registry strategyProviders): entry, fresh Compound, the other
+        // reused providers, fresh Fluid
         ProviderManager pm = new ProviderManager(address(this));
         pm.setYieldToken("Compound_V3_Provider", USDC, COMET);
         compound = new CompoundV3Provider(address(pm));
-        IProvider[] memory providers = new IProvider[](4);
+        fluid = new FluidProvider(FUSDC);
+        IProvider[] memory providers = new IProvider[](5);
         providers[0] = STEAKHOUSE;
         providers[1] = IProvider(address(compound));
         providers[2] = GAUNTLET_PRIME;
         providers[3] = SMOKEHOUSE;
+        providers[4] = IProvider(address(fluid));
 
         // proxy created and initialized atomically by VaultFactory, seeded with 1 USDC
         Rebalancer implementation = new Rebalancer();
@@ -87,6 +96,7 @@ contract CrossChainStrategyEthereumForkTest is Test {
         strategy.setProviderCap(IProvider(address(compound)), CAP_COMPOUND);
         strategy.setProviderCap(GAUNTLET_PRIME, CAP_GAUNTLET_PRIME);
         strategy.setProviderCap(SMOKEHOUSE, CAP_SMOKEHOUSE);
+        strategy.setProviderCap(IProvider(address(fluid)), CAP_FLUID);
         strategy.grantRole(strategy.EXECUTOR_ROLE(), executor);
     }
 
@@ -121,23 +131,28 @@ contract CrossChainStrategyEthereumForkTest is Test {
         }
         assertEq(compound.getSource(USDC, address(0), address(0)), COMET, "Compound resolves cUSDCv3");
         assertGt(compound.getDepositRate(strategy), 0, "Comet rate readable");
+        assertEq(fluid.getSource(USDC, address(0), address(0)), FUSDC, "Fluid resolves fUSDC");
+        assertGt(fluid.getDepositRate(strategy), 0, "Fluid rate readable");
     }
 
     function testWiringMatchesTheRegistry() public view {
         if (!forked) return;
         IProvider[] memory listed = strategy.getProviders();
-        assertEq(listed.length, 4);
+        assertEq(listed.length, 5);
         assertEq(address(listed[0]), address(STEAKHOUSE));
         assertEq(address(listed[1]), address(compound));
         assertEq(address(listed[2]), address(GAUNTLET_PRIME));
         assertEq(address(listed[3]), address(SMOKEHOUSE));
+        assertEq(address(listed[4]), address(fluid));
         assertEq(address(strategy.getEntryProvider()), address(STEAKHOUSE), "entry provider");
         assertEq(strategy.getProviderCap(STEAKHOUSE), 0, "entry stays uncapped");
         assertEq(strategy.getProviderCap(IProvider(address(compound))), CAP_COMPOUND);
         assertEq(strategy.getProviderCap(GAUNTLET_PRIME), CAP_GAUNTLET_PRIME);
         assertEq(strategy.getProviderCap(SMOKEHOUSE), CAP_SMOKEHOUSE);
+        assertEq(strategy.getProviderCap(IProvider(address(fluid))), CAP_FLUID);
         assertEq(strategy.getPinnedProviderSource(STEAKHOUSE), STEAKHOUSE_VAULT, "source pinned");
         assertEq(strategy.getPinnedProviderSource(IProvider(address(compound))), COMET);
+        assertEq(strategy.getPinnedProviderSource(IProvider(address(fluid))), FUSDC);
         assertTrue(strategy.providersHealthy(), "every provider view answers");
         assertApproxEqAbs(STEAKHOUSE.getDepositBalance(address(strategy), strategy), ONE, 1, "seed at the entry provider");
     }
@@ -147,22 +162,24 @@ contract CrossChainStrategyEthereumForkTest is Test {
         _deposit(DEPOSIT);
         assertApproxEqAbs(STEAKHOUSE.getDepositBalance(address(strategy), strategy), DEPOSIT + ONE, 2, "deposit lands at the entry");
 
-        // spread as the executor would: 40% / 30% / 20%, each under its cap
-        _move(STEAKHOUSE, IProvider(address(compound)), 4_000e6);
-        _move(STEAKHOUSE, GAUNTLET_PRIME, 3_000e6);
-        _move(STEAKHOUSE, SMOKEHOUSE, 2_000e6);
-        assertApproxEqAbs(compound.getDepositBalance(address(strategy), strategy), 4_000e6, 2);
-        assertApproxEqAbs(GAUNTLET_PRIME.getDepositBalance(address(strategy), strategy), 3_000e6, 2);
-        assertApproxEqAbs(SMOKEHOUSE.getDepositBalance(address(strategy), strategy), 2_000e6, 2);
-        assertApproxEqAbs(strategy.totalAssets(), DEPOSIT + ONE, 8, "rebalancing keeps NAV");
+        // spread as the executor would: 30% / 25% / 15% / 20%, each under its cap
+        _move(STEAKHOUSE, IProvider(address(compound)), 3_000e6);
+        _move(STEAKHOUSE, GAUNTLET_PRIME, 2_500e6);
+        _move(STEAKHOUSE, SMOKEHOUSE, 1_500e6);
+        _move(STEAKHOUSE, IProvider(address(fluid)), 2_000e6);
+        assertApproxEqAbs(compound.getDepositBalance(address(strategy), strategy), 3_000e6, 2);
+        assertApproxEqAbs(GAUNTLET_PRIME.getDepositBalance(address(strategy), strategy), 2_500e6, 2);
+        assertApproxEqAbs(SMOKEHOUSE.getDepositBalance(address(strategy), strategy), 1_500e6, 2);
+        assertApproxEqAbs(fluid.getDepositBalance(address(strategy), strategy), 2_000e6, 2);
+        assertApproxEqAbs(strategy.totalAssets(), DEPOSIT + ONE, 10, "rebalancing keeps NAV");
 
-        // the agent deallocates everything: liquidity comes from all four providers
+        // the agent deallocates everything: liquidity comes from all five providers
         skip(1 hours);
         vm.roll(block.number + 300);
         uint256 shares = strategy.balanceOf(agent);
         vm.prank(agent);
         uint256 assets = strategy.redeem(shares, agent, agent);
-        assertGe(assets, DEPOSIT - 8, "principal back (providers round by a unit each)");
+        assertGe(assets, DEPOSIT - 10, "principal back (providers round by a unit each)");
         assertEq(usdc.balanceOf(agent), assets);
         assertEq(strategy.balanceOf(agent), 0);
     }
@@ -178,6 +195,12 @@ contract CrossChainStrategyEthereumForkTest is Test {
         destinations[0] = IProvider(address(compound));
         vm.prank(executor);
         vm.expectRevert(abi.encodeWithSelector(IRebalancer.ProviderCapExceeded.selector, address(compound)));
+        strategy.rebalance(amounts, sources, destinations);
+
+        amounts[0] = 3_500e6; // 35% into Fluid, cap 30%
+        destinations[0] = IProvider(address(fluid));
+        vm.prank(executor);
+        vm.expectRevert(abi.encodeWithSelector(IRebalancer.ProviderCapExceeded.selector, address(fluid)));
         strategy.rebalance(amounts, sources, destinations);
     }
 }
