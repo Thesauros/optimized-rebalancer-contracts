@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Interface, Provider, zeroPadValue } from 'ethers';
-import { ACCESS, ADAPTER, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../src/abi';
+import { ACCESS, ADAPTER, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../src/abi';
 import { checkDeployment } from '../src/checks/deployment';
 import { HUB_PARAMS, NETWORKS } from '../../deploy/crosschain/registry';
 
@@ -12,7 +12,7 @@ const manifests = Object.fromEntries(['base', 'arbitrum'].map((key) => {
   return [key, { ...m, codehashes: {} }];
 }));
 const runtime = Object.fromEntries(['base', 'arbitrum'].map((key) => [key, NETWORKS[key]]));
-const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...OWNABLE, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK]);
+const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...OWNABLE, ...PROVIDER_MANAGER, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK]);
 
 /** Two-chain deployment fixture. Unexpected third-chain reads are errors. */
 function provider(tracked = [8453n, 42161n]): Provider {
@@ -51,6 +51,10 @@ function provider(tracked = [8453n, 42161n]): Provider {
         case 'getProviders': value = [providers]; break;
         case 'getEntryProvider': value = [providers[0]]; break;
         case 'getProviderCap': value = [caps.get(tx.args[0].toLowerCase())]; break;
+        // CompoundV3Provider resolves its Comet through the ProviderManager, so
+        // checkDeployment reads it back and compares against the registry. Every
+        // call into this fixture checks 'base'.
+        case 'getYieldToken': value = [runtime.base.strategy.comet]; break;
         case 'chainIds': value = [tracked]; break;
         case 'getFees': value = [0, 0, 0, safe]; break;
         case 'config': value = [HUB_PARAMS.accountant]; break;
