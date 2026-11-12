@@ -28,7 +28,7 @@
  *   close | clear | fund
  *
  * RPCs and manifests come from the same environment as the services
- * (RPC_BASE, RPC_ARBITRUM, CROSSCHAIN_MANIFEST_DIR).
+ * (RPC_BASE, RPC_ARBITRUM, RPC_MAINNET, CROSSCHAIN_MANIFEST_DIR).
  */
 import fs from 'fs';
 import { Contract, ContractTransactionResponse, Interface, NonceManager, Wallet, formatEther, formatUnits, id, parseUnits } from 'ethers';

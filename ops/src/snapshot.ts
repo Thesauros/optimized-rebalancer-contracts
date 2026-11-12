@@ -11,6 +11,7 @@ import { CHAIN_AGENT, EPOCH_VAULT, ERC20, SNAPSHOT_TUPLE, STRATEGY, TICK_ACCOUNT
 import { Chain, hubOf } from './config';
 import { strategyShareValue } from './strategy-value';
 import { blockAtOrBefore, scanMany, semaphore } from './util';
+import { loadNativeSpokes, NativeSpoke } from './native';
 
 export const KIND_IDLE = 0;
 export const KIND_STRATEGY_SHARES = 1;
@@ -161,7 +162,13 @@ export class TransferIndex {
    *   makes every commit revert `InvalidHubReference`, ticks stop, and all
    *   settlement and instant exits halt with it.
    */
-  constructor(readonly file?: string, readonly fingerprint?: string, readonly readOnly = false) {}
+  constructor(
+    readonly file?: string,
+    readonly fingerprint?: string,
+    readonly readOnly = false,
+    /** Per-chain identity (`chainBindings`), to recognise state saved before a network was added. */
+    readonly bindings?: Record<string, string>,
+  ) {}
 
   async load(): Promise<void> {
     if (!this.file) return;
@@ -171,7 +178,7 @@ export class TransferIndex {
     } catch {
       return; // absent or unreadable: fall back to a full scan from startBlock
     }
-    if (this.fingerprint !== undefined && raw.fingerprint !== this.fingerprint) {
+    if (this.fingerprint !== undefined && raw.fingerprint !== this.fingerprint && !this.sameDeploymentBeforeAddition(raw)) {
       // state from a different deployment: the scan marks are keyed by chain name,
       // so a fork or a stand would otherwise poison a production run
       return;
@@ -203,6 +210,24 @@ export class TransferIndex {
     }
   }
 
+  /**
+   * Adding a network to the registry changes the fingerprint, yet the saved state
+   * of the chains already covered is still this deployment's. Without this check
+   * the first restart after the addition would re-scan every chain from its start
+   * block: a cold start, which can outgrow the 256-block commit window and stop
+   * Ticks. The file is kept only if its fingerprint is exactly the one of the
+   * chains it covers, with the same agent addresses; the new chain then scans from
+   * its own start block.
+   */
+  private sameDeploymentBeforeAddition(raw: any): boolean {
+    if (!this.bindings) return false;
+    const covered = Object.keys(raw.scanned ?? {});
+    if (!covered.length || covered.some((k) => !this.bindings![k])) return false;
+    const events = [...Object.values<any>(raw.sent ?? {}), ...Object.values<any>(raw.received ?? {})];
+    if (events.some((e) => !covered.includes(e.chainKey))) return false;
+    return fingerprintOf(covered.map((k) => this.bindings![k])) === raw.fingerprint;
+  }
+
   /** Written through a temp file and renamed, so a reader never sees a partial state. */
   async save(): Promise<void> {
     if (!this.file || this.readOnly) return;
@@ -227,10 +252,14 @@ export class TransferIndex {
   }
 
   private async syncRanges(chains: Chain[], upTo?: Map<string, number>): Promise<void> {
+    for (const native of loadNativeSpokes()) await native.sync(this);
     for (const c of chains) {
       const agent = new Contract(c.manifest.contracts.ChainAgent, CHAIN_AGENT, c.provider);
       const head = upTo?.get(c.key) ?? (await c.provider.getBlockNumber());
-      const from = (this.scanned.get(c.key) ?? c.manifest.startBlock - 1) + 1;
+      // the reorg rewind of a mark taken soon after deployment would reach below the
+      // start block, where the agent has no events: on a fork those blocks are served
+      // by the upstream RPC, so a public endpoint rate-limits the scan
+      const from = Math.max(c.manifest.startBlock, (this.scanned.get(c.key) ?? c.manifest.startBlock - 1) + 1);
       if (from > head) continue;
       await scanMany(agent, ['BridgeOut', 'BridgeIn'], from, head, async (batch, through) => {
         for (const e of batch) {
@@ -273,20 +302,26 @@ export class TransferIndex {
  */
 const sharedIndexes = new Map<string, Promise<TransferIndex>>();
 
+/** The deployment identity of each chain, keyed by registry key. */
+export function chainBindings(chains: Chain[]): Record<string, string> {
+  return Object.fromEntries([
+    ...chains.map((c) => [c.key, `${c.key}:${c.chainId}:${c.manifest.contracts.ChainAgent.toLowerCase()}`]),
+    ...loadNativeSpokes().map((c) => [c.key, c.binding]),
+  ]);
+}
+
+export function fingerprintOf(bindings: string[]): string {
+  return keccak256(Buffer.from([...bindings].sort().join('|')));
+}
+
 export async function openTransferIndex(chains: Chain[], file: string = TRANSFER_INDEX_FILE, readOnly = false): Promise<TransferIndex> {
-  const fingerprint = keccak256(
-    Buffer.from(
-      chains
-        .map((c) => `${c.key}:${c.chainId}:${c.manifest.contracts.ChainAgent.toLowerCase()}`)
-        .sort()
-        .join('|'),
-    ),
-  );
+  const bindings = chainBindings(chains);
+  const fingerprint = fingerprintOf(Object.values(bindings));
   const key = `${path.resolve(file)}:${fingerprint}:${readOnly}`;
   let pending = sharedIndexes.get(key);
   if (!pending) {
     pending = (async () => {
-      const index = new TransferIndex(file, fingerprint, readOnly);
+      const index = new TransferIndex(file, fingerprint, readOnly, bindings);
       await index.load();
       return index;
     })();
@@ -368,8 +403,11 @@ export async function positionsAt(c: Chain, block: number, prevOffers: Map<strin
   const strategy = new Contract(strategyAddr, STRATEGY, c.provider);
   const shares: bigint = await strategy.balanceOf(agentAddr, tag);
   if (shares > 0n) {
-    // health first: on the current Rebalancer convertToAssets reverts while a
-    // provider view fails, which used to stop every Tick of the vault
+    // Health before price. On the current Rebalancer `convertToAssets` reverts
+    // `ProviderUnavailable` while any provider view fails, so asking for the price
+    // first threw out of buildSnapshot and made the degraded branch below dead
+    // code: no Tick was committed for any chain, and after maxTickAge settlement
+    // and instant exits halted vault-wide.
     const { value, healthy } = await strategyShareValue(strategy, shares, block);
     const pos: Position = { chainId: c.chainId, holder: agentAddr, strategy: strategyAddr, kind: KIND_STRATEGY_SHARES, units: shares, valueBid: value, valueOffer: value };
     if (!healthy) {
@@ -383,13 +421,16 @@ export async function positionsAt(c: Chain, block: number, prevOffers: Map<strin
   return out;
 }
 
-async function inFlightAt(chains: Chain[], refs: Map<string, number>, index: TransferIndex): Promise<InFlight[]> {
+async function inFlightAt(chains: Chain[], refs: Map<string, number>, index: TransferIndex, natives: NativeSpoke[] = []): Promise<InFlight[]> {
   const byKey = new Map(chains.map((c) => [c.key, c]));
   const out: InFlight[] = [];
   for (const [id, s] of index.sent) {
+    if (!refs.has(s.chainKey)) continue;
     if (s.block > refs.get(s.chainKey)!) continue;
     const r = index.received.get(id);
     if (r && r.block <= refs.get(r.chainKey)!) continue;
+    const native = natives.find((c) => c.key === s.chainKey);
+    if (native) { out.push(await native.sentAt(id, refs.get(s.chainKey)!)); continue; }
     const src = byKey.get(s.chainKey)!;
     const agent = new Contract(src.manifest.contracts.ChainAgent, CHAIN_AGENT, src.provider);
     const rec = await agent.getSent(id, { blockTag: refs.get(s.chainKey)! });
@@ -434,7 +475,8 @@ export async function buildSnapshot(allChains: Chain[], index: TransferIndex, pr
   // setChains is still queued in the Timelock, snapshots must not include it
   const onChain: bigint[] = (await new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider).chainIds()).map((x: bigint) => BigInt(x));
   const chains = allChains.filter((c) => onChain.includes(c.chainId));
-  const missing = onChain.filter((id) => !chains.some((c) => c.chainId === id));
+  const natives = loadNativeSpokes().filter((c) => onChain.includes(c.chainId));
+  const missing = onChain.filter((id) => ![...chains,...natives].some((c) => c.chainId === id));
   if (missing.length) throw new Error(`accountant tracks chains not configured here: ${missing.join(',')}`);
   // Catch up before selecting the short-lived hub reference.
   await index.sync(chains);
@@ -456,31 +498,71 @@ export async function buildSnapshot(allChains: Chain[], index: TransferIndex, pr
     const ts = (await c.provider.getBlock(lo))!.timestamp;
     refs.set(c.key, ts > t ? lo : await blockAtOrBefore(c.provider, t, lo, confirmed));
   }
+  for (const c of natives) {
+    const ref = await c.referenceAt(t);
+    refs.set(c.key, Number(ref.blockNumber));
+    confirmedHeads.set(c.key, Number(ref.blockNumber));
+  }
 
   // the index runs to the raw heads so a receipt is never seen without its send;
   // the cut is what enforces confirmation depth, by dropping such a receipt back
   // into flight rather than referencing an unconfirmed block
   await index.sync(chains, heads);
-  const cut = consistentCut(refs, index, confirmedHeads);
-  return assemble(chains, index, cut, prevOffers);
+  const cut = await nativeConsistentCut(refs, index, confirmedHeads, natives, t,
+    async (cut) => (await hub.provider.getBlock(cut.get(hub.key)!))!.timestamp);
+  return assemble(chains, index, cut, prevOffers, undefined, natives);
 }
 
-async function assemble(chains: Chain[], index: TransferIndex, refs: Map<string, number>, prevOffers: Map<string, bigint>, tickIdOverride?: bigint): Promise<Built> {
+/** Snap native refs to actual immutable observations after each causal rollback. */
+export async function nativeConsistentCut(
+  refs: Map<string,number>,
+  index: TransferIndex,
+  ceilings: Map<string,number>,
+  natives: NativeSpoke[],
+  timestamp: number,
+  hubTime?: (cut:Map<string,number>)=>Promise<number>,
+): Promise<Map<string,number>> {
+  let cut = new Map(refs);
+  const cap = new Map(ceilings);
+  for (let attempt = 0; attempt < 1024; attempt++) {
+    const next = consistentCut(cut,index,cap);
+    if (hubTime) timestamp = await hubTime(next);
+    let changed = false;
+    for (const c of natives) {
+      const current = next.get(c.key)!;
+      const ref = await c.referenceAt(timestamp,current);
+      if (Number(ref.blockNumber) !== current) {
+        next.set(c.key,Number(ref.blockNumber)); cap.set(c.key,Number(ref.blockNumber)); changed = true;
+      }
+    }
+    if (!changed) return next;
+    cut = next;
+  }
+  throw new Error('native consistent cut did not converge');
+}
+
+async function assemble(chains: Chain[], index: TransferIndex, refs: Map<string, number>, prevOffers: Map<string, bigint>, tickIdOverride?: bigint, natives: NativeSpoke[] = []): Promise<Built> {
   const hub = hubOf(chains);
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
   const unhealthy: string[] = [];
   let positions: Position[] = [];
   for (const c of chains) positions = positions.concat(await positionsAt(c, refs.get(c.key)!, prevOffers, unhealthy));
+  for (const c of natives) positions = positions.concat(await c.positionsAt(refs.get(c.key)!));
   const hubBlock = refs.get(hub.key)!;
   const hubFields = await hubFieldsAt(hub, hubBlock);
   const tickId = tickIdOverride ?? BigInt(await accountant.lastTickId()) + 1n;
+  const nativeRefs = await Promise.all(natives.map(async (c) => ({
+    chainId:c.chainId,
+    blockNumber:BigInt(refs.get(c.key)!),
+    blockHash:await c.referenceHash(refs.get(c.key)!),
+  })));
   const snapshot: Snapshot = {
     version: 1,
     tickId,
     referenceTime: BigInt((await hub.provider.getBlock(hubBlock))!.timestamp),
-    chains: await chainRefs(chains, refs),
+    chains: [...await chainRefs(chains, refs), ...nativeRefs].sort((a,b) => a.chainId < b.chainId ? -1 : 1),
     positions: sortPositions(positions),
-    inFlight: await inFlightAt(chains, refs, index),
+    inFlight: await inFlightAt(chains, refs, index, natives),
     hubCash: hubFields.cash,
     pendingDeposits: hubFields.pendingDeposits,
     liabilities: hubFields.liabilities,
@@ -551,6 +633,7 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
   const committed = await committedSnapshot(hub, tickId);
   if (!committed) return { tickId, ok: true, mismatches: [] };
   const s = committed.snapshot;
+  const natives = loadNativeSpokes().filter((c) => s.chains.some((r) => r.chainId === c.chainId));
   const mismatches: string[] = [];
 
   const accountant = new Contract(hub.manifest.contracts.TickAccountant, TICK_ACCOUNTANT, hub.provider);
@@ -559,7 +642,7 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
 
   const refs = new Map<string, number>();
   for (const r of s.chains) {
-    if (!chains.some((c) => c.chainId === r.chainId)) mismatches.push(`snapshot chain ${r.chainId} is not configured here`);
+    if (![...chains,...natives].some((c) => c.chainId === r.chainId)) mismatches.push(`snapshot chain ${r.chainId} is not configured here`);
   }
   chains = chains.filter((c) => s.chains.some((r) => r.chainId === c.chainId));
   for (const c of chains) {
@@ -567,6 +650,13 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
     const b = await c.provider.getBlock(Number(ref.blockNumber));
     if (!b || b.hash !== ref.blockHash) mismatches.push(`${c.key}: block ${ref.blockNumber} hash mismatch (reorg or wrong reference)`);
     refs.set(c.key, Number(ref.blockNumber));
+  }
+  for (const c of natives) {
+    await c.sync(index);
+    const ref = s.chains.find((r) => r.chainId === c.chainId)!;
+    const selected = await c.referenceAt(Number(s.referenceTime),Number(ref.blockNumber));
+    if (selected.blockNumber !== ref.blockNumber || selected.blockHash !== ref.blockHash) mismatches.push(`${c.key}: checkpoint or finalized block hash mismatch`);
+    refs.set(c.key,Number(ref.blockNumber));
   }
   if (mismatches.length) return { tickId, ok: false, mismatches };
 
@@ -585,7 +675,7 @@ export async function verifyTick(allChains: Chain[], index: TransferIndex, tickI
     }
   }
 
-  const rebuilt = (await assemble(chains, index, refs, prevOffers, s.tickId)).snapshot;
+  const rebuilt = (await assemble(chains, index, refs, prevOffers, s.tickId, natives)).snapshot;
   if (rebuilt.referenceTime !== s.referenceTime) {
     mismatches.push(`referenceTime ${s.referenceTime} is not the hub reference block's timestamp ${rebuilt.referenceTime}`);
   }

@@ -44,7 +44,13 @@ export async function fetchIris(sourceDomain: number, txHash: string, transferId
   for (const m of body.messages ?? []) {
     if (m.status !== 'complete' || !m.attestation || m.attestation === 'PENDING') continue;
     if (!m.message || m.message === '0x') continue;
-    if (transferIdOf(m.message).toLowerCase() === transferId.toLowerCase()) return { message: m.message, attestation: m.attestation };
+    // A Solana/v0 transaction can contain several burns. Unrelated messages
+    // may have no application hook; they must not hide our attested transfer.
+    try {
+      if (transferIdOf(m.message).toLowerCase() === transferId.toLowerCase()) return { message: m.message, attestation: m.attestation };
+    } catch {
+      continue;
+    }
   }
   return undefined;
 }

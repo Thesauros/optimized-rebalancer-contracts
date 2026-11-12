@@ -14,6 +14,7 @@ import {CompoundV3Provider} from "../../contracts/providers/CompoundV3Provider.s
 import {MorphoProvider} from "../../contracts/providers/MorphoProvider.sol";
 import {CometInterface} from "../../contracts/interfaces/compoundV3/CometInterface.sol";
 import {Test} from "forge-std/Test.sol";
+import {ForkPins} from "./ForkPins.sol";
 
 /**
  * Ethereum mainnet fork coverage for the vault stack deployed by
@@ -74,9 +75,27 @@ contract ForkingEthereum is Test {
     IProvider[] public providers;
     uint256 public minAssets = ONE;
 
+    /**
+     * Slack, in USDC micro-units, for reading an amount back out of Comet.
+     *
+     * The entry provider is Compound V3, and Comet converts a base balance to its
+     * present value against an index that accrues every block, rounding down. The
+     * shortfall therefore grows with the chain rather than staying at the one or two
+     * units it was when these assertions were written: measured 999999 for a 1 USDC
+     * seed at blocks 26_300_000..26_380_000 and 999998 at 26_394_154, about one unit
+     * per 100k blocks. Two assertions in this file had already been consumed by that
+     * drift and fail at head.
+     *
+     * 100 is 0.0001 USDC - years of the measured rate, and still 10000x tighter than
+     * what these assertions exist to catch, a seed or deposit that never landed and
+     * reads back near zero. Applied only to Comet-derived readings; the Aave and
+     * Morpho assertions below keep their own, tighter slack.
+     */
+    uint256 internal constant COMET_SLACK = 100;
+
     function setUp() public virtual {
         string memory ETHEREUM_RPC_URL = vm.envString("ETHEREUM_RPC_URL");
-        vm.createSelectFork(ETHEREUM_RPC_URL);
+        ForkPins.selectFork(vm, ETHEREUM_RPC_URL, ForkPins.ETHEREUM_VAR, ForkPins.ETHEREUM);
 
         usdc = IERC20Metadata(USDC_ADDRESS);
         vm.label(address(usdc), "USDC");
@@ -188,9 +207,8 @@ contract ForkingEthereum is Test {
         // inflation-attack seed: shares minted to the vault itself
         assertEq(vault.totalSupply(), minAssets);
         assertEq(vault.balanceOf(address(vault)), minAssets);
-        // provider balances round against the ERC-4626 supply, so the seed can
-        // read back one unit low
-        assertApproxEqAbs(vault.totalAssets(), minAssets, 1);
+        // the seed round-trips through Comet; see COMET_SLACK
+        assertApproxEqAbs(vault.totalAssets(), minAssets, COMET_SLACK);
         assertEq(vault.getLastTotalAssets(), minAssets);
 
         // provider wiring
@@ -207,7 +225,7 @@ contract ForkingEthereum is Test {
         // the seed reached the entry provider
         assertGe(
             CometInterface(COMET_USDC_ADDRESS).balanceOf(address(vault)),
-            minAssets - 1
+            minAssets - COMET_SLACK
         );
 
         // proxy admin is a ProxyAdmin owned by the treasury
@@ -314,7 +332,7 @@ contract ForkingEthereum is Test {
 
         assertEq(shares, previewed);
         assertEq(usdc.balanceOf(alice), 0);
-        assertGe(vault.totalAssets(), THOUSAND + minAssets - 5);
+        assertGe(vault.totalAssets(), THOUSAND + minAssets - COMET_SLACK);
 
         skip(10 seconds);
         vm.roll(block.number + 1);
@@ -346,7 +364,7 @@ contract ForkingEthereum is Test {
             address(vault),
             vault
         );
-        assertApproxEqAbs(atEntry, THOUSAND + minAssets, 5);
+        assertApproxEqAbs(atEntry, THOUSAND + minAssets, COMET_SLACK);
 
         uint256[] memory amounts = new uint256[](2);
         IProvider[] memory sources = new IProvider[](2);

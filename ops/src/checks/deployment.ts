@@ -4,14 +4,17 @@
  * say must be true on-chain.
  */
 import { Contract, Provider, getAddress, id, keccak256 } from 'ethers';
-import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
-import { NETWORKS, NetworkEntry, routeId } from '../../../deploy/crosschain/registry';
+import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
+import { NETWORKS, NetworkEntry, routeId, strategyProviders } from '../../../deploy/crosschain/registry';
+import { loadNativeSpokes } from '../native';
 
 const EXECUTOR_ROLE = id('EXECUTOR_ROLE');
 const GUARDIAN_ROLE = id('GUARDIAN_ROLE');
 const NAV_UPDATER_ROLE = id('NAV_UPDATER_ROLE');
 const ADMIN_SLOT = '0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103';
 const IMPL_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+/** `CompoundV3Provider.getIdentifier()`: the key its Comet is registered under in the ProviderManager. */
+const COMPOUND_IDENTIFIER = 'Compound_V3_Provider';
 
 export interface CheckResult {
   ok: boolean;
@@ -139,12 +142,11 @@ export async function checkDeployment(
   // strategy wiring and caps
   const strategy = new Contract(c.Strategy, STRATEGY, provider);
   const providers: string[] = await strategy.getProviders();
-  const expected = entry.strategy.reusedProviders.map((p) => p.address);
-  if (c.CompoundV3Provider) expected.splice(1, 0, c.CompoundV3Provider);
+  const listed = strategyProviders(entry, c);
+  const expected = listed.map((p) => p.address);
   check(providers.length === expected.length && providers.every((p, i) => eq(p, expected[i])), 'strategy providers', providers.join(','));
   check(eq(await strategy.getEntryProvider(), expected[0]), 'strategy entry provider');
-  const labelled: Record<string, string> = Object.fromEntries(entry.strategy.reusedProviders.map((p) => [p.label, p.address]));
-  if (c.CompoundV3Provider) labelled.CompoundV3 = c.CompoundV3Provider;
+  const labelled: Record<string, string> = Object.fromEntries(listed.map((p) => [p.label, p.address]));
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
     const cap = BigInt(await strategy.getProviderCap(labelled[label]));
     check(cap === BigInt(bps), `strategy cap ${label}`, `${cap} bps`);
@@ -153,6 +155,17 @@ export async function checkDeployment(
     const pmgr = new Contract(c.ProviderManager, OWNABLE, provider);
     const owner = await pmgr.owner();
     check(eq(owner, ids.safe), 'ProviderManager owner = Safe', eq(owner, ids.safe) ? owner : `${owner} (Safe must acceptOwnership)`);
+    // CompoundV3Provider resolves its Comet through the ProviderManager, so a wrong
+    // yield token there points the strategy's Compound leg at another market while
+    // every address in the manifest still matches and the provider list still checks
+    // out. Phase 1 sets it from entry.strategy.comet; this is the only place that
+    // reads it back.
+    if (entry.strategy.comet) {
+      const comet: string = await new Contract(c.ProviderManager, PROVIDER_MANAGER, provider).getYieldToken(COMPOUND_IDENTIFIER, entry.usdc);
+      check(eq(comet, entry.strategy.comet), 'ProviderManager Compound Comet', eq(comet, entry.strategy.comet) ? comet : `${comet}, registry says ${entry.strategy.comet}`);
+    } else {
+      check(false, 'ProviderManager Compound Comet', 'a ProviderManager is deployed but the registry entry has no strategy.comet');
+    }
   }
 
   // hub wiring
@@ -163,11 +176,23 @@ export async function checkDeployment(
     check(eq(await vault.accountant(), c.TickAccountant), 'vault accountant');
     check(eq(await vault.hubAgent(), c.ChainAgent), 'vault hubAgent');
     const chainIds: bigint[] = (await accountant.chainIds()).map((x: bigint) => BigInt(x));
-    const want = Object.values(NETWORKS).map((n) => n.chainId).sort((a, b) => (a < b ? -1 : 1));
+    const native = loadNativeSpokes();
+    const want = [...Object.values(NETWORKS).map((n) => n.chainId),...native.map((n) => n.chainId)].sort((a, b) => (a < b ? -1 : 1));
     check(chainIds.join() === want.join(), 'accountant chain set', chainIds.join(','));
     for (const [netKey, net] of Object.entries(NETWORKS)) {
       const nm = manifests[netKey];
       if (nm) check(await accountant.isAgent(net.chainId, nm.contracts.ChainAgent), `accountant agent ${netKey}`);
+    }
+    for (const spoke of native) {
+      const { SolanaSpoke } = await import('../solana/spoke');
+      const { aliasOf } = await import('../solana/codec');
+      if (!(spoke instanceof SolanaSpoke)) throw new Error('unsupported native deployment check');
+      const alias = aliasOf(spoke.agent);
+      check(await accountant.isAgent(spoke.chainId,alias),`accountant agent ${spoke.key}`);
+      check(await agent.isPeer(spoke.chainId,alias),`hub native peer ${spoke.key}`);
+      check(await agent.isAdapter(spoke.manifest.hubAdapter),`hub native adapter ${spoke.key}`);
+      const route = await agent.getRoute(routeId(entry.chainId,spoke.chainId));
+      check(eq(route.dstAgent,alias) && eq(route.adapter,spoke.manifest.hubAdapter),`hub native route ${spoke.key}`);
     }
     const fees = await accountant.getFees();
     check(eq(fees.treasury, ids.safe), 'fee treasury = Safe', fees.treasury);

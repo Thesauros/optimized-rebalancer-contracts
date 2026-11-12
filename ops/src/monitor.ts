@@ -4,7 +4,9 @@
  *   MONITOR_POLL_SECONDS      loop period (default 60)
  *   MONITOR_VERIFY_TICKS      "true" (default) to re-derive every new accepted Tick
  *   MONITOR_WATCH_BALANCES    comma list "label=address" of hot wallets to watch for gas
- *   MONITOR_MIN_GAS_WEI       warn threshold for watched wallets (default 0.005 ETH)
+ *   MONITOR_MIN_GAS_WEI       warn threshold for watched wallets (default 0.005 ETH,
+ *                             sized for an L2; MONITOR_MIN_GAS_WEI_<KEY> overrides it
+ *                             per chain - Ethereum needs about 0.1 ETH per wallet)
  *   PORT_MONITOR              status port (default 8084)
  *   TELEGRAM_TOKEN, TELEGRAM_CHAT_ID   alerts (same as Rebalance-Engine)
  *
@@ -264,13 +266,19 @@ export async function runChecks(chains: Chain[], index: TransferIndex, verified:
     add(`timelock.${c.key}`, open.length ? 'warn' : 'ok', open.length ? `${c.key}: ${open.length} queued governance tx: ${open.map((q) => `${q.args.signature}@${q.args.target} eta ${new Date(Number(q.args.timestamp) * 1000).toISOString()}`).join('; ')}` : `${c.key}: no queued governance tx`);
   }
 
-  // Hot wallet gas
-  const minGas = BigInt(process.env.MONITOR_MIN_GAS_WEI ?? '5000000000000000');
+  // Hot wallet gas. The threshold is per chain because the cost of running out is
+  // not the same everywhere: one Ethereum strategy operation is 2.4-3.9 M gas
+  // (0.005-0.02 ETH at 2-5 gwei) and the relayer pays L1 gas to deliver every CCTP
+  // transfer, while a Base or Arbitrum operation costs a fraction of a cent. One
+  // global value sized for the L2s never fires on Ethereum, so the wallet runs dry
+  // silently and transfers sit in flight past maxTransit.
+  // MONITOR_MIN_GAS_WEI_<KEY> overrides MONITOR_MIN_GAS_WEI for one chain.
+  const minGasFor = (c: Chain) => BigInt(process.env[`MONITOR_MIN_GAS_WEI_${c.key.toUpperCase()}`] || process.env.MONITOR_MIN_GAS_WEI || '5000000000000000');
   for (const item of (process.env.MONITOR_WATCH_BALANCES ?? '').split(',').filter(Boolean)) {
     const [label, address] = item.includes('=') ? item.split('=') : [item, item];
     for (const c of chains) {
       const b = await c.provider.getBalance(address);
-      add(`gas.${label}.${c.key}`, b < minGas ? 'warn' : 'ok', `${label} on ${c.key}: ${formatUnits(b, 18)} ETH`, Number(formatUnits(b, 18)));
+      add(`gas.${label}.${c.key}`, b < minGasFor(c) ? 'warn' : 'ok', `${label} on ${c.key}: ${formatUnits(b, 18)} ETH`, Number(formatUnits(b, 18)));
     }
   }
   return out;
