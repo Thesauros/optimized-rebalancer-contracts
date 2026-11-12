@@ -4,8 +4,8 @@
  * environment. No hardhat dependency, so services run standalone.
  *
  * Environment:
- *   RPC_<NETWORK>             RPC URL per registry key, e.g. RPC_BASE, RPC_ARBITRUM
- *                             (falls back to BASE_RPC_URL / ARBITRUM_RPC_URL)
+ *   RPC_<NETWORK>             RPC URL per registry key: RPC_BASE, RPC_ARBITRUM, RPC_MAINNET
+ *                             (falls back to <NETWORK>_RPC_URL, e.g. BASE_RPC_URL)
  *   RPC_SEND_<NETWORK>        optional: where signed transactions are broadcast.
  *                             Reads stay on RPC_<NETWORK>. Unset = same RPC.
  *   CROSSCHAIN_MANIFEST_DIR   manifest root (default: <repo>/deployments)
@@ -74,7 +74,10 @@ const computePacer = new RequestPacer(Number(process.env.RPC_COMPUTE_UNITS_PER_S
 
 function readRequest(url: string): FetchRequest {
   const request = new FetchRequest(url);
-  request.timeout = 15_000;
+  // forks that pull state from a throttled upstream answer slower (the rehearsal raises it).
+  // envNumber, not Number(... ?? ...): RPC_TIMEOUT_MS="" in an env file is unset, and
+  // Number('') is 0, which would make every request time out immediately.
+  request.timeout = envNumber('RPC_TIMEOUT_MS', 15_000);
   // Ethers' hidden 429 retries otherwise bypass our budget and can block for minutes.
   request.retryFunc = async () => false;
   request.preflightFunc = async (req) => {

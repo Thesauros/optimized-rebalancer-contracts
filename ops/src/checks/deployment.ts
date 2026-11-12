@@ -4,7 +4,7 @@
  * say must be true on-chain.
  */
 import { Contract, Provider, getAddress, id, keccak256 } from 'ethers';
-import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
+import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
 import { NETWORKS, NetworkEntry, routeId } from '../../../deploy/crosschain/registry';
 
 const EXECUTOR_ROLE = id('EXECUTOR_ROLE');
@@ -12,6 +12,8 @@ const GUARDIAN_ROLE = id('GUARDIAN_ROLE');
 const NAV_UPDATER_ROLE = id('NAV_UPDATER_ROLE');
 const ADMIN_SLOT = '0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103';
 const IMPL_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+/** `CompoundV3Provider.getIdentifier()`: the key its Comet is registered under in the ProviderManager. */
+const COMPOUND_IDENTIFIER = 'Compound_V3_Provider';
 
 export interface CheckResult {
   ok: boolean;
@@ -153,6 +155,17 @@ export async function checkDeployment(
     const pmgr = new Contract(c.ProviderManager, OWNABLE, provider);
     const owner = await pmgr.owner();
     check(eq(owner, ids.safe), 'ProviderManager owner = Safe', eq(owner, ids.safe) ? owner : `${owner} (Safe must acceptOwnership)`);
+    // CompoundV3Provider resolves its Comet through the ProviderManager, so a wrong
+    // yield token there points the strategy's Compound leg at another market while
+    // every address in the manifest still matches and the provider list still checks
+    // out. Phase 1 sets it from entry.strategy.comet; this is the only place that
+    // reads it back.
+    if (entry.strategy.comet) {
+      const comet: string = await new Contract(c.ProviderManager, PROVIDER_MANAGER, provider).getYieldToken(COMPOUND_IDENTIFIER, entry.usdc);
+      check(eq(comet, entry.strategy.comet), 'ProviderManager Compound Comet', eq(comet, entry.strategy.comet) ? comet : `${comet}, registry says ${entry.strategy.comet}`);
+    } else {
+      check(false, 'ProviderManager Compound Comet', 'a ProviderManager is deployed but the registry entry has no strategy.comet');
+    }
   }
 
   // hub wiring

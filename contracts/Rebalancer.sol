@@ -258,7 +258,7 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
      * @inheritdoc IERC4626
      */
     function deposit(uint256 assets, address receiver) public override nonReentrant returns (uint256 shares) {
-        uint256 totalManagedAssets = _applyFeesRequiringHealthyProviders();
+        uint256 totalManagedAssets = _applyFees();
 
         shares = _convertToSharesWithTotals(assets, totalSupply(), totalManagedAssets, Math.Rounding.Floor);
         _validateDeposit(receiver, assets, shares);
@@ -270,7 +270,7 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
      * @inheritdoc IERC4626
      */
     function mint(uint256 shares, address receiver) public override nonReentrant returns (uint256 assets) {
-        uint256 totalManagedAssets = _applyFeesRequiringHealthyProviders();
+        uint256 totalManagedAssets = _applyFees();
 
         assets = _convertToAssetsWithTotals(shares, totalSupply(), totalManagedAssets, Math.Rounding.Ceil);
         _validateDeposit(receiver, assets, shares);
@@ -536,20 +536,15 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
         _applyFees();
     }
 
-    /// @dev Internal function for fee application.
-    function _applyFees() internal returns (uint256 totalManagedAssets) {
-        bool healthy;
-        (totalManagedAssets, healthy) = _totalAssetsWithHealth();
-        if (!healthy) revert ProviderUnavailable();
-        _settleFees(totalManagedAssets);
-    }
-
     /**
-     * @dev Entry paths use this variant. When a provider's balance view fails it
-     *      cannot be priced safely. Both entry and exit settlement require the
-     *      complete NAV; no holder forfeits an unknown position on redemption.
+     * @dev Settles fees against the complete NAV, reverting when any listed provider's
+     *      balance view fails. Entry and exit share this one rule on purpose: a share price
+     *      computed while part of the portfolio is unpriceable would let whoever transacts
+     *      first trade against the holders who cannot see the gap. There is no softer
+     *      variant for entry paths — an unreadable provider is isolated with
+     *      `forceRemoveProvider`, not by pricing around it here.
      */
-    function _applyFeesRequiringHealthyProviders() internal returns (uint256 totalManagedAssets) {
+    function _applyFees() internal returns (uint256 totalManagedAssets) {
         bool healthy;
         (totalManagedAssets, healthy) = _totalAssetsWithHealth();
         if (!healthy) revert ProviderUnavailable();
@@ -637,6 +632,49 @@ contract Rebalancer is ERC20PermitUpgradeable, AccessManager, PausableActions, R
      */
     function setProviders(IProvider[] memory providers) external onlyTimelock {
         _setProviders(providers);
+    }
+
+    /**
+     * @notice Drops a provider whose balance view can no longer be read, writing its
+     *         position off. Timelock only.
+     * @dev `setProviders` proves every removed position empty, which is impossible when the
+     *      provider's own view reverts: `_safeGetDepositBalance` then reports unhealthy,
+     *      `totalAssets()` reverts, and with it every deposit, withdrawal and fee settlement
+     *      — while the only removal path reverts on the same condition. Without this escape
+     *      a provider that becomes permanently unreadable while holding funds bricks the
+     *      vault with no on-chain remedy.
+     *
+     *      The written-off value leaves NAV immediately, so remaining holders absorb the
+     *      loss; that is the honest price of an unpriceable position, and routing it through
+     *      the Timelock gives them the delay window to exit first. Receipt tokens the vault
+     *      still holds are deliberately not swept: they stay with the vault so governance can
+     *      recover them if the provider comes back.
+     *
+     *      Requires the provider to be genuinely unreadable, so this cannot be used to drop
+     *      a healthy position and strand it. The entry provider is refused outright.
+     * @param provider The unreadable provider to remove.
+     */
+    function forceRemoveProvider(address provider) external onlyTimelock {
+        RebalancerStorage storage $ = _getRebalancerStorage();
+        if (!_isInList(provider, $._providers)) revert InvalidProvider();
+        if (address($._entryProvider) == provider) revert ProviderIsEntry(provider);
+
+        (, bool ok) = _safeGetDepositBalance(IProvider(provider));
+        if (ok) revert ProviderStillReadable(provider);
+
+        IProvider[] memory next = new IProvider[]($._providers.length - 1);
+        uint256 k;
+        for (uint256 i; i < $._providers.length; i++) {
+            if (address($._providers[i]) == provider) continue;
+            next[k++] = $._providers[i];
+        }
+
+        $._asset.forceApprove($._providerSources[provider], 0);
+        delete $._providerSources[provider];
+        $._providers = next;
+
+        emit ProviderForcedOut(provider);
+        emit ProvidersUpdated(next);
     }
 
     /**

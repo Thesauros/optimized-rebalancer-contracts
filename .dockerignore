@@ -6,5 +6,6 @@
 !ops/src
 !ops/scripts
 !deploy/crosschain/registry.ts
-!deployments/base/crosschain.json
-!deployments/arbitrum/crosschain.json
+# one glob, not a line per chain: `*` matches a single path segment, so this admits
+# exactly deployments/<key>/crosschain.json for every network, present or future
+!deployments/*/crosschain.json
