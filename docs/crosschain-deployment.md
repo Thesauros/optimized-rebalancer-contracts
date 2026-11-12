@@ -375,12 +375,12 @@ If a removal really is intended, `CROSSCHAIN_ALLOW_DROP_CHAINS=1` overrides it.
 **Order of the service rollout.** Roll the services out from this release
 **after the batches are queued and before they are executed**:
 
-* **Before step 1 the services cannot start.** The image builds either way: it
-  copies every `deployments/*/crosschain.json` that exists, so a registered network
-  that has not been deployed yet does not break the build. Starting is what fails -
-  `loadChains()` throws `missing manifest` for a chain with no manifest, so every
-  service dies at startup and `preflight` reports it. Build early if you want to;
-  do not `up -d`.
+* **Registry support alone does not activate Ethereum.** The image includes the
+  cross-chain manifests present in the release. Before step 1 it builds and runs
+  Base/Arbitrum only: `loadRuntimeManifests()` defaults to the registry networks
+  that actually have a `crosschain.json`, so an undeployed spoke is not loaded
+  rather than fatal. After step 1, include the real Ethereum manifest and RPC in
+  the service release (and in `CROSSCHAIN_NETWORKS` if explicitly configured).
 * **Too late stops Ticks.** Once `setChains` executes, a NAV service that does
   not know Ethereum refuses to build snapshots (`accountant tracks chains not
   configured here: 1`).

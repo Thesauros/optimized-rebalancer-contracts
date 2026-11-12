@@ -1,0 +1,184 @@
+{
+  "targetCommit": "106e9059f8fd5e433a2ddd62555a1ede427020a7",
+  "compiler": "solc, the solidity compiler commandline interface\nVersion: 0.8.33+commit.64118f21.Darwin.appleclang",
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "evmVersion": "paris",
+    "metadata": {
+      "useLiteralContent": true
+    }
+  },
+  "exactDeployedRuntimeRebuilt": true,
+  "legacyGitCommit": "9a53cc77c38cf76e9323f9225fe883e3c6985a00",
+  "legacyRuntimeHash": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+  "targetRuntimeHash": "0xf0f24514079923423005d0564b64177748401e4c41d41557d825bfd5a4f04060",
+  "targetCreationHash": "0x8411696814eaca55533eb5978a93fbfa6e4decb6f4561491d0c6a47cb6d220cc",
+  "targetRuntimeBytes": 21817,
+  "namespace": "0x7e58afa6d55148d409feb524397452494284df87c6d0256f1c37551f5f960b00",
+  "legacyFields": [
+    {
+      "name": "_asset",
+      "slot": "0",
+      "offset": 0,
+      "type": "contract IERC20Metadata"
+    },
+    {
+      "name": "_underlyingDecimals",
+      "slot": "0",
+      "offset": 20,
+      "type": "uint8"
+    },
+    {
+      "name": "_providers",
+      "slot": "1",
+      "offset": 0,
+      "type": "contract IProvider[]"
+    },
+    {
+      "name": "_entryProvider",
+      "slot": "2",
+      "offset": 0,
+      "type": "contract IProvider"
+    },
+    {
+      "name": "_timelock",
+      "slot": "3",
+      "offset": 0,
+      "type": "address"
+    },
+    {
+      "name": "_treasury",
+      "slot": "4",
+      "offset": 0,
+      "type": "address"
+    },
+    {
+      "name": "_managementFee",
+      "slot": "4",
+      "offset": 20,
+      "type": "uint96"
+    },
+    {
+      "name": "_performanceFee",
+      "slot": "5",
+      "offset": 0,
+      "type": "uint96"
+    },
+    {
+      "name": "_lastTotalAssets",
+      "slot": "6",
+      "offset": 0,
+      "type": "uint256"
+    },
+    {
+      "name": "_lastTimestamp",
+      "slot": "7",
+      "offset": 0,
+      "type": "uint64"
+    },
+    {
+      "name": "_minAssets",
+      "slot": "8",
+      "offset": 0,
+      "type": "uint256"
+    },
+    {
+      "name": "_providerCapBps",
+      "slot": "9",
+      "offset": 0,
+      "type": "mapping(address => uint256)"
+    }
+  ],
+  "appendedFields": [
+    {
+      "name": "_highWaterMark",
+      "slot": "10",
+      "offset": 0,
+      "type": "uint256"
+    },
+    {
+      "name": "_providerSources",
+      "slot": "11",
+      "offset": 0,
+      "type": "mapping(address => address)"
+    }
+  ],
+  "inheritedSourcesPreserved": [
+    "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol",
+    "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol",
+    "@openzeppelin/contracts/utils/math/Math.sol",
+    "@openzeppelin/contracts/utils/Address.sol",
+    "@openzeppelin/contracts/utils/math/SafeCast.sol",
+    "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+    "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol",
+    "contracts/access/AccessManager.sol",
+    "contracts/utils/PausableActions.sol",
+    "contracts/interfaces/IPausableActions.sol",
+    "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol",
+    "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol",
+    "@openzeppelin/contracts/utils/cryptography/ECDSA.sol",
+    "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol",
+    "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol",
+    "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol",
+    "@openzeppelin/contracts/utils/Panic.sol",
+    "@openzeppelin/contracts/utils/Errors.sol",
+    "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+    "@openzeppelin/contracts/interfaces/IERC1363.sol",
+    "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol",
+    "contracts/interfaces/IAccessManager.sol",
+    "@openzeppelin/contracts/interfaces/draft-IERC6093.sol",
+    "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol",
+    "@openzeppelin/contracts/interfaces/IERC5267.sol",
+    "@openzeppelin/contracts/interfaces/IERC20.sol",
+    "@openzeppelin/contracts/interfaces/IERC165.sol",
+    "@openzeppelin/contracts/utils/Strings.sol",
+    "@openzeppelin/contracts/utils/introspection/IERC165.sol",
+    "@openzeppelin/contracts/utils/math/SignedMath.sol"
+  ],
+  "sourceHashes": {
+    "contracts/Rebalancer.sol": "0x13016fbbe327ab96524c276250b744406f711e9b2301032ab440ba24db80c226",
+    "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol": "0x075302c23ba4b3a1d2a5000947ac44bbb4e84b011ecadad6f5e3fd92cd568659",
+    "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol": "0x361126a17677994081cd9cb69c3f50cffff6e920d25cb7e428acdb1ae41d1866",
+    "@openzeppelin/contracts/utils/math/Math.sol": "0x1225214420c83ebcca88f2ae2b50f053aaa7df7bd684c3e878d334627f2edfc6",
+    "@openzeppelin/contracts/utils/Address.sol": "0x6d0ae6e206645341fd122d278c2cb643dea260c190531f2f3f6a0426e77b00c0",
+    "@openzeppelin/contracts/utils/math/SafeCast.sol": "0x195533c86d0ef72bcc06456a4f66a9b941f38eb403739b00f21fd7c1abd1ae54",
+    "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol": "0x982c5cb790ab941d1e04f807120a71709d4c313ba0bfc16006447ffbd27fbbd5",
+    "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol": "0xd6fa4088198f04eef10c5bce8a2f4d60554b7ec4b987f684393c01bf79b94d9f",
+    "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol": "0xa1ad192cd45317c788618bef5cb1fb3ca4ce8b230f6433ac68cc1d850fb81618",
+    "contracts/access/AccessManager.sol": "0xa7f3b0a86b49d0d3ef3b1a250cbffcad57d7122f9cb37fa96ab536de895a9272",
+    "contracts/utils/PausableActions.sol": "0xed8ce6f92003696783b0915ea3f017f12597cecd6dba68795675ed7b6bb79118",
+    "contracts/interfaces/IPausableActions.sol": "0x9cb33acbd33e28b481fcc84a178bb46b63719652cc0dd0ad7e17472fa767f6e0",
+    "contracts/interfaces/IProvider.sol": "0x2c2491ce6d8861a37c0e793e2086b6b1cbd179f3fa62eb0b057ec5897aa6093b",
+    "contracts/interfaces/IERC4626.sol": "0xe975054bc374d299a9be8d7312cefb7e98a2c72813fa9c86fcc2fef1364b1880",
+    "contracts/interfaces/IRebalancer.sol": "0x188f3c039a81fdfea336efe54bb7119c3229fb0e890c91bd888b43273cdf0bc3",
+    "contracts/libraries/Constants.sol": "0x83dd3fb1dfe98f814479282ca3bf49cc6d4df2a62207470820e80b357d115c0e",
+    "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol": "0x2fa0657dd7b8bc75475a47f64bc04a9adb42236b15d65e6781594ea69a46c3e4",
+    "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol": "0xfcd09c2aa8cc3f93e12545454359f901965db312bc03833daf84de0c03e05022",
+    "@openzeppelin/contracts/utils/cryptography/ECDSA.sol": "0x69f54c02b7d81d505910ec198c11ed4c6a728418a868b906b4a0cf29946fda84",
+    "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol": "0x89374b2a634f0a9c08f5891b6ecce0179bc2e0577819c787ed3268ca428c2459",
+    "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol": "0x778f4a1546a1c6c726ecc8e2348a2789690fb8f26e12bd9d89537669167b79a4",
+    "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol": "0xdb4d24ee2c087c391d587cd17adfe5b3f9d93b3110b1388c2ab6c7c0ad1dcd05",
+    "@openzeppelin/contracts/utils/Panic.sol": "0xf7fe324703a64fc51702311dc51562d5cb1497734f074e4f483bfb6717572d7a",
+    "@openzeppelin/contracts/utils/Errors.sol": "0x6afa713bfd42cf0f7656efa91201007ac465e42049d7de1d50753a373648c123",
+    "@openzeppelin/contracts/token/ERC20/IERC20.sol": "0x74ed01eb66b923d0d0cfe3be84604ac04b76482a55f9dd655e1ef4d367f95bc2",
+    "@openzeppelin/contracts/interfaces/IERC1363.sol": "0xd5ea07362ab630a6a3dee4285a74cf2377044ca2e4be472755ad64d7c5d4b69d",
+    "@openzeppelin/contracts/proxy/beacon/IBeacon.sol": "0x20462ddb2665e9521372c76b001d0ce196e59dbbd989de9af5576cad0bd5628b",
+    "@openzeppelin/contracts/interfaces/IERC1967.sol": "0xbf2aefe54b76d7f7bcd4f6da1080b7b1662611937d870b880db584d09cea56b5",
+    "@openzeppelin/contracts/utils/StorageSlot.sol": "0xcf74f855663ce2ae00ed8352666b7935f6cddea2932fdf2c3ecd30a9b1cd0e97",
+    "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol": "0xdbef5f0c787055227243a7318ef74c8a5a1108ca3a07f2b3a00ef67769e1e397",
+    "contracts/interfaces/IAccessManager.sol": "0x461679be47b75a1c3702782a1b0c02bbb9b1a3fe5ec54bb467ab6a5019cbec50",
+    "@openzeppelin/contracts/interfaces/draft-IERC6093.sol": "0x19fdfb0f3b89a230e7dbd1cf416f1a6b531a3ee5db4da483f946320fc74afc0e",
+    "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol": "0x26670fef37d4adf55570ba78815eec5f31cb017e708f61886add4fc4da665631",
+    "@openzeppelin/contracts/interfaces/IERC5267.sol": "0xfb223a85dd0b2175cfbbaa325a744e2cd74ecd17c3df2b77b0722f991d2725ee",
+    "@openzeppelin/contracts/interfaces/IERC20.sol": "0x1a6221315ce0307746c2c4827c125d821ee796c74a676787762f4778671d4f44",
+    "@openzeppelin/contracts/interfaces/IERC165.sol": "0x0afcb7e740d1537b252cb2676f600465ce6938398569f09ba1b9ca240dde2dfc",
+    "@openzeppelin/contracts/utils/Strings.sol": "0xad148d59f05165f9217d0a9e1ac8f772abb02ea6aaad8a756315c532bf79f9f4",
+    "@openzeppelin/contracts/utils/introspection/IERC165.sol": "0x8891738ffe910f0cf2da09566928589bf5d63f4524dd734fd9cedbac3274dd5c",
+    "@openzeppelin/contracts/utils/math/SignedMath.sol": "0xb1970fac7b64e6c09611e6691791e848d5e3fe410fa5899e7df2e0afd77a99e3"
+  },
+  "storageCompatible": true,
+  "productionWrites": false
+}

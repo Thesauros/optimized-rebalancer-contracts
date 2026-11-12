@@ -9,6 +9,8 @@
  *   RPC_SEND_<NETWORK>        optional: where signed transactions are broadcast.
  *                             Reads stay on RPC_<NETWORK>. Unset = same RPC.
  *   CROSSCHAIN_MANIFEST_DIR   manifest root (default: <repo>/deployments)
+ *   CROSSCHAIN_NETWORKS       optional comma-separated runtime networks; default:
+ *                             registry networks with a crosschain.json manifest
  *   CROSSCHAIN_SAFE, CROSSCHAIN_NAV_UPDATER, CROSSCHAIN_EXECUTOR, CROSSCHAIN_GUARDIAN
  *   <ROLE>_PRIVATE_KEY        signer keys per service (see each service)
  */
@@ -119,11 +121,37 @@ export function providerFor(key: string, chainId: bigint): JsonRpcProvider {
   return new RetryJsonRpcProvider(readRequest(read), Number(chainId), { staticNetwork: true, batchMaxCount: 1 });
 }
 
-export function loadChains(): Chain[] {
-  return Object.entries(NETWORKS).map(([key, entry]) => {
-    const provider = providerFor(key, entry.chainId);
-    return { key, entry, chainId: entry.chainId, provider, manifest: loadManifest(key) };
+/** Supported networks are not necessarily deployed. Never fabricate a manifest. */
+export function loadRuntimeManifests(): { key: string; entry: NetworkEntry; manifest: Manifest }[] {
+  const selection = process.env.CROSSCHAIN_NETWORKS;
+  const keys = selection === undefined
+    ? Object.keys(NETWORKS).filter((key) => fs.existsSync(path.join(manifestRoot(), key, 'crosschain.json')))
+    : selection.split(',').map((key) => key.trim());
+  if (!keys.length || keys.some((key) => !key)) throw new Error('CROSSCHAIN_NETWORKS: no networks or empty entry');
+  if (new Set(keys).size !== keys.length) throw new Error('CROSSCHAIN_NETWORKS: duplicate network');
+  const deployed = keys.map((key) => {
+    const entry = NETWORKS[key];
+    if (!Object.hasOwn(NETWORKS, key)) throw new Error(`CROSSCHAIN_NETWORKS: unknown network ${key}`);
+    const manifest = loadManifest(key);
+    if (manifest.network !== key || String(manifest.chainId) !== entry.chainId.toString() || manifest.role !== entry.role) {
+      throw new Error(`manifest identity mismatch for ${key}: expected network ${key}, chain ${entry.chainId}, role ${entry.role}`);
+    }
+    return { key, entry, manifest };
   });
+  if (deployed.filter(({ entry }) => entry.role === 'hub').length !== 1) throw new Error('runtime networks must contain exactly one hub');
+  return deployed;
+}
+
+export function assertTrackedChainsConfigured(chains: Pick<Chain, 'chainId'>[], tracked: bigint[]): void {
+  const missing = tracked.filter((id) => !chains.some((chain) => chain.chainId === id));
+  if (missing.length) throw new Error(`accountant tracks chains not configured here: ${missing.join(',')}`);
+}
+
+export function loadChains(): Chain[] {
+  // Validate the complete manifest set before constructing providers or reading RPC configuration.
+  return loadRuntimeManifests().map(({ key, entry, manifest }) => ({
+    key, entry, chainId: entry.chainId, provider: providerFor(key, entry.chainId), manifest,
+  }));
 }
 
 export function hubOf(chains: Chain[]): Chain {

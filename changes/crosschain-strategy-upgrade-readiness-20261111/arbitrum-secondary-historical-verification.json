@@ -1,0 +1,20 @@
+{
+  "network": "arbitrum",
+  "endpoint": "https://arbitrum-one-rpc.publicnode.com",
+  "deploymentBlock": 509725811,
+  "productionWrites": false,
+  "sources": {
+    "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664": {
+      "readLimitation": {
+        "code": "SERVER_ERROR",
+        "nodeMessage": "server response 403 Forbidden"
+      }
+    },
+    "0xeB98d46937C537efF376361536D58d78c57c40d7": {
+      "readLimitation": {
+        "code": "SERVER_ERROR",
+        "nodeMessage": "server response 403 Forbidden"
+      }
+    }
+  }
+}

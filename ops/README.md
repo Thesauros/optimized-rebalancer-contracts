@@ -11,6 +11,7 @@ Off-chain services for the cross-chain vault:
 | `npm run indexer` | Indexer + read API for the frontend (requests, epochs, NAV history, allocation) |
 | `npm run verify-tick -- <ids>` | Independent Tick verification for partners |
 | `npm run exec -- <command>` | Operator CLI: status, transfers, capital moves, user and keeper actions. Every write is simulated; nothing is sent without `--yes` |
+| `npm run check:config` | Offline startup check: deployed manifests and required RPC configuration, without RPC requests or signing keys |
 
 ## Operator CLI
 
@@ -42,6 +43,11 @@ incrementally; nothing re-reads history on every pass.
 `npm run preflight -- --layout operators|separate` checks an environment before start.
 
 Configuration, deployment and operations: `docs/crosschain-deployment.md`.
+Runtime networks default to the available cross-chain manifests. Optional
+`CROSSCHAIN_NETWORKS=base,arbitrum` requires exactly that configured set; a
+supported registry network without a manifest is not automatically required.
+Preflight and NAV reject an omitted active accountant chain. Reproducible image
+updates and rollback: `docs/crosschain-server.md`, Upgrading.
 Snapshot rules: `docs/nav-reproduction.md`.
 Open items: `docs/crosschain-open-items.md`.
 
@@ -87,6 +93,16 @@ Two consequences of that deletion are still open:
 * No automated restart means a service that exits on a transient upstream failure
   stays down until someone notices. Docker's `restart: unless-stopped` covers
   process exits, not a process that is alive and stuck.
+
+### Hosts that still run the legacy watchdog
+
+Those `ops/scripts` and `ops/deploy` files are absent from this checkout and are
+not dependencies of the service image, but a host provisioned from an earlier
+release may still have them installed under cron and systemd. Preserve that
+installation across an image update: this release neither installs nor replaces
+cron/systemd recovery jobs. Its operational reference — poll times, confirmation
+window, attempt limit, Telegram labelling, state path — is in this file's history
+at the revision before commit `0c420d3`.
 
 # RPC rate budget
 

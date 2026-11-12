@@ -51,8 +51,9 @@ export async function checkDeployment(
   m: ManifestLike,
   manifests: Record<string, ManifestLike>,
   ids: Identities,
+  networks: Record<string, NetworkEntry> = NETWORKS,
 ): Promise<CheckResult[]> {
-  const entry: NetworkEntry = NETWORKS[key];
+  const entry: NetworkEntry = networks[key];
   const c = m.contracts;
   const out: CheckResult[] = [];
   const check = (ok: boolean, label: string, detail = '') => out.push({ ok, label, detail });
@@ -118,7 +119,7 @@ export async function checkDeployment(
   check(eq(await agent.strategy(), c.Strategy), 'ChainAgent strategy');
   if (entry.role === 'hub') check(eq(await agent.vault(), c.EpochVault), 'hub ChainAgent vault');
 
-  for (const [peerKey, peer] of Object.entries(NETWORKS)) {
+  for (const [peerKey, peer] of Object.entries(networks)) {
     if (peerKey === key) continue;
     const pm = manifests[peerKey];
     if (!pm) {
@@ -177,9 +178,9 @@ export async function checkDeployment(
     check(eq(await vault.hubAgent(), c.ChainAgent), 'vault hubAgent');
     const chainIds: bigint[] = (await accountant.chainIds()).map((x: bigint) => BigInt(x));
     const native = loadNativeSpokes();
-    const want = [...Object.values(NETWORKS).map((n) => n.chainId),...native.map((n) => n.chainId)].sort((a, b) => (a < b ? -1 : 1));
+    const want = [...Object.values(networks).map((n) => n.chainId), ...native.map((n) => n.chainId)].sort((a, b) => (a < b ? -1 : 1));
     check(chainIds.join() === want.join(), 'accountant chain set', chainIds.join(','));
-    for (const [netKey, net] of Object.entries(NETWORKS)) {
+    for (const [netKey, net] of Object.entries(networks)) {
       const nm = manifests[netKey];
       if (nm) check(await accountant.isAgent(net.chainId, nm.contracts.ChainAgent), `accountant agent ${netKey}`);
     }

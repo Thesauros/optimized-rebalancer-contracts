@@ -33,7 +33,7 @@ x-vol-key-relayer: &vol-key-relayer ${SOLANA_KEYS_DIR:-./keys}/solana-relayer.js
 x-vol-key-checkpoint: &vol-key-checkpoint ${SOLANA_KEYS_DIR:-./keys}/solana-checkpoint.json:/keys/solana-checkpoint.json:ro
 
 x-common: &common
-  image: thesauros/crosschain-ops:local
+  image: ${CROSSCHAIN_OPS_IMAGE:-thesauros/crosschain-ops:local}
   init: true # node as PID 1 would ignore SIGTERM
   restart: unless-stopped
   env_file: [.env.server]

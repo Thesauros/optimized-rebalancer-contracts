@@ -1,0 +1,61 @@
+{
+  "schema": "base-buffer-allocation-v1",
+  "chainId": 8453,
+  "vault": "0x33c4F5Efc49DCEa72bfA8Fe62e5Cb7B3226d7cB6",
+  "agent": "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83",
+  "strategy": "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33",
+  "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+  "amount": "3897300",
+  "maximumAmount": "3900000",
+  "before": {
+    "blockNumber": 55800441,
+    "blockHash": "0x9124c97e8ed24a12d522b0327348a49a90ff591fbdeefe5f7052ab105b07522a",
+    "timestamp": 1794350463,
+    "cash": "5000000",
+    "pending": "0",
+    "liabilities": "0",
+    "reserved": "0",
+    "escrow": "0",
+    "freeCash": "5000000",
+    "buffer": "1102620",
+    "headroom": "3897380",
+    "idle": "0",
+    "shares": "3998497",
+    "strategyValue": "4019702",
+    "entryProvider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "bidNav": "11026204",
+    "acceptedTickId": "570",
+    "healthy": true
+  },
+  "independentBefore": {
+    "blockNumber": 55800440,
+    "blockHash": "0xc35af22150d3da72ead974f035c56a0c5272356624504a8d18a7d7610094fb1d",
+    "timestamp": 1794350463,
+    "cash": "5000000",
+    "pending": "0",
+    "liabilities": "0",
+    "reserved": "0",
+    "escrow": "0",
+    "freeCash": "5000000",
+    "buffer": "1102620",
+    "headroom": "3897380",
+    "idle": "0",
+    "shares": "3998497",
+    "strategyValue": "4019702",
+    "entryProvider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "bidNav": "11026204",
+    "acceptedTickId": "570",
+    "healthy": true
+  },
+  "previewShares": "3876740",
+  "transactions": [
+    {
+      "to": "0x33c4F5Efc49DCEa72bfA8Fe62e5Cb7B3226d7cB6",
+      "data": "0x9017e64e00000000000000000000000000000000000000000000000000000000003b77d4"
+    },
+    {
+      "to": "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83",
+      "data": "0x90ca796b00000000000000000000000000000000000000000000000000000000003b77d4"
+    }
+  ]
+}
