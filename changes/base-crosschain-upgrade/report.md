@@ -71,9 +71,22 @@ after each receipt `keccak256(runtime)` was required to equal the reviewed
 | FluidProvider | `0x7ca72c28Aec15c359cC1e9cFc3021519D02E1304` | `0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a` | 56857984 | 638097 | `0x5414d072553e` |
 | MorphoV2Provider | `0x23bbE424F1B621229c6A237F93D4234B646cf6e7` | `0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457` | 56857994 | 1879342 | `0x5e09a5d4f8bb` |
 
-Rebalancer source is verified on Basescan (Solidity 0.8.33, optimizer 200,
-Paris) from the recorded build input; the two providers were submitted the same
-way and were still in the Basescan queue at the time of writing.
+Bytecode identity was re-proved independently of any explorer: for all three
+contracts, an `eth_call` with no `to` and `data = artifact.bytecode ++
+abi-encoded constructor args` returns runtime code byte-identical to
+`getCode(address)` on Base, with keccak `0x6a9f9388ac52…`, `0x5414d072553e…` and
+`0x5e09a5d4f8bb…`. Both providers carry an immutable `source`, so their on-chain
+runtime legitimately differs from the `build-info` `deployedBytecode` template by
+exactly the immutable slots; the constructor simulation, not a template hash
+comparison, is the correct check.
+
+All three sources are verified on Basescan (Solidity 0.8.33, optimizer 200,
+Paris), submitted through `hardhat verify --network base` with
+`FOUNDRY_AUTO_DETECT_REMAPPINGS=false` and confirmed through the Etherscan V2
+`getsourcecode` endpoint. Hand-rolled standard-json submissions of the same
+build input were rejected by the explorer with a parser error for both
+providers, so the plugin path is the one that works here.
+
 
 Attested release inputs used by the planner:
 

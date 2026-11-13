@@ -130,9 +130,35 @@
     "queued setProviderCap(address,uint256) = 0x0c3edcbeb2ee160c057a973e7dd06675fa1aca4ff5e9e5488894d44a07d78857 eta 2026-11-14T10:43:34.000Z"
   ],
   "basescanVerification": {
-    "Rebalancer": "verified",
-    "FluidProvider": "submitted, pending in Basescan queue",
-    "MorphoV2Provider": "submitted, pending in Basescan queue",
-    "method": "Etherscan V2 verifysourcecode with the recorded Hardhat standard-json build input"
+    "Rebalancer": {
+      "address": "0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D",
+      "status": "verified",
+      "contractName": "Rebalancer"
+    },
+    "FluidProvider": {
+      "address": "0x7ca72c28Aec15c359cC1e9cFc3021519D02E1304",
+      "status": "verified",
+      "contractName": "FluidProvider"
+    },
+    "MorphoV2Provider": {
+      "address": "0x23bbE424F1B621229c6A237F93D4234B646cf6e7",
+      "status": "verified",
+      "contractName": "MorphoV2Provider"
+    },
+    "compiler": "v0.8.33+commit.64118f21",
+    "optimizerRuns": 200,
+    "evmVersion": "paris",
+    "method": "npx hardhat verify --network base with FOUNDRY_AUTO_DETECT_REMAPPINGS=false",
+    "confirmedAtUtc": "2026-11-13T10:52:53.278Z",
+    "confirmedVia": "Etherscan V2 getsourcecode"
+  },
+  "bytecodeIdentityProof": {
+    "method": "eth_call with no to and data = artifact.bytecode ++ abi-encoded constructor args, compared byte for byte with getCode(address) on Base",
+    "note": "Both providers hold an immutable source, so their on-chain runtime differs from the build-info deployedBytecode template by exactly the immutable slots. The constructor simulation is the correct comparison.",
+    "results": {
+      "Rebalancer": "identical",
+      "FluidProvider": "identical",
+      "MorphoV2Provider": "identical"
+    }
   }
 }
