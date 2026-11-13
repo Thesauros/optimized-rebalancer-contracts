@@ -3,8 +3,9 @@
 Change: `base-crosschain-upgrade`. Base: main `32f7dcf`.
 Branch: `feat/base-crosschain-upgrade`.
 
-QA and Security: PASS for the prepared Base branch. Public execution requires
-the separate release inputs below and has not been performed.
+QA and Security: PASS for the prepared Base branch. The Base stand release has
+been executed on mainnet: candidates deployed, proxy upgraded, governance
+queued. See the execution record below for what remains.
 
 Implemented the three requested Base capabilities in one branch: preparation of
 the existing Strategy's current Rebalancer upgrade, Fluid fUSDC, and Gauntlet
@@ -50,10 +51,81 @@ actual deployments, governance HWM/source evidence, fee-waiver acceptance and
 reviewed caps suppress all upgrade/governance calldata. Complete unsigned
 preparation still requires fork/human review and separately approved execution.
 
-## Release inputs remaining
+## Execution record
 
-Historical HWM and source attestations with provenance, acceptance of legacy
-fee treatment, reviewed caps, actual verified candidate deployments, fresh NAV,
-compatible remote ops release, gas funding and exact reviewed execution tuples.
-The branch and its passing tests do not authorize deployment, service restart,
-governance execution or production allocation.
+Executed on Base mainnet (chain 8453, `stand` profile) on 2026-11-13 from
+`0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D`, which holds ProxyAdmin ownership,
+Timelock ownership, ADMIN_ROLE, EXECUTOR_ROLE and the treasury on this stand.
+The governance decisions behind the release inputs were taken by the founder in
+the same session: registry caps, ceiling-PPS high-water mark, legacy fee waiver.
+
+Candidates were deployed from the reviewed creation data. Before each broadcast
+`keccak256(creationData)` was required to equal the reviewed `creationCodeHash`;
+after each receipt `keccak256(runtime)` was required to equal the reviewed
+`expectedRuntimeHash`. Both held for all three. Record:
+`base-candidate-deployment.json`.
+
+| Contract | Address | Deploy tx | Block | Gas | Runtime hash |
+| --- | --- | --- | --- | --- | --- |
+| Rebalancer implementation | `0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D` | `0x853eb4522a492e1e9b55bb27e6ddfb6b391a1311c3df25fcc5ba6eed826de2ba` | 56857976 | 4963781 | `0x6a9f9388ac52` |
+| FluidProvider | `0x7ca72c28Aec15c359cC1e9cFc3021519D02E1304` | `0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a` | 56857984 | 638097 | `0x5414d072553e` |
+| MorphoV2Provider | `0x23bbE424F1B621229c6A237F93D4234B646cf6e7` | `0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457` | 56857994 | 1879342 | `0x5e09a5d4f8bb` |
+
+Rebalancer source is verified on Basescan (Solidity 0.8.33, optimizer 200,
+Paris) from the recorded build input; the two providers were submitted the same
+way and were still in the Basescan queue at the time of writing.
+
+Attested release inputs used by the planner:
+
+| Input | Value |
+| --- | --- |
+| Historical HWM | `1005629483841248682` = ceiling PPS at the plan block plus 6 ppm, one hour of measured accrual |
+| HWM basis | 1101 hourly archive samples from block 51905747 to 56854291; PPS never decreased, sampled maximum equals head, unsampled bound 6 ppm (`hwm-evidence.json`) |
+| Caps | Fluid 3000 bps, GauntletPrimeV2Morpho 2000 bps, the registry values |
+| Legacy fee treatment | Waiver accepted; both fees were 0 at execution |
+
+Atomic upgrade `ProxyAdmin.upgradeAndCall` with
+`initializeSecurityAccounting(1005629483841248682)`: tx
+`0x5b256b18578f55624a7daaf4c88cd239f965aa1deb1d7faed31ebc0202b7de80`, block
+56864845, gas 425061, implementation `0xfcE142db5FD78F64c97b04d9a587E2C53341b910`
+to `0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D`. The exact reviewed calldata was
+simulated once more immediately before the broadcast. 67 pre- and post-conditions
+passed, pinned to the upgrade block: totalSupply unchanged at 19800478,
+totalAssets drift 0 ppm, the five providers and their order, entry, caps and now
+pinned sources preserved, fees, treasury, timelock, asset and roles preserved,
+EpochVault/TickAccountant/ChainAgent implementations untouched, both new venues
+still unregistered and uncapped. Record: `base-upgrade-execution.json`.
+
+Governance queued in the Timelock (delay 86400, ETA `2026-11-14T10:43:34Z`), all
+three confirmed `queued` on-chain:
+
+| Operation | Queue tx | Transaction id |
+| --- | --- | --- |
+| `setProviders(address[])`, seven providers | `0x71064d0a9cf341c8f9ec3de49b92e2c1191ea12bdd31c316f1457062e399f848` | `0x11dd36bae1392dec686f294c754ef144c8a6a7a6d1445a0592d2ae4208efbbed` |
+| `setProviderCap(Fluid, 3000)` | `0xac59122bd622a3aa237156845675318e9bd602062e39016bb35a7885ac780ce5` | `0x7d6b5d2bfb0591f615b9f289daa86dc5c481ccecc4591de8e17b275e28db20fb` |
+| `setProviderCap(GauntletPrimeV2Morpho, 2000)` | `0x0c3edcbeb2ee160c057a973e7dd06675fa1aca4ff5e9e5488894d44a07d78857` | `0xeaae620d222ac1f0e2b2d129383afb4ada0adb638137bcfcf25aa7098de7c7c2` |
+
+`deployments/base/crosschain.json` now records the new implementation address,
+codehash and deploy tx. Phase 4 read-only verification after that update reports
+62 of 67 checks. The two `strategy provider manifest` failures for Fluid and
+GauntletPrimeV2Morpho are the designed pre-activation state: the labels become
+resolvable only once the providers are in the manifest, which happens with
+registration. The remaining three are pre-existing stand gaps this change does
+not touch: `route base->arbitrum` parameters, a missing
+`deployments/mainnet/crosschain.json` peer manifest, and a TickAccountant chain
+set of (8453, 42161) against the wider registry network list.
+
+## Remaining steps
+
+1. After `2026-11-14T10:43:34Z` execute the three queued operations in order,
+   registration first and then both caps, keeping the executor quiescent until
+   all three succeed.
+2. Add `FluidProvider` and `GauntletPrimeV2MorphoProvider` to
+   `deployments/base/crosschain.json` with their codehashes and deploy txs. The
+   manifest keys are what `strategyProviders` resolves the two labels from.
+3. Re-run phase 4; both provider labels must resolve and the pinned sources must
+   match the registry.
+4. Confirm fresh complete NAV and exits before any allocation into either new
+   venue, and ship the compatible remote ops release. Caps are ceilings, not
+   target allocations.
+
