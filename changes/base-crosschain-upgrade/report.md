@@ -115,6 +115,17 @@ not touch: `route base->arbitrum` parameters, a missing
 `deployments/mainnet/crosschain.json` peer manifest, and a TickAccountant chain
 set of (8453, 42161) against the wider registry network list.
 
+Operator tooling is kept in the branch so the executed bytes are reproducible:
+`scripts/sample-base-pps-history.mjs` builds the HWM archive sample,
+`scripts/deploy-base-candidates.ts` broadcasts the reviewed creation data,
+`scripts/execute-base-upgrade.ts` runs the pre-flight, the upgrade and the
+queue, and `scripts/execute-base-governance.ts` executes the queued operations
+once the delay has elapsed. All of them read the committed bundle
+`base-upgrade-plan.json` and broadcast its calldata verbatim; none derives an
+address, a cap or a mark on its own. Each refuses to send unless the reviewed
+runtime and creation hashes still match, and each writes its own evidence file
+into this directory.
+
 ## Remaining steps
 
 1. After `2026-11-14T10:43:34Z` execute the three queued operations in order,
