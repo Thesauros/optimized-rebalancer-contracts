@@ -139,17 +139,40 @@ address, a cap or a mark on its own. Each refuses to send unless the reviewed
 runtime and creation hashes still match, and each writes its own evidence file
 into this directory.
 
+## Downstream consumers
+
+Checked after the upgrade. `thesauros-app` and `developer.thesauros.io` do not
+reference the stand at all. `developer-portal/lib/crosschain-config.mjs` pins
+`EpochVaultImplementation` and `EpochVaultLogic`, both untouched here, and reads
+providers dynamically, so nothing in it went stale; the two new venues were added
+to the `PROVIDERS` name map in `lib/insights.mjs` (commit `d173902`, branch
+`migration`, not pushed).
+
+`thesauros_monitoring_service` needed a real fix. `venueTypeFromIdentifier`
+matched `Morpho_V2_Provider` on the bare `morpho` substring and sent it through
+the V1.1 curator withdraw-queue read, which describes a different contract: the
+result would have been a plausible capacity figure computed from the wrong
+chain of contracts. Both families now have their own type and their own reader
+(commits `38b816e` and `8b5a671`, master). Live Base reads: Gauntlet USDC Prime
+294,272,016 USDC across 6 of 6 markets, Fluid fUSDC 732,983 USDC in the
+Liquidity layer against a 6,012,610 USDC fToken claim. The monitoring service
+has not been redeployed, so the running instance still carries the old mapping.
+
 ## Remaining steps
 
 1. After `2026-11-14T10:43:34Z` execute the three queued operations in order,
    registration first and then both caps, keeping the executor quiescent until
-   all three succeed.
-2. Add `FluidProvider` and `GauntletPrimeV2MorphoProvider` to
-   `deployments/base/crosschain.json` with their codehashes and deploy txs. The
-   manifest keys are what `strategyProviders` resolves the two labels from.
+   all three succeed. `scripts/execute-base-governance.ts` does this, asserts the
+   post-state and writes its own evidence file.
+2. The same script adds `FluidProvider` and `GauntletPrimeV2MorphoProvider` to
+   `deployments/base/crosschain.json` with their codehashes and deploy txs. Those
+   manifest keys are what `strategyProviders` resolves the two labels from, and
+   adding them before registration would make the ops check expect seven
+   providers on a chain that still has five.
 3. Re-run phase 4; both provider labels must resolve and the pinned sources must
    match the registry.
-4. Confirm fresh complete NAV and exits before any allocation into either new
-   venue, and ship the compatible remote ops release. Caps are ceilings, not
-   target allocations.
+4. Redeploy the monitoring service so the running instance picks up the new venue
+   families, and confirm fresh complete NAV and exits before any allocation into
+   either venue. NAV still needs `ops/.env.server`, which this checkout does not
+   have. Caps are ceilings, not target allocations.
 
