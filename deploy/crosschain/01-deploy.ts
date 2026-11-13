@@ -123,6 +123,9 @@ async function main() {
     await deploy('CompoundV3Provider', 'CompoundV3Provider', [pm]);
   }
   if (entry.strategy.fluidFToken) await deploy('FluidProvider', 'FluidProvider', [entry.strategy.fluidFToken]);
+  if (entry.strategy.morphoV2Vault) {
+    await deploy('GauntletPrimeV2MorphoProvider', 'MorphoV2Provider', [entry.strategy.morphoV2Vault]);
+  }
   const providers = strategyProviders(entry, m.contracts).map((p) => p.address); // entry provider first
   await deploy('StrategyImplementation', 'Rebalancer');
   if (!m.contracts.Strategy) {

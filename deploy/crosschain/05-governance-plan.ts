@@ -82,7 +82,18 @@ async function main() {
   }
 
   const labelled: Record<string, string> = Object.fromEntries(strategyProviders(entry, c).map((p) => [p.label, p.address]));
+  const expectedProviders = Object.values(labelled).map((p) => p.toLowerCase());
+  const currentProviders: string[] = await strategy.getProviders();
+  if (currentProviders.length !== expectedProviders.length ||
+      currentProviders.some((p, i) => p.toLowerCase() !== expectedProviders[i])) {
+    throw new Error(`${key}: provider registration differs from the manifest. Review an append-only provider migration before planning caps` +
+      (key === 'base' ? ' with npm run prepare:base-crosschain.' : '.'));
+  }
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
+    if (!labelled[label]) {
+      throw new Error(`${key}: ${label} has no deployed provider in the manifest. Prepare and review the provider expansion first` +
+        (key === 'base' ? ' with npm run prepare:base-crosschain; phase 5 does not deploy or register providers.' : '.'));
+    }
     const current = BigInt(await strategy.getProviderCap(labelled[label]));
     if (current !== BigInt(bps)) {
       // lowering (or setting from uncapped) is an ADMIN action; raising/removing needs the Timelock
