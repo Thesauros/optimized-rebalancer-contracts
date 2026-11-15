@@ -139,14 +139,48 @@ address, a cap or a mark on its own. Each refuses to send unless the reviewed
 runtime and creation hashes still match, and each writes its own evidence file
 into this directory.
 
+## Governance execution record
+
+The three queued operations were executed on 2026-11-15T14:52Z, inside the
+grace period that runs to 2026-11-28T10:43:34Z, in the reviewed order and from
+the same EOA. Each was simulated with `eth_call` immediately before it was sent,
+and the executor was left quiescent across all three.
+
+| Operation | Tx | Block | Gas |
+| --- | --- | --- | --- |
+| `setProviders(address[])`, seven providers | `0x7b92c38db9dc25ced0a5f4bdb4f2c000ba7353ae6f36d524ff0c984d03e127ee` | 57819761 | 349784 |
+| `setProviderCap(Fluid, 3000)` | `0xcc08b0451fcef55f1c114857c370b5bb6d4096f73b98df081d80d793be1db0ca` | 57819771 | 84541 |
+| `setProviderCap(GauntletPrimeV2Morpho, 2000)` | `0x7305965b74d240e2e6c87ac4258671206666b2e6d31e9546c2daf45128ef21d1` | 57819784 | 86929 |
+
+All three `queued` flags cleared, which is the Timelock's own record that they
+ran. 48 post-conditions passed, pinned to the last execution block: seven
+providers with the five legacy ones unchanged in place and order, entry still
+Aave uncapped, legacy caps still 0/5000/4000/3000/4000, Fluid 3000 and
+GauntletPrimeV2Morpho 2000, pinned sources matching the registry for both new
+venues and unchanged for the five legacy ones, high-water mark still
+`1005629483841248682`, fees 0/0, treasury, timelock, asset and ADMIN preserved,
+`providersHealthy` true, totalSupply unchanged at 19800478 and totalAssets drift
+0 ppm. Record: `base-governance-execution.json`.
+
+The same run added `FluidProvider` and `GauntletPrimeV2MorphoProvider` to
+`deployments/base/crosschain.json` with their codehashes and deploy txs.
+
+Phase 4 re-run afterwards reports 68 of 71 checks, up from 62 of 67 before
+registration. Both `strategy provider manifest` labels now resolve, both caps
+match the registry and both pinned sources match. The three remaining failures
+are the same pre-existing stand gaps recorded above and are unchanged by this
+release: `route base->arbitrum` parameters, the missing
+`deployments/mainnet/crosschain.json` peer manifest, and the TickAccountant
+chain set (8453, 42161).
+
 ## Downstream consumers
 
 Checked after the upgrade. `thesauros-app` and `developer.thesauros.io` do not
 reference the stand at all. `developer-portal/lib/crosschain-config.mjs` pins
 `EpochVaultImplementation` and `EpochVaultLogic`, both untouched here, and reads
 providers dynamically, so nothing in it went stale; the two new venues were added
-to the `PROVIDERS` name map in `lib/insights.mjs` (commit `d173902`, branch
-`migration`, not pushed).
+to the `PROVIDERS` name map in `lib/insights.mjs`, pushed to branch `migration`
+as `71ef66a` after a rebase over two commits that landed there meanwhile.
 
 `thesauros_monitoring_service` needed a real fix. `venueTypeFromIdentifier`
 matched `Morpho_V2_Provider` on the bare `morpho` substring and sent it through
@@ -160,19 +194,22 @@ has not been redeployed, so the running instance still carries the old mapping.
 
 ## Remaining steps
 
-1. After `2026-11-14T10:43:34Z` execute the three queued operations in order,
-   registration first and then both caps, keeping the executor quiescent until
-   all three succeed. `scripts/execute-base-governance.ts` does this, asserts the
-   post-state and writes its own evidence file.
-2. The same script adds `FluidProvider` and `GauntletPrimeV2MorphoProvider` to
-   `deployments/base/crosschain.json` with their codehashes and deploy txs. Those
-   manifest keys are what `strategyProviders` resolves the two labels from, and
-   adding them before registration would make the ops check expect seven
-   providers on a chain that still has five.
-3. Re-run phase 4; both provider labels must resolve and the pinned sources must
-   match the registry.
-4. Redeploy the monitoring service so the running instance picks up the new venue
-   families, and confirm fresh complete NAV and exits before any allocation into
-   either venue. NAV still needs `ops/.env.server`, which this checkout does not
-   have. Caps are ceilings, not target allocations.
+1. Redeploy the monitoring service. The fix is on `master` but the running
+   instance still carries the old venue mapping, so until it is redeployed a
+   position in Morpho Vault V2 would be measured with curator-vault math.
+2. Confirm fresh complete NAV and exits before any allocation into either new
+   venue. NAV still needs `ops/.env.server`, which this checkout does not have.
+   Caps are ceilings, not target allocations.
+3. Rotate governance off the single EOA before real TVL, per
+   `deploy/crosschain/06-rotate-governance.ts`. Phase 4 flags it as allowed for
+   the stand profile. The same EOA carries an EIP-7702 delegation to a
+   Safe-1.3.0-compatible implementation whose storage is empty and whose
+   `setup` simulation reverts, so the delegation is inert and the trust root is
+   one key; that deserves its own look.
+4. Pre-existing stand gaps surfaced by phase 4 and untouched by this release:
+   `route base->arbitrum` parameters, the missing
+   `deployments/mainnet/crosschain.json` peer manifest, and the TickAccountant
+   chain set (8453, 42161).
+5. Merge decision. The branch contains `origin/main` and `origin/dev` in full, so
+   either merge is a fast-forward.
 

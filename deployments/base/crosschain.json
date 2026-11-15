@@ -20,7 +20,9 @@
     "EpochVault": "0x33c4F5Efc49DCEa72bfA8Fe62e5Cb7B3226d7cB6",
     "ChainAgentImplementation": "0x6baa35EcB2d83c80654071362269206DdA2CdCB8",
     "ChainAgent": "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83",
-    "CctpV2Adapter": "0x26f9955157CeE02A39B61739abe7A520aB9868ea"
+    "CctpV2Adapter": "0x26f9955157CeE02A39B61739abe7A520aB9868ea",
+    "FluidProvider": "0x7ca72c28Aec15c359cC1e9cFc3021519D02E1304",
+    "GauntletPrimeV2MorphoProvider": "0x23bbE424F1B621229c6A237F93D4234B646cf6e7"
   },
   "codehashes": {
     "Timelock": "0xda940a86f89c948b586d044558be6d86b20b8f680866342938727bb0e837e636",
@@ -36,7 +38,9 @@
     "Strategy#proxy": "0xbd7e24648d71bb3e20be9b95bbc8a23e9a7c21250ca151553300e80c716475a9",
     "ChainAgent#proxy": "0x8ec89006d119dba0d4016d6d36e2e3eb9800ce3a9f2f0a9993eed176fd5f697b",
     "TickAccountant#proxy": "0xac20f891b8f7cea6405432024cef7eedfd337c437504a764864e430653c85560",
-    "EpochVault#proxy": "0x73f8294265e180a15740710aad6d7fb0f42f9a48c7d1c98461aaf0664bd51f42"
+    "EpochVault#proxy": "0x73f8294265e180a15740710aad6d7fb0f42f9a48c7d1c98461aaf0664bd51f42",
+    "FluidProvider": "0x5414d072553e7d04a8399198d870c156ea20d70cc117616c92bd255fd8b9cf14",
+    "GauntletPrimeV2MorphoProvider": "0x5e09a5d4f8bbb1e127df10d962d9dc8f335b8ab4cfec9476409b7b8bd93a5020"
   },
   "txs": {
     "Timelock": "0x87a85e763ffe28a4d0161eb98dd715313336aa483c49e4e75177738b1f1e03a1",
@@ -52,6 +56,8 @@
     "EpochVault": "0x00627c66e205f0adcf18923f960245f7ad6bd76f5d250a888b57e51b00af7e17",
     "ChainAgentImplementation": "0xa7b6e0c9ebe80a9d4e9384ec6d53f7f0ba68dc7c18e4aabe43076d37015873a9",
     "ChainAgent": "0x9ceb77956cb42e200bd18ab62992cd987618fce37dd0a77c937ac324c143c069",
-    "CctpV2Adapter": "0x9f7a3cd68861203ab3c865fbdc523a4cc4d75d1afaefdc2b1970e93fa0b5e873"
+    "CctpV2Adapter": "0x9f7a3cd68861203ab3c865fbdc523a4cc4d75d1afaefdc2b1970e93fa0b5e873",
+    "FluidProvider": "0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a",
+    "GauntletPrimeV2MorphoProvider": "0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457"
   }
 }
