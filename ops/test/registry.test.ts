@@ -42,7 +42,11 @@ test('caps name known providers and leave the entry provider uncapped', () => {
 
 test('strategy providers: entry first, fresh Compound second, fresh Fluid last, as phase 1 builds them', () => {
   const mainnet = NETWORKS.mainnet;
-  const fresh = { CompoundV3Provider: '0x00000000000000000000000000000000000000c3', FluidProvider: '0x00000000000000000000000000000000000000f1' };
+  const fresh = {
+    CompoundV3Provider: '0x00000000000000000000000000000000000000c3',
+    FluidProvider: '0x00000000000000000000000000000000000000f1',
+    GauntletPrimeV2MorphoProvider: '0x00000000000000000000000000000000000000a2',
+  };
   assert.deepEqual(
     strategyProviders(mainnet, fresh).map((p) => p.label),
     ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'Fluid'],
@@ -58,8 +62,29 @@ test('strategy providers: entry first, fresh Compound second, fresh Fluid last, 
     const deployed: Record<string, string> = {};
     if (net.strategy.comet) deployed.CompoundV3Provider = fresh.CompoundV3Provider;
     if (net.strategy.fluidFToken) deployed.FluidProvider = fresh.FluidProvider;
+    if (net.strategy.morphoV2Vault) deployed.GauntletPrimeV2MorphoProvider = fresh.GauntletPrimeV2MorphoProvider;
     assert.deepEqual(strategyProviders(net, deployed).map((p) => p.label).sort(), providerLabels(net).sort(), `${key}: every label is listed once`);
   }
+});
+
+test('Base expansion appends Fluid and V2 while retaining the five original venues', () => {
+  const base = NETWORKS.base;
+  const addresses = {
+    CompoundV3Provider: '0x0000000000000000000000000000000000000001',
+    FluidProvider: '0x0000000000000000000000000000000000000002',
+    GauntletPrimeV2MorphoProvider: '0x0000000000000000000000000000000000000003',
+  };
+  assert.deepEqual(strategyProviders(base, addresses).map((p) => p.label), [
+    'AaveV3', 'CompoundV3', 'GauntletCoreMorpho', 'SteakhouseHighYieldMorpho',
+    'SteakhousePrimeMorpho', 'Fluid', 'GauntletPrimeV2Morpho',
+  ]);
+  assert.equal(base.strategy.fluidFToken, '0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169');
+  assert.equal(base.strategy.morphoV2Vault, chainConfigs[8453].morphoVaults.find((v) => v.version === 2)!.vaultAddress);
+  assert.equal(base.strategy.capsBps.Fluid, 3_000);
+  assert.equal(base.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
+  assert.equal(NETWORKS.arbitrum.strategy.fluidFToken, undefined);
+  assert.equal(NETWORKS.arbitrum.strategy.morphoV2Vault, undefined);
+  assert.equal(NETWORKS.mainnet.strategy.morphoV2Vault, undefined);
 });
 
 test('the hub routes to every spoke and every spoke routes back to the hub', () => {

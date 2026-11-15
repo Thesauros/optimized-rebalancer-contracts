@@ -134,6 +134,42 @@ test('a healthy strategy is valued by convertToAssets alone', async () => {
   assert.ok(chain.calls.every((c) => c.blockTag === BLOCK), 'read at the reference block');
 });
 
+test('seven-provider valuation retains Fluid/V2 and excludes only a failed or retargeted source', async () => {
+  const providers = Array.from({ length: 7 }, (_, i) => addr(0x100 + i));
+  const sources = providers.map((_, i) => addr(0x200 + i));
+  const balances = providers.map((_, i) => BigInt(i + 1) * 100_000_000n);
+  const idle = 11_000_000n;
+  for (const failed of [5, 6]) { // Fluid and V2 are the appended sixth/seventh venues.
+    const chain = new FakeChain()
+      .add(USDC, ERC20, { balanceOf: () => idle })
+      .add(STRAT, STRATEGY, {
+        providersHealthy: () => false,
+        convertToAssets: () => { throw revert(PROVIDER_UNAVAILABLE); },
+        asset: () => USDC,
+        getProviders: () => providers,
+        getPinnedProviderSource: ([p]) => sources[providers.findIndex((a) => a.toLowerCase() === p.toLowerCase())],
+        getManagementFee: () => 0n,
+        getPerformanceFee: () => 0n,
+        getHighWaterMark: () => 10n ** 18n,
+        getLastTimestamp: () => GOLDEN.lastTimestamp,
+        totalSupply: () => SHARES,
+      });
+    for (const [i, provider] of providers.entries()) chain.add(provider, PROVIDER, {
+      getSource: () => failed === 6 && i === failed ? addr(0x999) : sources[i],
+      getDepositBalance: () => {
+        if (failed === 5 && i === failed) throw revert('0x');
+        return balances[i];
+      },
+    });
+    const value = await strategyShareValue(strategyOn(chain), SHARES, BLOCK);
+    assert.equal(value.healthy, false);
+    assert.equal(value.blocked, true, 'an incomplete seven-provider NAV cannot settle');
+    assert.equal(value.value, 2_811_000_000n - balances[failed]);
+    assert.deepEqual(value.readable!.failing, [providers[failed]]);
+    assert.ok(chain.calls.every((call) => call.blockTag === BLOCK));
+  }
+});
+
 test('a failing view on the current Rebalancer gives the readable lower bound instead of a revert', async () => {
   const chain = currentStrategy();
   const v = await strategyShareValue(strategyOn(chain), SHARES, BLOCK);
