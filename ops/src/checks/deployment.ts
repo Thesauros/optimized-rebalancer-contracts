@@ -3,9 +3,11 @@
  * the monitor. Read-only. Each check states what the registry and manifests
  * say must be true on-chain.
  */
-import { Contract, Provider, getAddress, id, keccak256 } from 'ethers';
+import { Contract, Provider, ZeroAddress, getAddress, id, keccak256 } from 'ethers';
 import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
-import { NETWORKS, NetworkEntry, routeId } from '../../../deploy/crosschain/registry';
+import { NETWORKS, NetworkEntry, routeId, strategyProviders } from '../../../deploy/crosschain/registry';
+
+const PROVIDER_SOURCE = ['function getSource(address asset, address vault, address user) view returns (address)'];
 
 const EXECUTOR_ROLE = id('EXECUTOR_ROLE');
 const GUARDIAN_ROLE = id('GUARDIAN_ROLE');
@@ -139,15 +141,37 @@ export async function checkDeployment(
   // strategy wiring and caps
   const strategy = new Contract(c.Strategy, STRATEGY, provider);
   const providers: string[] = await strategy.getProviders();
-  const expected = entry.strategy.reusedProviders.map((p) => p.address);
-  if (c.CompoundV3Provider) expected.splice(1, 0, c.CompoundV3Provider);
+  const listed = strategyProviders(entry, c);
+  const expected = listed.map((p) => p.address);
   check(providers.length === expected.length && providers.every((p, i) => eq(p, expected[i])), 'strategy providers', providers.join(','));
   check(eq(await strategy.getEntryProvider(), expected[0]), 'strategy entry provider');
-  const labelled: Record<string, string> = Object.fromEntries(entry.strategy.reusedProviders.map((p) => [p.label, p.address]));
-  if (c.CompoundV3Provider) labelled.CompoundV3 = c.CompoundV3Provider;
+  const labelled: Record<string, string> = Object.fromEntries(listed.map((p) => [p.label, p.address]));
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
+    if (!labelled[label]) {
+      check(false, `strategy provider manifest ${label}`, 'missing configured provider');
+      continue;
+    }
     const cap = BigInt(await strategy.getProviderCap(labelled[label]));
     check(cap === BigInt(bps), `strategy cap ${label}`, `${cap} bps`);
+  }
+  // Immutable sources and runtime hashes are independent checks: a matching list
+  // alone must not bless a different market or provider implementation.
+  for (const [label, contractKey, source] of [
+    ['Fluid', 'FluidProvider', entry.strategy.fluidFToken],
+    ['GauntletPrimeV2Morpho', 'GauntletPrimeV2MorphoProvider', entry.strategy.morphoV2Vault],
+  ] as const) {
+    if (!source) continue;
+    if (!labelled[label]) {
+      if (!(label in entry.strategy.capsBps)) check(false, `strategy provider manifest ${label}`, 'missing configured provider');
+      continue;
+    }
+    const actual = await new Contract(labelled[label], PROVIDER_SOURCE, provider).getSource(entry.usdc, c.Strategy, ZeroAddress);
+    check(eq(actual, source), `strategy source ${label}`, `${actual}; expected ${source}`);
+    const expectedHash = m.codehashes[contractKey];
+    const code = await provider.getCode(labelled[label]);
+    const hash = keccak256(code);
+    check(!!expectedHash && code !== '0x' && eq(hash, expectedHash), `strategy provider code ${label}`,
+      !expectedHash ? 'missing pinned runtime hash' : `${hash}; expected ${expectedHash}`);
   }
   if (c.ProviderManager) {
     const pmgr = new Contract(c.ProviderManager, OWNABLE, provider);

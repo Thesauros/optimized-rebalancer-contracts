@@ -47,6 +47,10 @@ export interface NetworkEntry {
     reusedProviders: { label: string; address: string }[];
     /** Compound V3 Comet for USDC; a fresh ProviderManager + provider are deployed for it. */
     comet?: string;
+    /** Immutable Fluid fToken source for a separately deployed provider. */
+    fluidFToken?: string;
+    /** Immutable Morpho V2 vault source for a separately deployed provider. */
+    morphoV2Vault?: string;
     /**
      * Per-provider cap in bps of strategy assets; label -> bps; 0 or missing = uncapped.
      * The entry provider (first reused provider) must stay uncapped: every deposit
@@ -118,12 +122,16 @@ export const NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1' },
       ],
       comet: '0xb125E6687d4313864e53df431d5425969c15Eb2F',
+      fluidFToken: '0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169',
+      morphoV2Vault: '0x050cE30b927Da55177A4914EC73480238BAD56f0',
       capsBps: {
         AaveV3: 0,
         CompoundV3: 5_000,
         GauntletCoreMorpho: 4_000,
         SteakhouseHighYieldMorpho: 3_000,
         SteakhousePrimeMorpho: 4_000,
+        Fluid: 3_000,
+        GauntletPrimeV2Morpho: 2_000,
       },
     },
     routes: { '42161': DEFAULT_ROUTE },
@@ -320,6 +328,19 @@ export function hubEntry(): [string, NetworkEntry] {
   const hubs = Object.entries(NETWORKS).filter(([, n]) => n.role === 'hub');
   if (hubs.length !== 1) throw new Error('registry must contain exactly one hub');
   return hubs[0];
+}
+
+/** Provider order used by the deployed strategies; fresh addresses come from the manifest. */
+export function strategyProviders(entry: NetworkEntry, contracts: Record<string, string>): { label: string; address: string }[] {
+  const [first, ...rest] = entry.strategy.reusedProviders;
+  const fresh = (label: string, key: string) => (contracts[key] ? [{ label, address: contracts[key] }] : []);
+  return [
+    first,
+    ...(entry.strategy.comet ? fresh('CompoundV3', 'CompoundV3Provider') : []),
+    ...rest,
+    ...(entry.strategy.fluidFToken ? fresh('Fluid', 'FluidProvider') : []),
+    ...(entry.strategy.morphoV2Vault ? fresh('GauntletPrimeV2Morpho', 'GauntletPrimeV2MorphoProvider') : []),
+  ];
 }
 
 export function entryByChainId(chainId: bigint): [string, NetworkEntry] {
