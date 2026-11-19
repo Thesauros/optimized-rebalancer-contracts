@@ -22,6 +22,16 @@ the `monitor` service, with `--no-deps --no-build`. Preserve the old monitor
 image and service configuration for rollback. The operators container must keep
 its original image, start time and process; the allocator is a separate service.
 
+The runtime source commit is `6db15ffa06324efd46cc9a81c3c32cb204d74425`; its
+derived image is
+`sha256:73ed7b1e74ad456770c99e368b2e3e504ca22f5cd9a3989e66f7eebab47ef3cd`.
+The following configuration commit pins this immutable image only in the
+`monitor` section of the original `ops/docker-compose.yml`, with
+`pull_policy: never`. The installed watchdog reads that same file, so its
+automatic recreation keeps the corrected monitor. Keep this pin in the
+installed Compose configuration as well as Git; an ad-hoc CLI override would
+be lost on automatic recovery.
+
 Do not substitute a full build from current main: it also contains unrelated
 network, dependency and operator changes. Before building, tag the inspected
 original image as `thesauros/crosschain-ops:monitor-baseline-source-20261119`,

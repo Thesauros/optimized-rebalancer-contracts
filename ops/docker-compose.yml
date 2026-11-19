@@ -74,6 +74,8 @@ services:
   # read-only services: no keys in their environment
   monitor:
     <<: *common
+    image: sha256:73ed7b1e74ad456770c99e368b2e3e504ca22f5cd9a3989e66f7eebab47ef3cd
+    pull_policy: never
     environment:
       RPC_REQUESTS_PER_SECOND: "${MONITOR_RPC_REQUESTS_PER_SECOND:-5}"
       RPC_COMPUTE_UNITS_PER_SECOND: "${MONITOR_RPC_COMPUTE_UNITS_PER_SECOND:-12}"
