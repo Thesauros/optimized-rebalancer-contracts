@@ -166,12 +166,19 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484' },
       ],
       comet: '0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf',
+      // Official Fluid Arbitrum deployment: fluid-contracts-public/deployments/
+      // arbitrum/fToken_fUSDC.json. Verified on-chain 2026-11-22: symbol fUSDC,
+      // asset 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 (this spoke's usdc),
+      // Liquidity layer 0x52Aa899454998Be5b000Ad077a46Bbe360F4e497, minDeposit 2,
+      // totalAssets 59,468,106 USDC.
+      fluidFToken: '0x1A996cb54bb95462040408C06122D45D6Cdb6096',
       capsBps: {
         AaveV3: 0,
         CompoundV3: 5_000,
         GauntletCoreMorpho: 4_000,
         SteakhouseHighYieldMorpho: 3_000,
         SteakhousePrimeMorpho: 4_000,
+        Fluid: 3_000,
       },
     },
     routes: { '8453': DEFAULT_ROUTE },
@@ -192,24 +199,45 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     strategy: {
       name: 'Thesauros Cross-Chain Strategy (Ethereum)',
       symbol: 'tcsUSDC-eth',
-      // Compound and Morpho (TS-419), Fluid (TS-420). The Morpho providers are the
-      // ones the Ethereum vault already runs: MetaMorpho V1.0, the version
-      // GauntletCore uses on Base, with the same MorphoProvider code. Steakhouse is
-      // the entry provider as the largest of the three.
+      // Compound and Morpho (TS-419), Fluid (TS-420), Aave (provider parity). The
+      // Morpho providers are the ones the Ethereum vault already runs: MetaMorpho
+      // V1.0, the version GauntletCore uses on Base, with the same MorphoProvider
+      // code. Steakhouse is the entry provider as the largest of the three.
       reusedProviders: [
         { label: 'SteakhouseMorpho', address: '0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622' },
         { label: 'GauntletPrimeMorpho', address: '0xBC64abbCa87289746f2B01C8ab02A78c9fC92B89' },
         { label: 'SmokehouseMorpho', address: '0x2fe36048F394A0732E8F28C43DbF351F0253C6E5' },
+        // The standalone Ethereum vault already runs this provider. AaveV3Provider
+        // holds no vault binding - its only immutable is the PoolAddressesProvider
+        // (0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e) and every method takes the
+        // vault as an argument - so the cross-chain Strategy reuses it as-is, the
+        // way Base and Arbitrum do. Listed last so Steakhouse stays the entry
+        // provider. Verified on mainnet 2026-11-22: reserve ACTIVE, not frozen,
+        // aToken 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c.
+        { label: 'AaveV3', address: '0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941' },
       ],
       comet: '0xc3d688B66703497DAA19211EEdff47f25384cdc3',
       // fUSDC: an immutable fToken (no proxy) over the Fluid Liquidity layer
       fluidFToken: '0x9Fb7b4477576Fe5B32be4C1843aFB1e55F251B33',
+      // Gauntlet USDC Prime (gtusdcp) on Morpho Vault V2 - the Ethereum counterpart
+      // of the vault the Base spoke already runs, listed as GauntletPrimeV2 in
+      // utils/constants.ts. Verified on mainnet 2026-11-22: runtime 21808 bytes,
+      // identical to Base's 0x050cE30b...; asset is this spoke's USDC; both
+      // MorphoV2Provider constructor gates pass (accrueInterestView, adaptersLength
+      // = 1); same Gauntlet curator 0x9E33faAE38ff641094fa68c65c2cE600b3410585 as
+      // Base; totalAssets 103,247,937 USDC.
+      morphoV2Vault: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
       capsBps: {
         SteakhouseMorpho: 0,
         CompoundV3: 5_000,
         GauntletPrimeMorpho: 4_000,
         SmokehouseMorpho: 3_000,
         Fluid: 3_000,
+        // 0 = uncapped, matching how AaveV3 is capped on Base and Arbitrum, where
+        // it is the entry provider. Here it is not, so this is the one cap on this
+        // spoke that is a risk decision rather than a structural requirement.
+        AaveV3: 0,
+        GauntletPrimeV2Morpho: 2_000,
       },
     },
     routes: { '8453': DEFAULT_ROUTE },

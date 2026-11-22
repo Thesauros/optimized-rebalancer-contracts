@@ -40,7 +40,7 @@ test('caps name known providers and leave the entry provider uncapped', () => {
   }
 });
 
-test('strategy providers: entry first, fresh Compound second, fresh Fluid last, as phase 1 builds them', () => {
+test('strategy providers: entry first, fresh Compound second, fresh Fluid and V2 last, as phase 1 builds them', () => {
   const mainnet = NETWORKS.mainnet;
   const fresh = {
     CompoundV3Provider: '0x00000000000000000000000000000000000000c3',
@@ -49,12 +49,12 @@ test('strategy providers: entry first, fresh Compound second, fresh Fluid last, 
   };
   assert.deepEqual(
     strategyProviders(mainnet, fresh).map((p) => p.label),
-    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'Fluid'],
+    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'AaveV3', 'Fluid', 'GauntletPrimeV2Morpho'],
   );
-  assert.equal(strategyProviders(mainnet, fresh).at(-1)!.address, fresh.FluidProvider);
+  assert.equal(strategyProviders(mainnet, fresh).at(-1)!.address, fresh.GauntletPrimeV2MorphoProvider);
   assert.deepEqual(
     strategyProviders(mainnet, { CompoundV3Provider: fresh.CompoundV3Provider }).map((p) => p.label),
-    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho'],
+    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'AaveV3'],
     'a fresh provider not deployed yet is absent',
   );
   for (const [key, net] of Object.entries(NETWORKS)) {
@@ -82,9 +82,29 @@ test('Base expansion appends Fluid and V2 while retaining the five original venu
   assert.equal(base.strategy.morphoV2Vault, chainConfigs[8453].morphoVaults.find((v) => v.version === 2)!.vaultAddress);
   assert.equal(base.strategy.capsBps.Fluid, 3_000);
   assert.equal(base.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
-  assert.equal(NETWORKS.arbitrum.strategy.fluidFToken, undefined);
-  assert.equal(NETWORKS.arbitrum.strategy.morphoV2Vault, undefined);
-  assert.equal(NETWORKS.mainnet.strategy.morphoV2Vault, undefined);
+});
+
+test('Arbitrum expands with Fluid; Ethereum expands with Aave, Fluid and V2', () => {
+  const arbitrum = NETWORKS.arbitrum;
+  // Official Fluid Arbitrum fUSDC. Its asset() must be this spoke's USDC, otherwise
+  // FluidProvider._checkVault reverts AssetMismatch on every action.
+  assert.equal(arbitrum.strategy.fluidFToken, '0x1A996cb54bb95462040408C06122D45D6Cdb6096');
+  assert.equal(arbitrum.strategy.capsBps.Fluid, 3_000);
+  // No Morpho Vault V2 source is published for Arbitrum: utils/constants.ts lists
+  // only V1 vaults there, so morphoV2Vault must stay unset rather than point at a
+  // V1 vault, which the MorphoV2Provider constructor gates would reject anyway.
+  assert.equal(arbitrum.strategy.morphoV2Vault, undefined);
+  assert.equal(chainConfigs[42161].morphoVaults.some((v) => v.version === 2), false);
+
+  const mainnet = NETWORKS.mainnet;
+  assert.equal(mainnet.strategy.morphoV2Vault, chainConfigs[1].morphoVaults.find((v) => v.version === 2)!.vaultAddress);
+  assert.equal(mainnet.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
+  // Provider parity with the standalone Ethereum vault, which already runs this
+  // AaveV3Provider. It is appended, so Steakhouse stays the entry provider.
+  const aave = mainnet.strategy.reusedProviders.find((p) => p.label === 'AaveV3');
+  assert.ok(aave, 'mainnet: AaveV3 is registered');
+  assert.equal(mainnet.strategy.reusedProviders[0].label, 'SteakhouseMorpho', 'the entry provider is unchanged');
+  assert.equal(aave!.address, '0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941');
 });
 
 test('the hub routes to every spoke and every spoke routes back to the hub', () => {

@@ -9,16 +9,17 @@ import {ProviderManager} from "../../contracts/utils/ProviderManager.sol";
 import {VaultFactory} from "../../contracts/utils/VaultFactory.sol";
 import {CompoundV3Provider} from "../../contracts/providers/CompoundV3Provider.sol";
 import {FluidProvider} from "../../contracts/providers/FluidProvider.sol";
+import {MorphoV2Provider} from "../../contracts/providers/MorphoV2Provider.sol";
 import {Test} from "forge-std/Test.sol";
 import {ForkPins} from "./ForkPins.sol";
 
 /**
  * The cross-chain strategy on Ethereum exactly as deploy/crosschain/01-deploy.ts
  * builds it from the `mainnet` registry entry: the Morpho providers the Ethereum
- * vault already runs, reused at their deployed addresses, plus a fresh
- * ProviderManager and CompoundV3Provider for Comet cUSDCv3 and a fresh
- * FluidProvider for fUSDC, with the registry caps. Needs ETHEREUM_RPC_URL;
- * skipped without it.
+ * vault already runs plus that vault's AaveV3Provider, all reused at their deployed
+ * addresses, plus a fresh ProviderManager and CompoundV3Provider for Comet cUSDCv3,
+ * a fresh FluidProvider for fUSDC and a fresh MorphoV2Provider for Gauntlet USDC
+ * Prime, with the registry caps. Needs ETHEREUM_RPC_URL; skipped without it.
  */
 contract CrossChainStrategyEthereumForkTest is Test {
     uint256 internal constant ONE = 1e6;
@@ -27,11 +28,14 @@ contract CrossChainStrategyEthereumForkTest is Test {
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address internal constant COMET = 0xc3d688B66703497DAA19211EEdff47f25384cdc3;
     address internal constant FUSDC = 0x9Fb7b4477576Fe5B32be4C1843aFB1e55F251B33;
+    address internal constant AAVE_POOL = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
+    address internal constant GAUNTLET_PRIME_V2_VAULT = 0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0;
 
     // registry `mainnet.strategy.reusedProviders`, entry provider first
     IProvider internal constant STEAKHOUSE = IProvider(0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622);
     IProvider internal constant GAUNTLET_PRIME = IProvider(0xBC64abbCa87289746f2B01C8ab02A78c9fC92B89);
     IProvider internal constant SMOKEHOUSE = IProvider(0x2fe36048F394A0732E8F28C43DbF351F0253C6E5);
+    IProvider internal constant AAVE = IProvider(0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941);
     // the MetaMorpho V1.0 vaults behind them
     address internal constant STEAKHOUSE_VAULT = 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB;
     address internal constant GAUNTLET_PRIME_VAULT = 0xdd0f28e19C1780eb6396170735D45153D261490d;
@@ -42,6 +46,7 @@ contract CrossChainStrategyEthereumForkTest is Test {
     uint256 internal constant CAP_GAUNTLET_PRIME = 4_000;
     uint256 internal constant CAP_SMOKEHOUSE = 3_000;
     uint256 internal constant CAP_FLUID = 3_000;
+    uint256 internal constant CAP_GAUNTLET_PRIME_V2 = 2_000;
 
     address internal agent = makeAddr("chainAgent");
     address internal executor = makeAddr("executor");
@@ -50,6 +55,7 @@ contract CrossChainStrategyEthereumForkTest is Test {
     IERC20Metadata internal usdc = IERC20Metadata(USDC);
     CompoundV3Provider internal compound;
     FluidProvider internal fluid;
+    MorphoV2Provider internal morphoV2;
     Rebalancer internal strategy;
     bool internal forked;
 
@@ -60,17 +66,20 @@ contract CrossChainStrategyEthereumForkTest is Test {
         forked = true;
 
         // 01-deploy.ts (registry strategyProviders): entry, fresh Compound, the other
-        // reused providers, fresh Fluid
+        // reused providers, fresh Fluid, fresh Morpho V2
         ProviderManager pm = new ProviderManager(address(this));
         pm.setYieldToken("Compound_V3_Provider", USDC, COMET);
         compound = new CompoundV3Provider(address(pm));
         fluid = new FluidProvider(FUSDC);
-        IProvider[] memory providers = new IProvider[](5);
+        morphoV2 = new MorphoV2Provider(GAUNTLET_PRIME_V2_VAULT);
+        IProvider[] memory providers = new IProvider[](7);
         providers[0] = STEAKHOUSE;
         providers[1] = IProvider(address(compound));
         providers[2] = GAUNTLET_PRIME;
         providers[3] = SMOKEHOUSE;
-        providers[4] = IProvider(address(fluid));
+        providers[4] = AAVE;
+        providers[5] = IProvider(address(fluid));
+        providers[6] = IProvider(address(morphoV2));
 
         // proxy created and initialized atomically by VaultFactory, seeded with 1 USDC
         Rebalancer implementation = new Rebalancer();
@@ -97,6 +106,7 @@ contract CrossChainStrategyEthereumForkTest is Test {
         strategy.setProviderCap(GAUNTLET_PRIME, CAP_GAUNTLET_PRIME);
         strategy.setProviderCap(SMOKEHOUSE, CAP_SMOKEHOUSE);
         strategy.setProviderCap(IProvider(address(fluid)), CAP_FLUID);
+        strategy.setProviderCap(IProvider(address(morphoV2)), CAP_GAUNTLET_PRIME_V2);
         strategy.grantRole(strategy.EXECUTOR_ROLE(), executor);
     }
 
@@ -133,26 +143,43 @@ contract CrossChainStrategyEthereumForkTest is Test {
         assertGt(compound.getDepositRate(strategy), 0, "Comet rate readable");
         assertEq(fluid.getSource(USDC, address(0), address(0)), FUSDC, "Fluid resolves fUSDC");
         assertGt(fluid.getDepositRate(strategy), 0, "Fluid rate readable");
+        // The reused AaveV3Provider of the standalone Ethereum vault: no vault binding,
+        // its only immutable is the PoolAddressesProvider, so the cross-chain Strategy
+        // may reuse it. Its source is the Aave Pool, which is what the Strategy approves.
+        assertGt(address(AAVE).code.length, 0, "Aave provider deployed");
+        assertEq(AAVE.getIdentifier(), "Aave_V3_Provider");
+        assertEq(AAVE.getSource(USDC, address(0), address(0)), AAVE_POOL, "Aave resolves the Pool");
+        assertGt(AAVE.getDepositRate(strategy), 0, "Aave rate readable");
+        // Fresh Morpho Vault V2 over Gauntlet USDC Prime
+        assertEq(morphoV2.getSource(USDC, address(0), address(0)), GAUNTLET_PRIME_V2_VAULT, "V2 resolves gtusdcp");
+        assertEq(morphoV2.getIdentifier(), "Morpho_V2_Provider");
+        assertGt(morphoV2.getDepositRate(strategy), 0, "V2 rate readable");
     }
 
     function testWiringMatchesTheRegistry() public view {
         if (!forked) return;
         IProvider[] memory listed = strategy.getProviders();
-        assertEq(listed.length, 5);
+        assertEq(listed.length, 7);
         assertEq(address(listed[0]), address(STEAKHOUSE));
         assertEq(address(listed[1]), address(compound));
         assertEq(address(listed[2]), address(GAUNTLET_PRIME));
         assertEq(address(listed[3]), address(SMOKEHOUSE));
-        assertEq(address(listed[4]), address(fluid));
+        assertEq(address(listed[4]), address(AAVE));
+        assertEq(address(listed[5]), address(fluid));
+        assertEq(address(listed[6]), address(morphoV2));
         assertEq(address(strategy.getEntryProvider()), address(STEAKHOUSE), "entry provider");
         assertEq(strategy.getProviderCap(STEAKHOUSE), 0, "entry stays uncapped");
         assertEq(strategy.getProviderCap(IProvider(address(compound))), CAP_COMPOUND);
         assertEq(strategy.getProviderCap(GAUNTLET_PRIME), CAP_GAUNTLET_PRIME);
         assertEq(strategy.getProviderCap(SMOKEHOUSE), CAP_SMOKEHOUSE);
+        assertEq(strategy.getProviderCap(AAVE), 0, "Aave is uncapped as on Base and Arbitrum");
         assertEq(strategy.getProviderCap(IProvider(address(fluid))), CAP_FLUID);
+        assertEq(strategy.getProviderCap(IProvider(address(morphoV2))), CAP_GAUNTLET_PRIME_V2);
         assertEq(strategy.getPinnedProviderSource(STEAKHOUSE), STEAKHOUSE_VAULT, "source pinned");
         assertEq(strategy.getPinnedProviderSource(IProvider(address(compound))), COMET);
+        assertEq(strategy.getPinnedProviderSource(AAVE), AAVE_POOL);
         assertEq(strategy.getPinnedProviderSource(IProvider(address(fluid))), FUSDC);
+        assertEq(strategy.getPinnedProviderSource(IProvider(address(morphoV2))), GAUNTLET_PRIME_V2_VAULT);
         assertTrue(strategy.providersHealthy(), "every provider view answers");
         assertApproxEqAbs(STEAKHOUSE.getDepositBalance(address(strategy), strategy), ONE, 1, "seed at the entry provider");
     }
@@ -162,24 +189,29 @@ contract CrossChainStrategyEthereumForkTest is Test {
         _deposit(DEPOSIT);
         assertApproxEqAbs(STEAKHOUSE.getDepositBalance(address(strategy), strategy), DEPOSIT + ONE, 2, "deposit lands at the entry");
 
-        // spread as the executor would: 30% / 25% / 15% / 20%, each under its cap
-        _move(STEAKHOUSE, IProvider(address(compound)), 3_000e6);
-        _move(STEAKHOUSE, GAUNTLET_PRIME, 2_500e6);
-        _move(STEAKHOUSE, SMOKEHOUSE, 1_500e6);
-        _move(STEAKHOUSE, IProvider(address(fluid)), 2_000e6);
-        assertApproxEqAbs(compound.getDepositBalance(address(strategy), strategy), 3_000e6, 2);
-        assertApproxEqAbs(GAUNTLET_PRIME.getDepositBalance(address(strategy), strategy), 2_500e6, 2);
-        assertApproxEqAbs(SMOKEHOUSE.getDepositBalance(address(strategy), strategy), 1_500e6, 2);
-        assertApproxEqAbs(fluid.getDepositBalance(address(strategy), strategy), 2_000e6, 2);
-        assertApproxEqAbs(strategy.totalAssets(), DEPOSIT + ONE, 10, "rebalancing keeps NAV");
+        // spread as the executor would, each leg under its cap: Compound 20%,
+        // GauntletPrime 20%, Smokehouse 10%, Fluid 15%, Morpho V2 10%, Aave 15%
+        _move(STEAKHOUSE, IProvider(address(compound)), 2_000e6);
+        _move(STEAKHOUSE, GAUNTLET_PRIME, 2_000e6);
+        _move(STEAKHOUSE, SMOKEHOUSE, 1_000e6);
+        _move(STEAKHOUSE, IProvider(address(fluid)), 1_500e6);
+        _move(STEAKHOUSE, IProvider(address(morphoV2)), 1_000e6);
+        _move(STEAKHOUSE, AAVE, 1_500e6);
+        assertApproxEqAbs(compound.getDepositBalance(address(strategy), strategy), 2_000e6, 2);
+        assertApproxEqAbs(GAUNTLET_PRIME.getDepositBalance(address(strategy), strategy), 2_000e6, 2);
+        assertApproxEqAbs(SMOKEHOUSE.getDepositBalance(address(strategy), strategy), 1_000e6, 2);
+        assertApproxEqAbs(fluid.getDepositBalance(address(strategy), strategy), 1_500e6, 2);
+        assertApproxEqAbs(morphoV2.getDepositBalance(address(strategy), strategy), 1_000e6, 2);
+        assertApproxEqAbs(AAVE.getDepositBalance(address(strategy), strategy), 1_500e6, 2);
+        assertApproxEqAbs(strategy.totalAssets(), DEPOSIT + ONE, 14, "rebalancing keeps NAV");
 
-        // the agent deallocates everything: liquidity comes from all five providers
+        // the agent deallocates everything: liquidity comes from all seven providers
         skip(1 hours);
         vm.roll(block.number + 300);
         uint256 shares = strategy.balanceOf(agent);
         vm.prank(agent);
         uint256 assets = strategy.redeem(shares, agent, agent);
-        assertGe(assets, DEPOSIT - 10, "principal back (providers round by a unit each)");
+        assertGe(assets, DEPOSIT - 14, "principal back (providers round by a unit each)");
         assertEq(usdc.balanceOf(agent), assets);
         assertEq(strategy.balanceOf(agent), 0);
     }
@@ -201,6 +233,12 @@ contract CrossChainStrategyEthereumForkTest is Test {
         destinations[0] = IProvider(address(fluid));
         vm.prank(executor);
         vm.expectRevert(abi.encodeWithSelector(IRebalancer.ProviderCapExceeded.selector, address(fluid)));
+        strategy.rebalance(amounts, sources, destinations);
+
+        amounts[0] = 2_500e6; // 25% into Morpho V2, cap 20%
+        destinations[0] = IProvider(address(morphoV2));
+        vm.prank(executor);
+        vm.expectRevert(abi.encodeWithSelector(IRebalancer.ProviderCapExceeded.selector, address(morphoV2)));
         strategy.rebalance(amounts, sources, destinations);
     }
 }
