@@ -43,6 +43,16 @@ The three Ethereum and Arbitrum files together reported 24 passed in one run.
 unaffected: it replays a pinned pre-upgrade block, so the executed Base upgrade
 does not invalidate it.
 
+The aggregate run, `forge test --match-path 'test/forking/*'`, finishes
+**18 suites, 85 passed, 0 failed, 2 skipped**. Before this change it was
+17 suites with 1 failed: `NewVaultWithdrawTest.testWithdrawTrace` read `VAULT`
+and `DEPLOYER_ADDR` through `vm.envAddress`, which has no default, so an operator
+trace committed in `63d39da` had been failing the whole suite since, unseen
+because CI excludes forking tests. It now skips when either address is absent
+and still runs as before when both are given. The two remaining skips are that
+file and `CrossChainStrategyMonadForkTest`, both intentional and both reported
+as skips rather than as vacuous passes.
+
 `CrossChainStrategyMonadForkTest` needs a distinct invocation because forge
 1.10.0 will not create a Monad fork inside an Ethereum EVM:
 
