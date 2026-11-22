@@ -199,18 +199,57 @@ of the Base expansion that was executed on-chain on 2026-11-15: an updated
 `base-candidate-deployment.json`, `base-upgrade-plan.json` and
 `hwm-evidence.json` under `changes/base-crosschain-upgrade/`.
 
-So on `main`, and therefore on this branch, the Base manifest does not describe
-the live Base strategy. The chain runs seven providers including Fluid and
-GauntletPrimeV2Morpho; the manifest on `main` lists neither, and there is no
-`deployments/base/GauntletPrimeV2MorphoProvider.json`. That is the origin of one
+The divergence is concrete. Read from the Base Strategy proxy's EIP-1967
+implementation slot, the live implementation is
+`0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D`, 22612 bytes, codehash
+`0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b`, and
+`getHighWaterMark()` answers `1006550122649079880`. The manifest on `main`
+records `StrategyImplementation` as `0xfcE142db5FD78F64c97b04d9a587E2C53341b910`
+and lists only `CompoundV3Provider` and `ProviderManager` — no Fluid, no
+GauntletPrimeV2Morpho. The manifest on `feat/base-crosschain-upgrade` records
+`0x6909E365…` and both providers, which is what the chain says.
+
+So on `main`, and therefore on this branch, phase 4 and the monitor read Base
+against a manifest that does not describe the chain. That is the origin of one
 of the three open phase-4 failures, and it is inherited rather than introduced
 here. Phase 4 cannot be brought to green on this branch until that branch is
 merged, which is a separate integration decision.
 
-It also means the Base V2 provider is live but unfunded: its
-`getDepositBalance` against the Base strategy reads 0, so the position the
-monitor would misvalue with V1.1 curator math is currently empty. The
-redeployment is still required before any capital is allocated there.
+The Base V2 provider is live but unfunded: `getDepositBalance` for
+`0x23bbE424F1B621229c6A237F93D4234B646cf6e7` against the Base strategy reads 0.
+The monitor redeployment is still required before capital is allocated there,
+but nothing is currently misvalued.
+
+## The Arbitrum spoke has not been upgraded
+
+Read from the Arbitrum Strategy proxy `0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71`:
+implementation slot gives `0x84163d2d9CFfe0e53078C3Cd02ee3db1975117d5`, which
+matches its manifest, 18928 bytes, codehash
+`0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3`.
+`getHighWaterMark()` **reverts**, so this implementation predates security
+accounting. Base's answers. The two spokes are on different implementations.
+
+Consequence for registering Fluid on Arbitrum: it is not a two-call Timelock
+sequence. Following the path Base took means deploying a current implementation,
+`upgradeAndCall` through the spoke ProxyAdmin
+`0x1565857f8bfF76F1452e32d479D174b55DFc2bBe` to run
+`initializeSecurityAccounting`, and only then `setProviders` with six providers
+and `setProviderCap` for Fluid. Whether the upgrade belongs in the same
+governance action as the Fluid registration is a scope decision, not an
+implementation detail.
+
+Both spokes' Timelocks are owned by the deployer EOA
+`0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D` with `delay()` 86400, and the
+ProxyAdmin differs per chain (Base `0xDb00Ea4B591aA220bf97e16D4c965196EC223e0e`,
+Arbitrum `0x1565857f8bfF76F1452e32d479D174b55DFc2bBe`), so no single address
+drives governance across the stand.
+
+Live provider sets read from both spokes, for reference:
+
+| Spoke | Providers | Caps (bps) |
+|---|---|---|
+| Base `0x4cBb40…1F33` | AaveV3, CompoundV3, GauntletCoreMorpho, SteakhouseHighYield, SteakhousePrime, Fluid, MorphoV2 | 0, 5000, 4000, 3000, 4000, 3000, 2000 |
+| Arbitrum `0xD211Bf…2B71` | AaveV3, CompoundV3, GauntletCoreMorpho, SteakhouseHighYield, SteakhousePrime | 0, 5000, 4000, 3000, 4000 |
 
 ## Verification limits in this environment
 
