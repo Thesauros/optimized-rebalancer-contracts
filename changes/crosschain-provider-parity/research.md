@@ -190,30 +190,33 @@ an ops failure.
 `0x8c106EED…A3D0`, so the Ethereum V2 vault was fork-tested before it was wired
 into the registry.
 
-## A dependency this change inherits
+## A dependency this change inherited, now resolved
 
-`feat/base-crosschain-upgrade` is not merged into `main`. It carries the records
-of the Base expansion that was executed on-chain on 2026-11-15: an updated
-`deployments/base/crosschain.json` plus
-`base-upgrade-execution.json`, `base-governance-execution.json`,
-`base-candidate-deployment.json`, `base-upgrade-plan.json` and
-`hwm-evidence.json` under `changes/base-crosschain-upgrade/`.
+`feat/base-crosschain-upgrade` was not merged into `main`. It carried the records
+of the Base expansion executed on-chain on 2026-11-15: an updated
+`deployments/base/crosschain.json` plus the evidence bundle under
+`changes/base-crosschain-upgrade/` and the operator scripts.
 
-The divergence is concrete. Read from the Base Strategy proxy's EIP-1967
+The divergence was concrete. Read from the Base Strategy proxy's EIP-1967
 implementation slot, the live implementation is
 `0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D`, 22612 bytes, codehash
 `0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b`, and
 `getHighWaterMark()` answers `1006550122649079880`. The manifest on `main`
-records `StrategyImplementation` as `0xfcE142db5FD78F64c97b04d9a587E2C53341b910`
-and lists only `CompoundV3Provider` and `ProviderManager` — no Fluid, no
-GauntletPrimeV2Morpho. The manifest on `feat/base-crosschain-upgrade` records
-`0x6909E365…` and both providers, which is what the chain says.
+recorded `StrategyImplementation` as
+`0xfcE142db5FD78F64c97b04d9a587E2C53341b910` and listed only
+`CompoundV3Provider` and `ProviderManager` — no Fluid, no GauntletPrimeV2Morpho.
 
-So on `main`, and therefore on this branch, phase 4 and the monitor read Base
-against a manifest that does not describe the chain. That is the origin of one
-of the three open phase-4 failures, and it is inherited rather than introduced
-here. Phase 4 cannot be brought to green on this branch until that branch is
-merged, which is a separate integration decision.
+`main` has since been fast-forwarded to `62890c0`, so the manifest now records
+`0x6909E365…` and both providers, matching the chain, and this branch has merged
+it. The merge was clean: the registry and ops changes had already reached `main`
+through `2fb3978`, so only the executed records, the evidence bundle and the
+operator scripts came across. It also unblocked seven ops tests that had been
+skipping, and the suite now runs 104 with none skipped.
+
+What remains open in phase 4 is therefore the `route base->arbitrum` parameters,
+the absent `deployments/mainnet/crosschain.json`, and the TickAccountant chain
+set being narrower than the registry — the last two closing when the Ethereum
+spoke is deployed.
 
 The Base V2 provider is live but unfunded: `getDepositBalance` for
 `0x23bbE424F1B621229c6A237F93D4234B646cf6e7` against the Base strategy reads 0.
