@@ -95,26 +95,45 @@ Ordering follows one rule: a network is added only when every fact it depends on
 is measured, and a live spoke is only extended after its registry entry has been
 fork-tested.
 
-**Arbitrum Fluid, live.** The registry entry is in, and
-`test/forking/ArbitrumStrategyExpansion.t.sol` now rehearses the whole path
-against the live spoke: it asserts the spoke still runs the pre-upgrade
-implementation, upgrades it atomically through its ProxyAdmin with
-`initializeSecurityAccounting`, registers six providers through the spoke
-Timelock at its 24h delay, and round-trips USDC through Fluid with NAV
-reconciled across all six sources. Nothing is executed on-chain.
+**Arbitrum, handed to `feat/arbitrum-crosschain-upgrade`.** That branch appeared
+on the remote during this work and covers the same ground more thoroughly: exact
+Paris creation-bytecode verification for all three candidates, a historical
+settled-state ceiling PPS reconstruction of `1005053181914548924` from the full
+event history, a scoped unsigned preparation CLI in
+`scripts/prepare-arbitrum-crosschain-upgrade.ts`, a fork suite pinned at block
+526524948, and a gas-funding analysis. Duplicating it here would only create a
+conflict, so this change no longer touches the `arbitrum` registry entry and the
+rehearsal fork test written earlier has been removed.
 
-Two things make this more than the Base replay. First, the Arbitrum spoke has
-not been upgraded, so the governance action is four Timelock calls and a proxy
-upgrade rather than two calls, and whether the upgrade should ride along with
-the Fluid registration is a scope decision for whoever signs. Second, the
-expansion is to six providers, not seven: Arbitrum gets no Morpho V2. The vault
-exists and is interface-identical to Base's under the same curator, but at
-191,941 USDC with underlying markets near 91% utilisation the spoke would
-dominate it and its own withdrawals would drain the idle balance.
+Both efforts independently derived the same two addresses, which is the useful
+cross-check: Fluid fUSDC `0x1A996cb54bb95462040408C06122D45D6Cdb6096` and Morpho
+Vault V2 `0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78`. The disagreement is only
+about whether the V2 vault should be registered at all.
 
-Because `ForkPins.ARBITRUM` is 0, the test floats at head and its `setUp`
-assertions describe a spoke that has not been upgraded. They will fail once the
-real upgrade lands, which is the intended signal to retire the file.
+What this change keeps for Arbitrum is one check that branch does not have.
+`FluidProviderArbitrumForkTest.testRateIsTheAccrualOfTheSupplyExchangePrice`
+skips 30 days on a fork and asserts the rate `FluidProvider` reports equals the
+observed accrual of the Arbitrum Liquidity layer's supply exchange price.
+`FluidProvider` reads that price out of storage, so a chain whose Fluid
+deployment differed in layout would misprice yield silently rather than revert.
+Their suite asserts `getDepositRate > 0`, which a wrong layout would also pass.
+Base and Ethereum each prove their own layout; this proves Arbitrum's.
+
+Two measurements this change contributes to that branch's decision, neither of
+which appears in its report. First, the Arbitrum V2 vault holds **191,941 USDC**
+and its four underlying Morpho markets run at about 91% utilisation, against
+284,480,245 USDC for the Base vault the caps are copied from. The whole Arbitrum
+Gauntlet USDC V2 complex, Prime plus Balanced, is about 335k. A 2000 bps cap is
+a fraction of the spoke's NAV, not of the venue's capacity, so it does not bound
+this exposure. Second, `utils/constants.ts` carries no `version: 2` entry for
+chainId 42161, so that branch's `morphoV2Vault` is not backed by the table the
+Base entry is checked against.
+
+Their own report notes the allocator cannot use either venue yet: "The existing
+allocator still lacks Fluid/Morpho V2 market readers and registry support.
+Registering adapters alone does not enable allocation into these markets." So
+registration is not the enabling step, and the depth question can be settled
+before capital is at risk rather than after.
 
 **Ethereum spoke.** Registry is complete at seven providers. Remaining work is
 operational: run phases 1 to 5, produce

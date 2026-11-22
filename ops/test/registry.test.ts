@@ -84,25 +84,15 @@ test('Base expansion appends Fluid and V2 while retaining the five original venu
   assert.equal(base.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
 });
 
-test('Arbitrum expands with Fluid; Ethereum expands with Aave, Fluid and V2', () => {
-  const arbitrum = NETWORKS.arbitrum;
-  // Official Fluid Arbitrum fUSDC. Its asset() must be this spoke's USDC, otherwise
-  // FluidProvider._checkVault reverts AssetMismatch on every action.
-  assert.equal(arbitrum.strategy.fluidFToken, '0x1A996cb54bb95462040408C06122D45D6Cdb6096');
-  assert.equal(arbitrum.strategy.capsBps.Fluid, 3_000);
-  // A Gauntlet V2 USDC vault does exist on Arbitrum, 0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78,
-  // same curator and owner as the Base one and interface-identical. It is deliberately
-  // not registered: totalAssets is 191,941 USDC against a Base vault of 284M, and its
-  // underlying Morpho markets run at about 91% utilisation, so a single rebalance from
-  // this spoke would dominate the vault and our own withdraw would be what drains market
-  // idle. morphoV2Vault therefore stays unset, and utils/constants.ts records no version 2
-  // entry for the chain, so the two agree.
-  assert.equal(arbitrum.strategy.morphoV2Vault, undefined);
-  assert.equal(chainConfigs[42161].morphoVaults.some((v) => v.version === 2), false);
-
+test('Ethereum expands with Aave, Fluid and Morpho V2', () => {
+  // Arbitrum is deliberately not asserted here. Its Fluid and Morpho V2 entries are
+  // owned by `feat/arbitrum-crosschain-upgrade`; see the note in the arbitrum registry
+  // entry. The depth measurement relevant to that branch's V2 choice is in
+  // changes/crosschain-provider-parity/research.md.
   const mainnet = NETWORKS.mainnet;
   assert.equal(mainnet.strategy.morphoV2Vault, chainConfigs[1].morphoVaults.find((v) => v.version === 2)!.vaultAddress);
   assert.equal(mainnet.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
+  assert.equal(mainnet.strategy.capsBps.Fluid, 3_000);
   // Provider parity with the standalone Ethereum vault, which already runs this
   // AaveV3Provider. It is appended, so Steakhouse stays the entry provider.
   const aave = mainnet.strategy.reusedProviders.find((p) => p.label === 'AaveV3');

@@ -35,7 +35,6 @@ it to 105.
 | `FluidProviderArbitrumForkTest` | Arbitrum, floating | 6 passed |
 | `GauntletV2*ForkTest` | Base and Ethereum | passed |
 | `BaseStrategyExpansionForkTest` | Base, pinned 55_863_000 | 6 passed |
-| `ArbitrumStrategyExpansionForkTest` | Arbitrum, floating | 5 passed |
 | `CrossChainStrategyMonadForkTest` | Monad, pinned 124_400_000 | 4 passed |
 
 The three Ethereum and Arbitrum files together reported 24 passed in one run.
@@ -43,15 +42,36 @@ The three Ethereum and Arbitrum files together reported 24 passed in one run.
 unaffected: it replays a pinned pre-upgrade block, so the executed Base upgrade
 does not invalidate it.
 
+An `ArbitrumStrategyExpansionForkTest` written earlier in this change was
+deleted before the push. `origin/feat/arbitrum-crosschain-upgrade` appeared
+mid-work with `ArbitrumStrategyUpgrade.t.sol`, 390 lines at pinned block
+526524948, covering the same upgrade and registration path plus exact
+creation-bytecode verification, negative initialization and HWM reconstruction.
+The one check it does not have is preserved here: their suite asserts
+`getDepositRate > 0`, which a wrong Liquidity storage layout would also pass,
+while `FluidProviderArbitrumForkTest.testRateIsTheAccrualOfTheSupplyExchangePrice`
+asserts the rate equals the observed accrual over a 30-day skip. See
+`research.md` for the full comparison.
+
 The aggregate run, `forge test --match-path 'test/forking/*'`, finishes
-**18 suites, 85 passed, 0 failed, 2 skipped**. Before this change it was
-17 suites with 1 failed: `NewVaultWithdrawTest.testWithdrawTrace` read `VAULT`
-and `DEPLOYER_ADDR` through `vm.envAddress`, which has no default, so an operator
+**17 suites, 80 passed, 0 failed, 2 skipped**. Before this change the same
+command was red: `NewVaultWithdrawTest.testWithdrawTrace` read `VAULT` and
+`DEPLOYER_ADDR` through `vm.envAddress`, which has no default, so an operator
 trace committed in `63d39da` had been failing the whole suite since, unseen
 because CI excludes forking tests. It now skips when either address is absent
 and still runs as before when both are given. The two remaining skips are that
 file and `CrossChainStrategyMonadForkTest`, both intentional and both reported
 as skips rather than as vacuous passes.
+
+**The aggregate run is only meaningful against an RPC that answers.** Three
+consecutive runs against the endpoints in `.env` degraded progressively — 2
+failed, then 8, then 9 — with the total test count falling from 87 to 44 as more
+suites could not even instantiate their fork. Every failure was
+`vm.createSelectFork: could not instantiate forked environment ... connection
+error: timed out` against `mainnet.base.org` and `arb1.arbitrum.io`, and the set
+of failing suites changed between runs. Substituting publicnode for both gave
+the clean 80/0/2 above. A red aggregate run here has to be read against the
+failure text before it is treated as a regression.
 
 `CrossChainStrategyMonadForkTest` needs a distinct invocation because forge
 1.10.0 will not create a Monad fork inside an Ethereum EVM:

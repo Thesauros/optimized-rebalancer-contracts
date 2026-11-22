@@ -166,19 +166,18 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484' },
       ],
       comet: '0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf',
-      // Official Fluid Arbitrum deployment: fluid-contracts-public/deployments/
-      // arbitrum/fToken_fUSDC.json. Verified on-chain 2026-11-22: symbol fUSDC,
-      // asset 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 (this spoke's usdc),
-      // Liquidity layer 0x52Aa899454998Be5b000Ad077a46Bbe360F4e497, minDeposit 2,
-      // totalAssets 59,468,106 USDC.
-      fluidFToken: '0x1A996cb54bb95462040408C06122D45D6Cdb6096',
+      // Fluid and Morpho Vault V2 on Arbitrum are owned by the
+      // `feat/arbitrum-crosschain-upgrade` branch, which carries the exact-bytecode
+      // candidate build, the historical HWM reconstruction and the scoped unsigned
+      // preparation CLI this entry would otherwise have to duplicate. Deliberately
+      // not set here. The depth measurement that bears on its V2 choice is recorded
+      // in changes/crosschain-provider-parity/research.md.
       capsBps: {
         AaveV3: 0,
         CompoundV3: 5_000,
         GauntletCoreMorpho: 4_000,
         SteakhouseHighYieldMorpho: 3_000,
         SteakhousePrimeMorpho: 4_000,
-        Fluid: 3_000,
       },
     },
     routes: { '8453': DEFAULT_ROUTE },
