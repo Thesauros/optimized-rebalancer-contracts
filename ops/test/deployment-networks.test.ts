@@ -10,7 +10,7 @@ import { HUB_PARAMS, NETWORKS } from '../../deploy/crosschain/registry';
 const manifests = Object.fromEntries(['base', 'arbitrum'].map((key) => {
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'deployments', key, 'crosschain.json'), 'utf8'));
   // Candidate release manifest, not a claim that the two providers are deployed.
-  if (key === 'base') Object.assign(m.contracts, {
+  Object.assign(m.contracts, {
     FluidProvider: '0x0000000000000000000000000000000000000f10',
     GauntletPrimeV2MorphoProvider: '0x0000000000000000000000000000000000000a20',
   });
@@ -20,19 +20,20 @@ const runtime = Object.fromEntries(['base', 'arbitrum'].map((key) => [key, NETWO
 const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...OWNABLE, ...PROVIDER, ...PROVIDER_MANAGER, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK]);
 
 /** Two-chain deployment fixture. Unexpected third-chain reads are errors. */
-function provider(tracked = [8453n, 42161n], wrongFluidSource = false): Provider {
-  const m = manifests.base;
+function provider(tracked = [8453n, 42161n], wrongFluidSource = false, key: 'base' | 'arbitrum' = 'base'): Provider {
+  const m = manifests[key];
+  const net = runtime[key];
   const c = m.contracts;
   const safe = m.deployer;
   const peers = Object.values(runtime);
-  const providers = runtime.base.strategy.reusedProviders.map((p) => p.address);
+  const providers = net.strategy.reusedProviders.map((p) => p.address);
   providers.splice(1, 0, c.CompoundV3Provider);
   providers.push(c.FluidProvider, c.GauntletPrimeV2MorphoProvider);
-  const caps = new Map(runtime.base.strategy.reusedProviders.map((p) => [p.address.toLowerCase(), runtime.base.strategy.capsBps[p.label] ?? 0]));
-  caps.set(c.CompoundV3Provider.toLowerCase(), runtime.base.strategy.capsBps.CompoundV3);
-  caps.set(c.FluidProvider.toLowerCase(), runtime.base.strategy.capsBps.Fluid);
-  caps.set(c.GauntletPrimeV2MorphoProvider.toLowerCase(), runtime.base.strategy.capsBps.GauntletPrimeV2Morpho);
-  const implementations = new Map(['Strategy', 'ChainAgent', 'TickAccountant', 'EpochVault'].map((name) => [c[name].toLowerCase(), c[`${name}Implementation`]]));
+  const caps = new Map(net.strategy.reusedProviders.map((p) => [p.address.toLowerCase(), net.strategy.capsBps[p.label] ?? 0]));
+  caps.set(c.CompoundV3Provider.toLowerCase(), net.strategy.capsBps.CompoundV3);
+  caps.set(c.FluidProvider.toLowerCase(), net.strategy.capsBps.Fluid);
+  caps.set(c.GauntletPrimeV2MorphoProvider.toLowerCase(), net.strategy.capsBps.GauntletPrimeV2Morpho);
+  const implementations = new Map(['Strategy', 'ChainAgent', 'TickAccountant', 'EpochVault'].filter(name => c[name]).map((name) => [c[name].toLowerCase(), c[`${name}Implementation`]]));
   return {
     getStorage: async (at: string, slot: string) => zeroPadValue(slot.endsWith('bbc') ? implementations.get(at.toLowerCase())! : safe, 32),
     call: async ({ to, data }: { to: string; data: string }) => {
@@ -52,20 +53,21 @@ function provider(tracked = [8453n, 42161n], wrongFluidSource = false): Provider
           assert.ok(peer, 'must not read an undeployed peer');
           value = [peer.cctp.domain, manifests[peer.hardhatName].contracts.CctpV2Adapter, true]; break;
         case 'getRoute': {
-          const limits = runtime.base.routes['42161'];
-          value = [[c.CctpV2Adapter, 42161, manifests.arbitrum.contracts.ChainAgent, limits.maxFeeBps, true, limits.maxPerTransfer, limits.capacity, limits.refillPerSecond, limits.capacity, 0]];
+          const dst = key === 'base' ? 'arbitrum' : 'base';
+          const limits = net.routes[runtime[dst].chainId.toString()];
+          value = [[c.CctpV2Adapter, runtime[dst].chainId, manifests[dst].contracts.ChainAgent, limits.maxFeeBps, true, limits.maxPerTransfer, limits.capacity, limits.refillPerSecond, limits.capacity, 0]];
           break;
         }
         case 'getProviders': value = [providers]; break;
         case 'getEntryProvider': value = [providers[0]]; break;
         case 'getProviderCap': value = [caps.get(tx.args[0].toLowerCase())]; break;
         case 'getSource': value = [to.toLowerCase() === c.FluidProvider.toLowerCase()
-          ? (wrongFluidSource ? runtime.base.strategy.morphoV2Vault : runtime.base.strategy.fluidFToken)
-          : runtime.base.strategy.morphoV2Vault]; break;
+          ? (wrongFluidSource ? net.strategy.morphoV2Vault : net.strategy.fluidFToken)
+          : net.strategy.morphoV2Vault]; break;
         // CompoundV3Provider resolves its Comet through the ProviderManager, so
         // checkDeployment reads it back and compares against the registry. Every
-        // call into this fixture checks 'base'.
-        case 'getYieldToken': value = [runtime.base.strategy.comet]; break;
+        // call resolves the selected chain's market.
+        case 'getYieldToken': value = [net.strategy.comet]; break;
         case 'chainIds': value = [tracked]; break;
         case 'getFees': value = [0, 0, 0, safe]; break;
         case 'config': value = [HUB_PARAMS.accountant]; break;
@@ -111,4 +113,13 @@ test('missing new provider manifests produce pending checks rather than invalid-
 test('monitor rejects a Fluid provider bound to another source', async () => {
   const results = await checkDeployment(provider(undefined, true), 'base', manifests.base, manifests, ids, runtime);
   assert.ok(results.some((r) => r.label === 'strategy source Fluid' && !r.ok));
+});
+
+test('Arbitrum monitor validates all seven providers and rejects a retargeted source', async () => {
+  const good = await checkDeployment(provider(undefined, false, 'arbitrum'), 'arbitrum', manifests.arbitrum, manifests, ids, runtime);
+  assert.deepEqual(good.filter(r => !r.ok), []);
+  assert.ok(good.some(r => r.label === 'strategy source Fluid' && r.ok));
+  assert.ok(good.some(r => r.label === 'strategy source GauntletPrimeV2Morpho' && r.ok));
+  const wrong = await checkDeployment(provider(undefined, true, 'arbitrum'), 'arbitrum', manifests.arbitrum, manifests, ids, runtime);
+  assert.ok(wrong.some(r => r.label === 'strategy source Fluid' && !r.ok));
 });

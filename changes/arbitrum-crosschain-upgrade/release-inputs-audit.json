@@ -1,0 +1,1294 @@
+{
+  "schema": "thesauros.arbitrum-strategy-upgrade.readiness.v1",
+  "readOnly": true,
+  "chainId": 42161,
+  "status": "PREPARATION_ONLY_NO_SIGNING_AUTHORIZATION_OR_HWM_ATTESTATION",
+  "liveSnapshot": {
+    "readOnly": true,
+    "observedAtUtc": "2026-11-22T13:20:46.830Z",
+    "chainId": 42161,
+    "block": 526525483,
+    "blockHash": "0xd50a9a9b66ea04dcdb92acd05a87c79cc53a18b01f6ac3d41427b6fe3fb8efc6",
+    "blockTimeUtc": "2026-11-22T13:20:08.000Z",
+    "strategy": "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+    "agent": "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+    "implementation": "0x84163d2d9CFfe0e53078C3Cd02ee3db1975117d5",
+    "proxyAdmin": "0x1565857f8bfF76F1452e32d479D174b55DFc2bBe",
+    "hashes": {
+      "proxy": "0xb9bed4b6f110ad1f0247d785547a0c52e24af4e140a065c24c744bd7aa72436d",
+      "implementation": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+      "proxyAdmin": "0x6d4286f9f651506597295d9a5349490c4c5612fec75de7646603894893e0cab1",
+      "timelock": "0xda940a86f89c948b586d044558be6d86b20b8f680866342938727bb0e837e636"
+    },
+    "manifestMatch": {
+      "implementation": true,
+      "implementationHash": true
+    },
+    "proxyAdminOwner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "proxyAdminPendingOwner": {
+      "error": "Contract call reverted"
+    },
+    "adminInterfaceVersion": "5.0.0",
+    "timelockOwner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "timelockPendingOwner": "0x0000000000000000000000000000000000000000",
+    "delay": "86400",
+    "state": {
+      "name": "Thesauros Cross-Chain Strategy (Arbitrum)",
+      "symbol": "tcsUSDC-arb",
+      "decimals": "6",
+      "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "totalAssets": "3015051",
+      "totalSupply": "2999892",
+      "getProviders": [
+        "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+        "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+        "0xeB98d46937C537efF376361536D58d78c57c40d7",
+        "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+        "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484"
+      ],
+      "getEntryProvider": "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+      "getTimelock": "0x5383077e9BD3D476ab52d257f552Caa6C8Ebb948",
+      "getTreasury": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+      "getManagementFee": "0",
+      "getPerformanceFee": "0",
+      "getMinAssets": "1000000",
+      "getLastTotalAssets": "3000122",
+      "getLastTimestamp": "1790684289",
+      "providersHealthy": true,
+      "getAccruedFees": [
+        "0",
+        "0"
+      ],
+      "getHighWaterMark": {
+        "error": "Contract call reverted"
+      },
+      "ADMIN_ROLE": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "EXECUTOR_ROLE": "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63"
+    },
+    "paused": {
+      "deposit": {
+        "value": false
+      },
+      "withdraw": {
+        "value": false
+      }
+    },
+    "agentState": {
+      "shares": {
+        "value": "1999892"
+      },
+      "idle": {
+        "value": "0"
+      }
+    },
+    "holders": {
+      "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71": {
+        "shares": "1000000",
+        "assets": "0",
+        "admin": false,
+        "executor": false
+      },
+      "0x10DaB1A9BB794A53849D295fF08768345888Ddd9": {
+        "shares": "1999892",
+        "assets": "0",
+        "admin": false,
+        "executor": false
+      },
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": {
+        "shares": "0",
+        "assets": "0",
+        "admin": true,
+        "executor": true
+      },
+      "0x9B77753b62d179e35C670E6179F577f4399D82FE": {
+        "shares": "0",
+        "assets": "0",
+        "admin": false,
+        "executor": true
+      }
+    },
+    "providers": [
+      {
+        "address": "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+        "identifier": "Aave_V3_Provider",
+        "source": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+        "assets": "3015051",
+        "capBps": "0",
+        "pinnedSource": {
+          "error": "Contract call reverted"
+        },
+        "runtimeHash": "0xf3ba9016df8c78486e9e207b8128cb49fdd114838618961b29d5a695f97100f8",
+        "sourceRuntimeHash": "0xf168c2e9e4d04292c7d5d526a9a917175a44369ab63a2f9997537acf0ffaaf2e",
+        "allowance": "115792089237316195423570985008687907853269984665640564039457584007913124639935"
+      },
+      {
+        "address": "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+        "identifier": "Compound_V3_Provider",
+        "source": "0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf",
+        "assets": "0",
+        "capBps": "5000",
+        "pinnedSource": {
+          "error": "Contract call reverted"
+        },
+        "runtimeHash": "0x0cc2e0a1cafb9da13191b328234591facb206006859080bc0209d3bb7cb5a0af",
+        "sourceRuntimeHash": "0x64952234eab8f3aed74355c49119f627965640b1efeb6b28430b5a31b0d3b192",
+        "allowance": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      },
+      {
+        "address": "0xeB98d46937C537efF376361536D58d78c57c40d7",
+        "identifier": "Morpho_Provider",
+        "source": "0x7e97fa6893871A2751B5fE961978DCCb2c201E65",
+        "assets": "0",
+        "capBps": "4000",
+        "pinnedSource": {
+          "error": "Contract call reverted"
+        },
+        "runtimeHash": "0xf396131b48e78b1806dbe8998d5b102c2d56801a5bdc7922d7eabca57c508ae0",
+        "sourceRuntimeHash": "0x7e54e23bcc028663edad200df5a5db4023090d9320615f7a0d042754b45e3049",
+        "allowance": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      },
+      {
+        "address": "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+        "identifier": "Morpho_Provider",
+        "source": "0x5c0C306Aaa9F877de636f4d5822cA9F2E81563BA",
+        "assets": "0",
+        "capBps": "3000",
+        "pinnedSource": {
+          "error": "Contract call reverted"
+        },
+        "runtimeHash": "0x4c91d744f05782c3c01da72d9eb4b3e8423ca09336d13e0fa5e2156ff1bc02ae",
+        "sourceRuntimeHash": "0xa82ff1668ba8c9ab0ef5d793be52236a3e1cf0edcdbcfbee928d3f8e0d80b957",
+        "allowance": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      },
+      {
+        "address": "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484",
+        "identifier": "Morpho_Provider",
+        "source": "0x250CF7c82bAc7cB6cf899b6052979d4B5BA1f9ca",
+        "assets": "0",
+        "capBps": "4000",
+        "pinnedSource": {
+          "error": "Contract call reverted"
+        },
+        "runtimeHash": "0xac39118d9e327b6396fbb0e4e4c772a4b0aee4e128c24d1e3f67063f5c829fbc",
+        "sourceRuntimeHash": "0x2191cfc8c2ed930df565c127bff6a7a5b68c1084a57fa848aa362643025531d9",
+        "allowance": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      }
+    ],
+    "newHwmRaw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "gasBalances": {
+      "operatorWei": "46759415126000",
+      "isolatedExecutorWei": "20000000000000"
+    },
+    "ceilingPps": "1005053181914548924",
+    "history": {
+      "rpc": "configured HTTPS archive RPC; endpoint withheld",
+      "deploymentBlock": 509725811,
+      "deploymentSucceeded": true,
+      "providers": {
+        "value": [
+          "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+          "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+          "0xeB98d46937C537efF376361536D58d78c57c40d7",
+          "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+          "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484"
+        ]
+      },
+      "entry": {
+        "value": "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5"
+      },
+      "totalAssets": {
+        "value": "999999"
+      },
+      "totalSupply": {
+        "value": "1000000"
+      },
+      "sources": [
+        {
+          "provider": "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+          "value": "0x794a61358D6845594F94dc1DB02A252b5b4814aD"
+        },
+        {
+          "provider": "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+          "value": "0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf"
+        },
+        {
+          "provider": "0xeB98d46937C537efF376361536D58d78c57c40d7",
+          "value": "0x7e97fa6893871A2751B5fE961978DCCb2c201E65"
+        },
+        {
+          "provider": "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+          "value": "0x5c0C306Aaa9F877de636f4d5822cA9F2E81563BA"
+        },
+        {
+          "provider": "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484",
+          "value": "0x250CF7c82bAc7cB6cf899b6052979d4B5BA1f9ca"
+        }
+      ],
+      "historicalHwmAttested": false,
+      "note": "Deployment and current reads do not establish the unrecorded all-time PPS maximum"
+    }
+  },
+  "completeStrategyHistory": {
+    "fromBlock": 509725811,
+    "toBlock": 526525483,
+    "toBlockHash": "0xd50a9a9b66ea04dcdb92acd05a87c79cc53a18b01f6ac3d41427b6fe3fb8efc6",
+    "logCount": 27,
+    "eventCounts": {
+      "Upgraded": 1,
+      "unknown": 1,
+      "RoleGranted": 4,
+      "ProvidersUpdated": 1,
+      "EntryProviderUpdated": 1,
+      "TimelockUpdated": 2,
+      "TreasuryUpdated": 1,
+      "ManagementFeeUpdated": 1,
+      "PerformanceFeeUpdated": 1,
+      "MinAssetsUpdated": 1,
+      "Transfer": 3,
+      "Deposit": 2,
+      "Initialized": 1,
+      "ProviderCapUpdated": 4,
+      "FeesApplied": 2,
+      "Withdraw": 1
+    },
+    "logs": [
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x",
+        "logIndex": "0x0",
+        "removed": false,
+        "topics": [
+          "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+          "0x00000000000000000000000084163d2d9cffe0e53078c3cd02ee3db1975117d5"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "Upgraded",
+        "args": [
+          "0x84163d2d9CFfe0e53078C3Cd02ee3db1975117d5"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000001565857f8bff76f1452e32d479d174b55dfc2bbe",
+        "logIndex": "0x2",
+        "removed": false,
+        "topics": [
+          "0x7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "unknown"
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x",
+        "logIndex": "0x5",
+        "removed": false,
+        "topics": [
+          "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d",
+          "0x0000000000000000000000004325a7dde71150ce10960c0b05e805a0040901f8"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "RoleGranted",
+        "args": [
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+          "0x4325A7DdE71150CE10960c0b05e805a0040901f8"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000005000000000000000000000000a34574dae6284edc7348c36a80242b92cfbd13a50000000000000000000000009ee0a4d3d9f4172feb7e518ebbd73af9a5e16664000000000000000000000000eb98d46937c537eff376361536d58d78c57c40d70000000000000000000000006240402d3cb33777d4e5e6b5791bc8518aeb8b990000000000000000000000000d9fd60e25b0c3b2416d46f7dd311b0ed6743484",
+        "logIndex": "0xb",
+        "removed": false,
+        "topics": [
+          "0x5f589bfb97387c6d7ce41557510dba9ca4a577876489cacc87a22a395b8b13ca"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "ProvidersUpdated",
+        "args": [
+          [
+            "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+            "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+            "0xeB98d46937C537efF376361536D58d78c57c40d7",
+            "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+            "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484"
+          ]
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x000000000000000000000000a34574dae6284edc7348c36a80242b92cfbd13a5",
+        "logIndex": "0xc",
+        "removed": false,
+        "topics": [
+          "0x86196c60bb1c10fbc0cf140223f617a9c9157f36cd6ba9333b1d7067a67e9335"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "EntryProviderUpdated",
+        "args": [
+          "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x",
+        "logIndex": "0xd",
+        "removed": false,
+        "topics": [
+          "0xc046b9e8f0cd9b70a3b838962e9c229277fbb7abee68ea0fad4acf2898ed2ca9",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "TimelockUpdated",
+        "args": [
+          "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x",
+        "logIndex": "0xe",
+        "removed": false,
+        "topics": [
+          "0x7dae230f18360d76a040c81f050aa14eb9d6dc7901b20fc5d855e2a20fe814d1",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "TreasuryUpdated",
+        "args": [
+          "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "logIndex": "0xf",
+        "removed": false,
+        "topics": [
+          "0x2147e2bc8c39e67f74b1a9e08896ea1485442096765942206af1f4bc8bcde917"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "ManagementFeeUpdated",
+        "args": [
+          "0"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "logIndex": "0x10",
+        "removed": false,
+        "topics": [
+          "0x9b49d0cd76012d9c67241c2f68f836efbaf50ea29901a250040671402d5263f5"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "PerformanceFeeUpdated",
+        "args": [
+          "0"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x00000000000000000000000000000000000000000000000000000000000f4240",
+        "logIndex": "0x11",
+        "removed": false,
+        "topics": [
+          "0x9e41b1fab18e02df1054ed1949900731066cdc4d3a0986308894f1b4abfd9763"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "MinAssetsUpdated",
+        "args": [
+          "1000000"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x00000000000000000000000000000000000000000000000000000000000f4240",
+        "logIndex": "0x1a",
+        "removed": false,
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000d211bffab29e60c17a2b406b3faf3d0e29282b71"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "Transfer",
+        "args": [
+          "0x0000000000000000000000000000000000000000",
+          "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+          "1000000"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x00000000000000000000000000000000000000000000000000000000000f424000000000000000000000000000000000000000000000000000000000000f4240",
+        "logIndex": "0x1b",
+        "removed": false,
+        "topics": [
+          "0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7",
+          "0x0000000000000000000000004325a7dde71150ce10960c0b05e805a0040901f8",
+          "0x000000000000000000000000d211bffab29e60c17a2b406b3faf3d0e29282b71"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "Deposit",
+        "args": [
+          "0x4325A7DdE71150CE10960c0b05e805a0040901f8",
+          "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+          "1000000",
+          "1000000"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+        "blockNumber": "0x1e61cc73",
+        "blockTimestamp": "0x6aba721c",
+        "data": "0x0000000000000000000000000000000000000000000000000000000000000001",
+        "logIndex": "0x1c",
+        "removed": false,
+        "topics": [
+          "0xc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2"
+        ],
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "transactionIndex": "0x1",
+        "event": "Initialized",
+        "args": [
+          "1"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0x33abecba7c171122aaee155eaa1684f462a191749be3149cedccd38e1ba52e0b",
+        "blockNumber": "0x1e61d312",
+        "blockTimestamp": "0x6aba73d4",
+        "data": "0x0000000000000000000000000000000000000000000000000000000000001388",
+        "logIndex": "0x28",
+        "removed": false,
+        "topics": [
+          "0x7bd751611664511c901db72fe265d4ec115476c557140bc8e49a26810832dbe0",
+          "0x0000000000000000000000009ee0a4d3d9f4172feb7e518ebbd73af9a5e16664"
+        ],
+        "transactionHash": "0xa68e43da729aff6bb0ee9ec88c5645093ac3a8d0bb4daabfb45cef8d6bbfd07e",
+        "transactionIndex": "0xc",
+        "event": "ProviderCapUpdated",
+        "args": [
+          "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+          "5000"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xb3a32ad9451637355696e3cad137309089814a8fe12ef8b145ebc07f5af44373",
+        "blockNumber": "0x1e61d322",
+        "blockTimestamp": "0x6aba73d8",
+        "data": "0x0000000000000000000000000000000000000000000000000000000000000fa0",
+        "logIndex": "0x0",
+        "removed": false,
+        "topics": [
+          "0x7bd751611664511c901db72fe265d4ec115476c557140bc8e49a26810832dbe0",
+          "0x000000000000000000000000eb98d46937c537eff376361536d58d78c57c40d7"
+        ],
+        "transactionHash": "0x8ef3eb1285c8ad054a605a0f783fda5418f1f6f5c5b367432d0a072c3d327687",
+        "transactionIndex": "0x2",
+        "event": "ProviderCapUpdated",
+        "args": [
+          "0xeB98d46937C537efF376361536D58d78c57c40d7",
+          "4000"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0x8023dca83132927205edddfa3c94ea16c47c6d79bf6afa77473365240288507a",
+        "blockNumber": "0x1e61d331",
+        "blockTimestamp": "0x6aba73dc",
+        "data": "0x0000000000000000000000000000000000000000000000000000000000000bb8",
+        "logIndex": "0x1",
+        "removed": false,
+        "topics": [
+          "0x7bd751611664511c901db72fe265d4ec115476c557140bc8e49a26810832dbe0",
+          "0x0000000000000000000000006240402d3cb33777d4e5e6b5791bc8518aeb8b99"
+        ],
+        "transactionHash": "0x0acdd966941ce4d1038e81079b4e462fff421880c42bf1a0e1075f6aef2e996c",
+        "transactionIndex": "0x2",
+        "event": "ProviderCapUpdated",
+        "args": [
+          "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+          "3000"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0x779a4147918f2a87cca439e1bde4b590a82bb86e47de64b3c5be037800b28e89",
+        "blockNumber": "0x1e61d33f",
+        "blockTimestamp": "0x6aba73e0",
+        "data": "0x0000000000000000000000000000000000000000000000000000000000000fa0",
+        "logIndex": "0x0",
+        "removed": false,
+        "topics": [
+          "0x7bd751611664511c901db72fe265d4ec115476c557140bc8e49a26810832dbe0",
+          "0x0000000000000000000000000d9fd60e25b0c3b2416d46f7dd311b0ed6743484"
+        ],
+        "transactionHash": "0x27d93d08caad2edb5b63974e3eebec8b58444de9278ce2280f3f72f13818998f",
+        "transactionIndex": "0x1",
+        "event": "ProviderCapUpdated",
+        "args": [
+          "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484",
+          "4000"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xba3df81d9c278a5dd9d5ea67410b4a9cc7d196b080d9e1694724566fdec9e6cf",
+        "blockNumber": "0x1e61d34e",
+        "blockTimestamp": "0x6aba73e4",
+        "data": "0x",
+        "logIndex": "0x7",
+        "removed": false,
+        "topics": [
+          "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d",
+          "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d"
+        ],
+        "transactionHash": "0xa609eb342ed17392a99a500881c88ddf340ff6768441e68c081fb9fbb6f0081d",
+        "transactionIndex": "0x5",
+        "event": "RoleGranted",
+        "args": [
+          "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63",
+          "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+          "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xee87ad2f55f106db3bc4c7b6b5482da786b4b45b34afb5eda88e1fb374e34688",
+        "blockNumber": "0x1e61d47a",
+        "blockTimestamp": "0x6aba7431",
+        "data": "0x",
+        "logIndex": "0x0",
+        "removed": false,
+        "topics": [
+          "0xc046b9e8f0cd9b70a3b838962e9c229277fbb7abee68ea0fad4acf2898ed2ca9",
+          "0x0000000000000000000000005383077e9bd3d476ab52d257f552caa6c8ebb948"
+        ],
+        "transactionHash": "0xb1cfc1e81ddc4467f75e4a22056b1cdb4d81b60283d31fcaf778eafd60e8af7a",
+        "transactionIndex": "0x3",
+        "event": "TimelockUpdated",
+        "args": [
+          "0x5383077e9BD3D476ab52d257f552Caa6C8Ebb948"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0x8790a9a2c337227ff73e3e2b77cc6dbc4097766713354e1eb94ddf90427ae550",
+        "blockNumber": "0x1e65b373",
+        "blockTimestamp": "0x6abb7e2e",
+        "data": "0x00000000000000000000000000000000000000000000000000000000000f424000000000000000000000000000000000000000000000000000000000000f428100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "logIndex": "0x18",
+        "removed": false,
+        "topics": [
+          "0x8b8e0e370e88645a8cd8378c05a30ce6b899b9a13ede0a0872bb604cc0240c2b"
+        ],
+        "transactionHash": "0x0cea6dd794f872297f9b070901131bab5fc9e7a50db4c9eb391024005674ee05",
+        "transactionIndex": "0xa",
+        "event": "FeesApplied",
+        "args": [
+          "1000000",
+          "1000065",
+          "0",
+          "0"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0x8790a9a2c337227ff73e3e2b77cc6dbc4097766713354e1eb94ddf90427ae550",
+        "blockNumber": "0x1e65b373",
+        "blockTimestamp": "0x6abb7e2e",
+        "data": "0x00000000000000000000000000000000000000000000000000000000003d07fc",
+        "logIndex": "0x1f",
+        "removed": false,
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x00000000000000000000000010dab1a9bb794a53849d295ff08768345888ddd9"
+        ],
+        "transactionHash": "0x0cea6dd794f872297f9b070901131bab5fc9e7a50db4c9eb391024005674ee05",
+        "transactionIndex": "0xa",
+        "event": "Transfer",
+        "args": [
+          "0x0000000000000000000000000000000000000000",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "3999740"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0x8790a9a2c337227ff73e3e2b77cc6dbc4097766713354e1eb94ddf90427ae550",
+        "blockNumber": "0x1e65b373",
+        "blockTimestamp": "0x6abb7e2e",
+        "data": "0x00000000000000000000000000000000000000000000000000000000003d090000000000000000000000000000000000000000000000000000000000003d07fc",
+        "logIndex": "0x20",
+        "removed": false,
+        "topics": [
+          "0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7",
+          "0x00000000000000000000000010dab1a9bb794a53849d295ff08768345888ddd9",
+          "0x00000000000000000000000010dab1a9bb794a53849d295ff08768345888ddd9"
+        ],
+        "transactionHash": "0x0cea6dd794f872297f9b070901131bab5fc9e7a50db4c9eb391024005674ee05",
+        "transactionIndex": "0xa",
+        "event": "Deposit",
+        "args": [
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "4000000",
+          "3999740"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xe09d0b57a25c93d683a244cfe608a10fc8cf450da80b7f933161d3b76c17d872",
+        "blockNumber": "0x1e665fb0",
+        "blockTimestamp": "0x6abbac81",
+        "data": "0x00000000000000000000000000000000000000000000000000000000004c4b8100000000000000000000000000000000000000000000000000000000004c4bba00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "logIndex": "0xf",
+        "removed": false,
+        "topics": [
+          "0x8b8e0e370e88645a8cd8378c05a30ce6b899b9a13ede0a0872bb604cc0240c2b"
+        ],
+        "transactionHash": "0x25f1e016b935b00d3e57b3130110a15287d82207c6b7ef5b440f49a215bb6f96",
+        "transactionIndex": "0x4",
+        "event": "FeesApplied",
+        "args": [
+          "5000065",
+          "5000122",
+          "0",
+          "0"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xe09d0b57a25c93d683a244cfe608a10fc8cf450da80b7f933161d3b76c17d872",
+        "blockNumber": "0x1e665fb0",
+        "blockTimestamp": "0x6abbac81",
+        "data": "0x00000000000000000000000000000000000000000000000000000000001e83e8",
+        "logIndex": "0x10",
+        "removed": false,
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x00000000000000000000000010dab1a9bb794a53849d295ff08768345888ddd9",
+          "0x0000000000000000000000000000000000000000000000000000000000000000"
+        ],
+        "transactionHash": "0x25f1e016b935b00d3e57b3130110a15287d82207c6b7ef5b440f49a215bb6f96",
+        "transactionIndex": "0x4",
+        "event": "Transfer",
+        "args": [
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x0000000000000000000000000000000000000000",
+          "1999848"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xe09d0b57a25c93d683a244cfe608a10fc8cf450da80b7f933161d3b76c17d872",
+        "blockNumber": "0x1e665fb0",
+        "blockTimestamp": "0x6abbac81",
+        "data": "0x00000000000000000000000000000000000000000000000000000000001e848000000000000000000000000000000000000000000000000000000000001e83e8",
+        "logIndex": "0x17",
+        "removed": false,
+        "topics": [
+          "0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db",
+          "0x00000000000000000000000010dab1a9bb794a53849d295ff08768345888ddd9",
+          "0x00000000000000000000000010dab1a9bb794a53849d295ff08768345888ddd9",
+          "0x00000000000000000000000010dab1a9bb794a53849d295ff08768345888ddd9"
+        ],
+        "transactionHash": "0x25f1e016b935b00d3e57b3130110a15287d82207c6b7ef5b440f49a215bb6f96",
+        "transactionIndex": "0x4",
+        "event": "Withdraw",
+        "args": [
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "2000000",
+          "1999848"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0x7581bd25527c338b2c3a3e8e76a987de2e0eb31c15592e303bfc4099adaab38e",
+        "blockNumber": "0x1e8d93f0",
+        "blockTimestamp": "0x6ac65a96",
+        "data": "0x",
+        "logIndex": "0x9",
+        "removed": false,
+        "topics": [
+          "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d",
+          "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63",
+          "0x0000000000000000000000008d850d6807b115ac47f43bd04214a60d83fa47ed",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d"
+        ],
+        "transactionHash": "0x9e126402b92f58a67afa46965fa74bbb0f3c4f86a39bb20c60c37ab471da700f",
+        "transactionIndex": "0x2",
+        "event": "RoleGranted",
+        "args": [
+          "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63",
+          "0x8d850d6807B115AC47F43bd04214A60d83fa47eD",
+          "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D"
+        ]
+      },
+      {
+        "address": "0xd211bffab29e60c17a2b406b3faf3d0e29282b71",
+        "blockHash": "0xb02f0ccaf30cc5894bdb080ac632d1ff1da35b73022c29ef9c0f5d03f8139f8a",
+        "blockNumber": "0x1f34f3dd",
+        "blockTimestamp": "0x6af5b1b2",
+        "data": "0x",
+        "logIndex": "0x0",
+        "removed": false,
+        "topics": [
+          "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d",
+          "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63",
+          "0x0000000000000000000000009b77753b62d179e35c670e6179f577f4399d82fe",
+          "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d"
+        ],
+        "transactionHash": "0xbcd062481a75004c68e3d1716cc650e55b5dc0ae5a2f0c021ff21266408535b8",
+        "transactionIndex": "0x1",
+        "event": "RoleGranted",
+        "args": [
+          "0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63",
+          "0x9B77753b62d179e35C670E6179F577f4399D82FE",
+          "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D"
+        ]
+      }
+    ]
+  },
+  "historicalHighWaterMarkReconstruction": {
+    "status": "SOURCE_BOUND_RECONSTRUCTION_REQUIRES_SOURCE_HISTORY_PROVENANCE_OR_ATTESTATION",
+    "coverage": {
+      "fromBlock": 509725811,
+      "toBlock": 526525483,
+      "toBlockHash": "0xd50a9a9b66ea04dcdb92acd05a87c79cc53a18b01f6ac3d41427b6fe3fb8efc6"
+    },
+    "settledStateMaximumCeilingPps": "1005053181914548924",
+    "matchesCurrentCeilingPps": true,
+    "governanceAttested": false,
+    "legacyUnsettledFeeShares": [
+      "0",
+      "0"
+    ],
+    "legacyFeeWaiverAccepted": false,
+    "economicOperations": [
+      {
+        "block": 509725811,
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "event": "ManagementFeeUpdated",
+        "args": [
+          "0"
+        ]
+      },
+      {
+        "block": 509725811,
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "event": "PerformanceFeeUpdated",
+        "args": [
+          "0"
+        ]
+      },
+      {
+        "block": 509725811,
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "event": "Transfer",
+        "args": [
+          "0x0000000000000000000000000000000000000000",
+          "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+          "1000000"
+        ]
+      },
+      {
+        "block": 509725811,
+        "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+        "event": "Deposit",
+        "args": [
+          "0x4325A7DdE71150CE10960c0b05e805a0040901f8",
+          "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+          "1000000",
+          "1000000"
+        ]
+      },
+      {
+        "block": 509981555,
+        "transactionHash": "0x0cea6dd794f872297f9b070901131bab5fc9e7a50db4c9eb391024005674ee05",
+        "event": "FeesApplied",
+        "args": [
+          "1000000",
+          "1000065",
+          "0",
+          "0"
+        ]
+      },
+      {
+        "block": 509981555,
+        "transactionHash": "0x0cea6dd794f872297f9b070901131bab5fc9e7a50db4c9eb391024005674ee05",
+        "event": "Transfer",
+        "args": [
+          "0x0000000000000000000000000000000000000000",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "3999740"
+        ]
+      },
+      {
+        "block": 509981555,
+        "transactionHash": "0x0cea6dd794f872297f9b070901131bab5fc9e7a50db4c9eb391024005674ee05",
+        "event": "Deposit",
+        "args": [
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "4000000",
+          "3999740"
+        ]
+      },
+      {
+        "block": 510025648,
+        "transactionHash": "0x25f1e016b935b00d3e57b3130110a15287d82207c6b7ef5b440f49a215bb6f96",
+        "event": "FeesApplied",
+        "args": [
+          "5000065",
+          "5000122",
+          "0",
+          "0"
+        ]
+      },
+      {
+        "block": 510025648,
+        "transactionHash": "0x25f1e016b935b00d3e57b3130110a15287d82207c6b7ef5b440f49a215bb6f96",
+        "event": "Transfer",
+        "args": [
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x0000000000000000000000000000000000000000",
+          "1999848"
+        ]
+      },
+      {
+        "block": 510025648,
+        "transactionHash": "0x25f1e016b935b00d3e57b3130110a15287d82207c6b7ef5b440f49a215bb6f96",
+        "event": "Withdraw",
+        "args": [
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "0x10DaB1A9BB794A53849D295fF08768345888Ddd9",
+          "2000000",
+          "1999848"
+        ]
+      }
+    ],
+    "intervals": [
+      {
+        "startBlock": 509725811,
+        "throughBlock": 509981555,
+        "endMeaning": "before 4-USDC deposit",
+        "constantScaledBalance": "847670",
+        "constantShareSupply": "1000000",
+        "maximumIndexUsed": "1179781487272033545995753655",
+        "maximumAssetsFloor": "1000065",
+        "ceilingMaximumPps": "1000065000000000000"
+      },
+      {
+        "startBlock": 509981555,
+        "throughBlock": 510025648,
+        "endMeaning": "before 2-USDC withdrawal",
+        "constantScaledBalance": "4238128",
+        "constantShareSupply": "4999740",
+        "maximumIndexUsed": "1179794989751561947098204149",
+        "maximumAssetsFloor": "5000122",
+        "ceilingMaximumPps": "1000076403973006597"
+      },
+      {
+        "startBlock": 510025648,
+        "throughBlock": 526525483,
+        "endMeaning": "current canonical snapshot",
+        "constantScaledBalance": "2542918",
+        "constantShareSupply": "2999892",
+        "maximumIndexUsed": "1185666142779360439559974666",
+        "maximumAssetsFloor": "3015051",
+        "ceilingMaximumPps": "1005053181914548924"
+      }
+    ],
+    "assetPositionInventory": {
+      "pool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+      "aToken": "0x724dc807b04555b71ed48a6896b6F41593b8C637",
+      "counts": {
+        "otherPositionIncoming": 0,
+        "otherPositionOutgoing": 0,
+        "aTokenIncoming": 2,
+        "aTokenOutgoing": 1,
+        "addressesProviderPoolUpdates": 1,
+        "aavePoolUpgrades": 1,
+        "aTokenUpgrades": 0
+      },
+      "transferAndUpgradeLogs": {
+        "otherPositionIncoming": [],
+        "otherPositionOutgoing": [],
+        "aTokenIncoming": [
+          {
+            "address": "0x724dc807b04555b71ed48a6896b6f41593b8c637",
+            "blockHash": "0xeb04ddb2df7e239279a23861a04d3997dc697d77ac366cc19518261b752fa016",
+            "blockNumber": "0x1e61cc73",
+            "blockTimestamp": "0x6aba721c",
+            "data": "0x00000000000000000000000000000000000000000000000000000000000f423f",
+            "logIndex": "0x16",
+            "removed": false,
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x000000000000000000000000d211bffab29e60c17a2b406b3faf3d0e29282b71"
+            ],
+            "transactionHash": "0x1e483e49a139d01b0db9a85d895bc299da28c8a4e5fbb5fddd2b73f60da7c22c",
+            "transactionIndex": "0x1"
+          },
+          {
+            "address": "0x724dc807b04555b71ed48a6896b6f41593b8c637",
+            "blockHash": "0x8790a9a2c337227ff73e3e2b77cc6dbc4097766713354e1eb94ddf90427ae550",
+            "blockNumber": "0x1e65b373",
+            "blockTimestamp": "0x6abb7e2e",
+            "data": "0x00000000000000000000000000000000000000000000000000000000003d0941",
+            "logIndex": "0x1c",
+            "removed": false,
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x000000000000000000000000d211bffab29e60c17a2b406b3faf3d0e29282b71"
+            ],
+            "transactionHash": "0x0cea6dd794f872297f9b070901131bab5fc9e7a50db4c9eb391024005674ee05",
+            "transactionIndex": "0xa"
+          }
+        ],
+        "aTokenOutgoing": [
+          {
+            "address": "0x724dc807b04555b71ed48a6896b6f41593b8c637",
+            "blockHash": "0xe09d0b57a25c93d683a244cfe608a10fc8cf450da80b7f933161d3b76c17d872",
+            "blockNumber": "0x1e665fb0",
+            "blockTimestamp": "0x6abbac81",
+            "data": "0x00000000000000000000000000000000000000000000000000000000001e8447",
+            "logIndex": "0x12",
+            "removed": false,
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000d211bffab29e60c17a2b406b3faf3d0e29282b71",
+              "0x0000000000000000000000000000000000000000000000000000000000000000"
+            ],
+            "transactionHash": "0x25f1e016b935b00d3e57b3130110a15287d82207c6b7ef5b440f49a215bb6f96",
+            "transactionIndex": "0x4"
+          }
+        ],
+        "addressesProviderPoolUpdates": [
+          {
+            "address": "0xa97684ead0e402dc232d5a977953df7ecbab3cdb",
+            "blockHash": "0x5bdf80ff8bbe3ea4ce6f1f145467549877d04a178454666c815ff9920713ebe9",
+            "blockNumber": "0x1f30eafb",
+            "blockTimestamp": "0x6af4786e",
+            "data": "0x",
+            "logIndex": "0x1",
+            "removed": false,
+            "topics": [
+              "0x90affc163f1a2dfedcd36aa02ed992eeeba8100a4014f0b4cdc20ea265a66627",
+              "0x000000000000000000000000f05fd3cc911b4c5e36e53c00354f645e22922c9a",
+              "0x000000000000000000000000a6e7d235a5b2fc7811d10669bbe20fa14b658a1e"
+            ],
+            "transactionHash": "0x6f9dce2a81c9b8609b5927cb4b27144700c0ba05181f80ec39a955e081ce6936",
+            "transactionIndex": "0x1"
+          }
+        ],
+        "aavePoolUpgrades": [
+          {
+            "address": "0x794a61358d6845594f94dc1db02a252b5b4814ad",
+            "blockHash": "0x5bdf80ff8bbe3ea4ce6f1f145467549877d04a178454666c815ff9920713ebe9",
+            "blockNumber": "0x1f30eafb",
+            "blockTimestamp": "0x6af4786e",
+            "data": "0x",
+            "logIndex": "0x0",
+            "removed": false,
+            "topics": [
+              "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",
+              "0x000000000000000000000000a6e7d235a5b2fc7811d10669bbe20fa14b658a1e"
+            ],
+            "transactionHash": "0x6f9dce2a81c9b8609b5927cb4b27144700c0ba05181f80ec39a955e081ce6936",
+            "transactionIndex": "0x1"
+          }
+        ],
+        "aTokenUpgrades": []
+      }
+    },
+    "aaveImplementationHistory": {
+      "readOnly": true,
+      "chainId": 42161,
+      "upgradeBlock": 523299579,
+      "states": [
+        {
+          "block": 523299578,
+          "index": "1183678376355316123235794448",
+          "scaled": "2542918",
+          "assets": "3009997",
+          "blockHash": "0xaefb15880bc1cb5672cbce776b14284111f888bfd31efe2883f1a77958a9088d",
+          "timeUtc": "2026-11-11T14:15:09.000Z"
+        },
+        {
+          "block": 523299579,
+          "index": "1183678377436876753908079216",
+          "scaled": "2542918",
+          "assets": "3009997",
+          "blockHash": "0x5bdf80ff8bbe3ea4ce6f1f145467549877d04a178454666c815ff9920713ebe9",
+          "timeUtc": "2026-11-11T14:15:10.000Z"
+        }
+      ],
+      "aTokenImplementation": "0xadcb7e98A462AA2375D03145083eE68A2148F077",
+      "records": [
+        {
+          "address": "0xF05Fd3cC911b4c5E36e53c00354F645E22922C9A",
+          "name": "L2PoolInstance",
+          "compiler": "v0.8.27+commit.40a35a09",
+          "sourceSha256": "10106eb19888bd74bd3c23ad649b9aa944feafbdd665735325c1e752ef9d3d30",
+          "runtimeHash": "0x9018e99643e0c9b7506f6c8233da851241f5bfddb06158e978fda41861fdea50",
+          "sourceCount": 46,
+          "excerpts": [
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/pool/Pool.sol",
+              "line": 443,
+              "text": "    DataTypes.ReserveData storage reserve = _reserves[asset];\n    res.configuration = reserve.configuration;\n    res.liquidityIndex = reserve.liquidityIndex;\n    res.currentLiquidityRate = reserve.currentLiquidityRate;\n    res.variableBorrowIndex = reserve.variableBorrowIndex;\n    res.currentVariableBorrowRate = reserve.currentVariableBorrowRate;\n    res.lastUpdateTimestamp = reserve.lastUpdateTimestamp;\n    res.id = reserve.id;\n    res.aTokenAddress = reserve.aTokenAddress;\n    res.variableDebtTokenAddress = reserve.variableDebtTokenAddress;\n    res.interestRateStrategyAddress = RESERVE_INTEREST_RATE_STRATEGY;\n    res.accruedToTreasury = reserve.accruedToTreasury;\n    res.unbacked = 0;\n    res.isolationModeTotalDebt = 0;\n    // This is a temporary workaround for integrations that are broken by Aave 3.2\n    // While the new pool data provider is backward compatible, some integrations hard-code an old implementation\n    // To allow them to not have any infrastructural blocker, a mock must be configured in the Aave Pool Addresses Provider, returning zero on all required view methods, instead of reverting\n    // forge-lint: disable-next-line(unsafe-typecast)\n    res.stableDebtTokenAddress = ADDRESSES_PROVIDER.getAddress(bytes32('MOCK_STABLE_DEBT'));\n  }\n\n  /// @inheritdoc IPool\n  function getVirtualUnderlyingBalance(\n    address asset\n  ) external view virtual override returns (uint128) {\n    return _reserves[asset].virtualUnderlyingBalance;"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 39,
+              "text": "   * @return The normalized income, expressed in ray\n   */\n  function getNormalizedIncome(\n    DataTypes.ReserveData storage reserve\n  ) internal view returns (uint256) {\n    uint40 timestamp = reserve.lastUpdateTimestamp;\n\n    //solium-disable-next-line\n    if (timestamp == block.timestamp) {\n      //if the index was updated in the same block, no need to perform any calculation\n      return reserve.liquidityIndex;\n    } else {\n      return\n        MathUtils.calculateLinearInterest(reserve.currentLiquidityRate, timestamp).rayMul(\n          reserve.liquidityIndex\n        );\n    }\n  }\n\n  /**\n   * @notice Returns the ongoing normalized variable debt for the reserve.\n   * @dev A value of 1e27 means there is no debt. As time passes, the debt is accrued\n   * @dev A value of 2*1e27 means that for each unit of debt, one unit worth of interest has been accumulated\n   * @param reserve The reserve object\n   * @return The normalized variable debt, expressed in ray\n   */"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 116,
+              "text": "    require(reserve.aTokenAddress == address(0), Errors.ReserveAlreadyInitialized());\n\n    reserve.liquidityIndex = uint128(WadRayMath.RAY);\n    reserve.variableBorrowIndex = uint128(WadRayMath.RAY);\n    reserve.aTokenAddress = aTokenAddress;\n    reserve.variableDebtTokenAddress = variableDebtTokenAddress;\n  }\n\n  /**\n   * @notice Updates the reserve current variable borrow rate and the current liquidity rate.\n   * @param reserve The reserve reserve to be updated\n   * @param reserveCache The caching layer for the reserve data\n   * @param reserveAddress The address of the reserve to be updated\n   * @param liquidityAdded The amount of liquidity added to the protocol (supply or repay) in the previous action\n   * @param liquidityTaken The amount of liquidity taken from the protocol (redeem or borrow)\n   */\n  function updateInterestRatesAndVirtualBalance(\n    DataTypes.ReserveData storage reserve,\n    DataTypes.ReserveCache memory reserveCache,\n    address reserveAddress,\n    uint256 liquidityAdded,\n    uint256 liquidityTaken,\n    address interestRateStrategyAddress\n  ) internal {\n    uint256 totalVariableDebt = reserveCache.nextScaledVariableDebt.getVTokenBalance(\n      reserveCache.nextVariableBorrowIndex"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 211,
+              "text": "   * @param reserveCache The cache layer holding the cached protocol data\n   */\n  function _updateIndexes(\n    DataTypes.ReserveData storage reserve,\n    DataTypes.ReserveCache memory reserveCache\n  ) internal {\n    // Only cumulating on the supply side if there is any income being produced\n    // The case of Reserve Factor 100% is not a problem (currentLiquidityRate == 0),\n    // as liquidity index should not be updated\n    if (reserveCache.currLiquidityRate != 0) {\n      uint256 cumulatedLiquidityInterest = MathUtils.calculateLinearInterest(\n        reserveCache.currLiquidityRate,\n        reserveCache.reserveLastUpdateTimestamp\n      );\n      reserveCache.nextLiquidityIndex = cumulatedLiquidityInterest.rayMul(\n        reserveCache.currLiquidityIndex\n      );\n      reserve.liquidityIndex = reserveCache.nextLiquidityIndex.toUint128();\n    }\n\n    // Variable borrow index only gets updated if there is any variable debt.\n    // reserveCache.currVariableBorrowRate != 0 is not a correct validation,\n    // because a positive base variable rate can be stored on\n    // reserveCache.currVariableBorrowRate, but the index should not increase\n    if (reserveCache.currScaledVariableDebt != 0) {\n      uint256 cumulatedVariableBorrowInterest = MathUtils.calculateCompoundedInterest("
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 226,
+              "text": "        reserveCache.currLiquidityIndex\n      );\n      reserve.liquidityIndex = reserveCache.nextLiquidityIndex.toUint128();\n    }\n\n    // Variable borrow index only gets updated if there is any variable debt.\n    // reserveCache.currVariableBorrowRate != 0 is not a correct validation,\n    // because a positive base variable rate can be stored on\n    // reserveCache.currVariableBorrowRate, but the index should not increase\n    if (reserveCache.currScaledVariableDebt != 0) {\n      uint256 cumulatedVariableBorrowInterest = MathUtils.calculateCompoundedInterest(\n        reserveCache.currVariableBorrowRate,\n        reserveCache.reserveLastUpdateTimestamp\n      );\n      reserveCache.nextVariableBorrowIndex = cumulatedVariableBorrowInterest.rayMul(\n        reserveCache.currVariableBorrowIndex\n      );\n      reserve.variableBorrowIndex = reserveCache.nextVariableBorrowIndex.toUint128();\n    }\n  }\n\n  /**\n   * @notice Creates a cache object to avoid repeated storage reads and external contract calls when updating state and\n   * interest rates.\n   * @param reserve The reserve object for which the cache will be filled\n   * @return The cache object"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/math/MathUtils.sol",
+              "line": 23,
+              "text": "   * @return The interest rate linearly accumulated during the timeDelta, in ray\n   */\n  function calculateLinearInterest(\n    uint256 rate,\n    uint40 lastUpdateTimestamp\n  ) internal view returns (uint256) {\n    //solium-disable-next-line\n    uint256 result = rate * (block.timestamp - uint256(lastUpdateTimestamp));\n    unchecked {\n      result = result / SECONDS_PER_YEAR;\n    }\n\n    return WadRayMath.RAY + result;\n  }\n\n  /**\n   * @dev Function to calculate the interest using a compounded interest rate formula\n   * To avoid expensive exponentiation, the calculation is performed using a binomial approximation:\n   *\n   *  (1+x)^n = 1+n*x+[n/2*(n-1)]*x^2+[n/6*(n-1)*(n-2)*x^3...\n   *\n   * The approximation slightly underpays liquidity providers and undercharges borrowers, with the advantage of great\n   * gas cost reductions. The whitepaper contains reference to the approximation and a table showing the margin of\n   * error per different time periods\n   *\n   * @param rate The interest rate, in ray"
+            }
+          ]
+        },
+        {
+          "address": "0xa6E7d235A5B2fc7811d10669bbe20fA14B658A1e",
+          "name": "L2PoolInstance",
+          "compiler": "v0.8.27+commit.40a35a09",
+          "sourceSha256": "8de95f212d6e409a06a214916f78eec5f30e022bd44af1b40742c3020d647b73",
+          "runtimeHash": "0x1f369913d01c3141dff9de25fe35d096c468b1d43d7996b3a1ba7fa0d759a0ec",
+          "sourceCount": 48,
+          "excerpts": [
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/pool/Pool.sol",
+              "line": 458,
+              "text": "    DataTypes.ReserveData storage reserve = _reserves[asset];\n    res.configuration = reserve.configuration;\n    res.liquidityIndex = reserve.liquidityIndex;\n    res.currentLiquidityRate = reserve.currentLiquidityRate;\n    res.variableBorrowIndex = reserve.variableBorrowIndex;\n    res.currentVariableBorrowRate = reserve.currentVariableBorrowRate;\n    res.lastUpdateTimestamp = reserve.lastUpdateTimestamp;\n    res.id = reserve.id;\n    res.aTokenAddress = reserve.aTokenAddress;\n    res.variableDebtTokenAddress = reserve.variableDebtTokenAddress;\n    res.interestRateStrategyAddress = RESERVE_INTEREST_RATE_STRATEGY;\n    res.accruedToTreasury = reserve.accruedToTreasury;\n    res.unbacked = 0;\n    res.isolationModeTotalDebt = 0;\n    // This is a temporary workaround for integrations that are broken by Aave 3.2\n    // While the new pool data provider is backward compatible, some integrations hard-code an old implementation\n    // To allow them to not have any infrastructural blocker, a mock must be configured in the Aave Pool Addresses Provider, returning zero on all required view methods, instead of reverting\n    // forge-lint: disable-next-line(unsafe-typecast)\n    res.stableDebtTokenAddress = ADDRESSES_PROVIDER.getAddress(bytes32('MOCK_STABLE_DEBT'));\n  }\n\n  /// @inheritdoc IPool\n  function getVirtualUnderlyingBalance(\n    address asset\n  ) external view virtual override returns (uint128) {\n    return _reserves[asset].virtualUnderlyingBalance;"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 39,
+              "text": "   * @return The normalized income, expressed in ray\n   */\n  function getNormalizedIncome(\n    DataTypes.ReserveData storage reserve\n  ) internal view returns (uint256) {\n    uint40 timestamp = reserve.lastUpdateTimestamp;\n\n    //solium-disable-next-line\n    if (timestamp == block.timestamp) {\n      //if the index was updated in the same block, no need to perform any calculation\n      return reserve.liquidityIndex;\n    } else {\n      return\n        MathUtils.calculateLinearInterest(reserve.currentLiquidityRate, timestamp).rayMul(\n          reserve.liquidityIndex\n        );\n    }\n  }\n\n  /**\n   * @notice Returns the ongoing normalized variable debt for the reserve.\n   * @dev A value of 1e27 means there is no debt. As time passes, the debt is accrued\n   * @dev A value of 2*1e27 means that for each unit of debt, one unit worth of interest has been accumulated\n   * @param reserve The reserve object\n   * @return The normalized variable debt, expressed in ray\n   */"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 116,
+              "text": "    require(reserve.aTokenAddress == address(0), Errors.ReserveAlreadyInitialized());\n\n    reserve.liquidityIndex = uint128(WadRayMath.RAY);\n    reserve.variableBorrowIndex = uint128(WadRayMath.RAY);\n    reserve.aTokenAddress = aTokenAddress;\n    reserve.variableDebtTokenAddress = variableDebtTokenAddress;\n  }\n\n  /**\n   * @notice Updates the reserve current variable borrow rate and the current liquidity rate.\n   * @param reserve The reserve reserve to be updated\n   * @param reserveCache The caching layer for the reserve data\n   * @param reserveAddress The address of the reserve to be updated\n   * @param liquidityAdded The amount of liquidity added to the protocol (supply or repay) in the previous action\n   * @param liquidityTaken The amount of liquidity taken from the protocol (redeem or borrow)\n   */\n  function updateInterestRatesAndVirtualBalance(\n    DataTypes.ReserveData storage reserve,\n    DataTypes.ReserveCache memory reserveCache,\n    address reserveAddress,\n    uint256 liquidityAdded,\n    uint256 liquidityTaken,\n    address interestRateStrategyAddress\n  ) internal {\n    uint256 totalVariableDebt = reserveCache.nextScaledVariableDebt.getVTokenBalance(\n      reserveCache.nextVariableBorrowIndex"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 211,
+              "text": "   * @param reserveCache The cache layer holding the cached protocol data\n   */\n  function _updateIndexes(\n    DataTypes.ReserveData storage reserve,\n    DataTypes.ReserveCache memory reserveCache\n  ) internal {\n    // Only cumulating on the supply side if there is any income being produced\n    // The case of Reserve Factor 100% is not a problem (currentLiquidityRate == 0),\n    // as liquidity index should not be updated\n    if (reserveCache.currLiquidityRate != 0) {\n      uint256 cumulatedLiquidityInterest = MathUtils.calculateLinearInterest(\n        reserveCache.currLiquidityRate,\n        reserveCache.reserveLastUpdateTimestamp\n      );\n      reserveCache.nextLiquidityIndex = cumulatedLiquidityInterest.rayMul(\n        reserveCache.currLiquidityIndex\n      );\n      reserve.liquidityIndex = reserveCache.nextLiquidityIndex.toUint128();\n    }\n\n    // Variable borrow index only gets updated if there is any variable debt.\n    // reserveCache.currVariableBorrowRate != 0 is not a correct validation,\n    // because a positive base variable rate can be stored on\n    // reserveCache.currVariableBorrowRate, but the index should not increase\n    if (reserveCache.currScaledVariableDebt != 0) {\n      uint256 cumulatedVariableBorrowInterest = MathUtils.calculateCompoundedInterest("
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/ReserveLogic.sol",
+              "line": 226,
+              "text": "        reserveCache.currLiquidityIndex\n      );\n      reserve.liquidityIndex = reserveCache.nextLiquidityIndex.toUint128();\n    }\n\n    // Variable borrow index only gets updated if there is any variable debt.\n    // reserveCache.currVariableBorrowRate != 0 is not a correct validation,\n    // because a positive base variable rate can be stored on\n    // reserveCache.currVariableBorrowRate, but the index should not increase\n    if (reserveCache.currScaledVariableDebt != 0) {\n      uint256 cumulatedVariableBorrowInterest = MathUtils.calculateCompoundedInterest(\n        reserveCache.currVariableBorrowRate,\n        reserveCache.reserveLastUpdateTimestamp\n      );\n      reserveCache.nextVariableBorrowIndex = cumulatedVariableBorrowInterest.rayMul(\n        reserveCache.currVariableBorrowIndex\n      );\n      reserve.variableBorrowIndex = reserveCache.nextVariableBorrowIndex.toUint128();\n    }\n  }\n\n  /**\n   * @notice Creates a cache object to avoid repeated storage reads and external contract calls when updating state and\n   * interest rates.\n   * @param reserve The reserve object for which the cache will be filled\n   * @return The cache object"
+            },
+            {
+              "path": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/math/MathUtils.sol",
+              "line": 23,
+              "text": "   * @return The interest rate linearly accumulated during the timeDelta, in ray\n   */\n  function calculateLinearInterest(\n    uint256 rate,\n    uint40 lastUpdateTimestamp\n  ) internal view returns (uint256) {\n    //solium-disable-next-line\n    uint256 result = rate * (block.timestamp - uint256(lastUpdateTimestamp));\n    unchecked {\n      result = result / SECONDS_PER_YEAR;\n    }\n\n    return WadRayMath.RAY + result;\n  }\n\n  /**\n   * @dev Function to calculate the interest using a compounded interest rate formula\n   * To avoid expensive exponentiation, the calculation is performed using a binomial approximation:\n   *\n   *  (1+x)^n = 1+n*x+[n/2*(n-1)]*x^2+[n/6*(n-1)*(n-2)*x^3...\n   *\n   * The approximation slightly underpays liquidity providers and undercharges borrowers, with the advantage of great\n   * gas cost reductions. The whitepaper contains reference to the approximation and a table showing the margin of\n   * error per different time periods\n   *\n   * @param rate The interest rate, in ray"
+            }
+          ]
+        },
+        {
+          "address": "0xadcb7e98A462AA2375D03145083eE68A2148F077",
+          "name": "ATokenInstance",
+          "compiler": "v0.8.27+commit.40a35a09",
+          "sourceSha256": "193281f4871572a9e1e394dd4f5211b769b44509900c43c14caee823255baf1b",
+          "runtimeHash": "0xc730301c56de6c1ab7feeecf24fd64795555b2e6c936e40e3f1882cac6e307a6",
+          "sourceCount": 25,
+          "excerpts": [
+            {
+              "path": "lib/aave-v3-origin/src/contracts/protocol/tokenization/AToken.sol",
+              "line": 134,
+              "text": "\n  /// @inheritdoc IERC20\n  function balanceOf(\n    address user\n  ) public view virtual override(IncentivizedERC20, IERC20) returns (uint256) {\n    return\n      super.balanceOf(user).getATokenBalance(POOL.getReserveNormalizedIncome(_underlyingAsset));\n  }\n\n  /// @inheritdoc IERC20\n  function totalSupply() public view virtual override(IncentivizedERC20, IERC20) returns (uint256) {\n    return super.totalSupply().getATokenBalance(POOL.getReserveNormalizedIncome(_underlyingAsset));\n  }\n\n  /// @inheritdoc IAToken\n  function RESERVE_TREASURY_ADDRESS() external view override returns (address) {\n    return TREASURY;\n  }\n\n  /// @inheritdoc IAToken\n  function UNDERLYING_ASSET_ADDRESS() external view override returns (address) {\n    return _underlyingAsset;\n  }\n\n  /// @inheritdoc IAToken\n  function transferUnderlyingTo(address target, uint256 amount) external virtual override onlyPool {"
+            },
+            {
+              "path": "lib/aave-v3-origin/src/contracts/protocol/tokenization/base/ScaledBalanceTokenBase.sol",
+              "line": 39,
+              "text": "\n  /// @inheritdoc IScaledBalanceToken\n  function scaledBalanceOf(address user) external view override returns (uint256) {\n    return super.balanceOf(user);\n  }\n\n  /// @inheritdoc IScaledBalanceToken\n  function getScaledUserBalanceAndSupply(\n    address user\n  ) external view override returns (uint256, uint256) {\n    return (super.balanceOf(user), super.totalSupply());\n  }\n\n  /// @inheritdoc IScaledBalanceToken\n  function scaledTotalSupply() public view virtual override returns (uint256) {\n    return super.totalSupply();\n  }\n\n  /// @inheritdoc IScaledBalanceToken\n  function getPreviousIndex(address user) external view virtual override returns (uint256) {\n    return _userState[user].additionalData;\n  }\n\n  /**\n   * @notice Implements the basic logic to mint a scaled balance token.\n   * @param caller The address performing the mint"
+            }
+          ]
+        }
+      ]
+    },
+    "reasoning": [
+      "Complete Strategy log history identifies only initial 1 USDC, one 4 USDC deposit and one 2 USDC withdrawal. No provider/entry changes or rebalances occurred; fee rates were initialized to zero and never changed.",
+      "Share mint/burn history reconstructs current supply exactly. Four other registered position tokens have no incoming/outgoing Transfer events over complete coverage, so held no shares. Aave aToken has exactly two incoming and one outgoing transfer matching the three economic operations.",
+      "Between those operations, both scaled aToken balance and Strategy share supply are fixed. Verified AToken balanceOf equals floor(scaledBalance*normalizedIncome/1e27).",
+      "Both verified Pool implementations use nonnegative linear interest; ReserveLogic only initializes a fresh reserve or updates its liquidity index by a factor >=RAY. The single Pool upgrade increases normalized income and leaves scaled balance unchanged. No aToken upgrade occurs.",
+      "Evaluate each fixed-balance interval using the normalized index at its closing operation/current snapshot. Floor token assets and ceil PPS explicitly; maximum of interval bounds is the current snapshot ceil PPS. This proof allows rounding dips at share-changing operations and makes no blanket monotonic-PPS assumption.",
+      "The result covers settled canonical economic states, excludes temporary intra-transaction pre-mint/burn states, and relies on complete canonical RPC logs plus verified protocol implementation source. It is a data reconstruction rather than a governance signature. Source-bound condition: no historical ProviderManager/Aave registry retarget or alias is established only when separately proven or attested."
+    ],
+    "sourceHistoryCondition": "Historical ProviderManager/Aave registry sources were not temporarily retargeted or aliased. Strategy/receipt logs alone do not prove this.",
+    "independentReview": "Interval arithmetic and TokenMath.rayMulFloor verified. Generic registry source-change and mutable ProviderManager history provenance remains required."
+  },
+  "knownCurrentRoleHolders": {
+    "ADMIN_ROLE": [
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D"
+    ],
+    "EXECUTOR_ROLE": [
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+      "0x8d850d6807B115AC47F43bd04214A60d83fa47eD",
+      "0x9B77753b62d179e35C670E6179F577f4399D82FE"
+    ],
+    "reconstructedFromCompleteGrantAndRevokeHistory": true,
+    "extraExecutorLiveCheck": {
+      "address": "0x8d850d6807B115AC47F43bd04214A60d83fa47eD",
+      "executor": true,
+      "admin": false
+    }
+  },
+  "gasBudget": {
+    "readOnly": true,
+    "observedAtUtc": "2026-11-22T13:25:48.662Z",
+    "block": 526526548,
+    "blockHash": "0xad5687edfe2f66ca9784138d23eafe1b109cb8bdecdf031b8c8251dae49a6f98",
+    "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "balanceWei": "46759415126000",
+    "gasPriceWei": "20058000",
+    "nonces": {
+      "owner": {
+        "address": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+        "latest": "662",
+        "pending": "662"
+      },
+      "isolatedExecutor": {
+        "address": "0x9B77753b62d179e35C670E6179F577f4399D82FE",
+        "latest": "0",
+        "pending": "0"
+      }
+    },
+    "estimatedGas": {
+      "deployment": "7567006",
+      "atomic": "424000",
+      "queue": "600000",
+      "execute": "1500000",
+      "total": "10091006"
+    },
+    "feeWith25PctBufferWei": "253006747935000",
+    "shortfallWithoutReserveWei": "206247332809000",
+    "preserveMinimumWei": "30000000000000",
+    "shortfallWithReserveWei": "236247332809000",
+    "note": "Budget uses current RPC gas price and caller-supplied queue/execute/atomic bounds; future base fee and Arbitrum L1 data fee may change. Refresh per transaction."
+  },
+  "basePrecedent": {
+    "transactionHash": "0x5b256b18578f55624a7daaf4c88cd239f965aa1deb1d7faed31ebc0202b7de80",
+    "block": 56864845,
+    "implementation": "0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D",
+    "initialHwm": "1005629483841248682",
+    "note": "Establishes the value set on Base, not a transferable Arbitrum historical HWM."
+  },
+  "remainingReleaseInputs": [
+    "Close historical ProviderManager/Aave registry retarget/alias provenance, or explicitly attest source-history condition for the reconstructed HWM.",
+    "Governance attestation referencing the reconstructed Arbitrum history and fresh PPS; no current attestation is asserted here.",
+    "Acceptance of resetting legacy fee baseline/waiver (current accrued fees zero).",
+    "Actual deployed and source/runtime-verified target implementation and provider addresses, explicit venue caps and source attestations.",
+    "Fresh successful fork rehearsal, preserve all existing roles/providers/entry/caps/fees/holdings and verify venue exits.",
+    "Sufficient owner Arbitrum gas and fresh per-transaction fee/nonce checks.",
+    "Compatible off-chain allocator readers/registry before allocating into newly added venues; known live allocator does not yet support Fluid/MorphoV2 market readers.",
+    "Refresh canonical snapshot/log coverage/HWM immediately before signing; never reuse stale ETA/calldata or alter unrelated governance."
+  ],
+  "artifactProvenance": [
+    {
+      "file": "snapshot.json",
+      "sha256": "93396c7e24ccbbf6fedd0873510d0fdb9ed5c755fb5865fd404fa7aef51f0e85"
+    },
+    {
+      "file": "history-logs.json",
+      "sha256": "f62f271ae6e64afabb1aa5f8c0e1ff24e675c3b716b5c39d083f6b2b50cf0ca4"
+    },
+    {
+      "file": "hwm-history.json",
+      "sha256": "77fc47311efd364ca12525816208fcfd51d1385ca178864bc32479d97ae81398"
+    },
+    {
+      "file": "aave-index-provenance.json",
+      "sha256": "d9dbbf72fb996872cb1cee4fda8b001ebd4b256bc0683ba5522c391a736f6f94"
+    },
+    {
+      "file": "gas-budget.json",
+      "sha256": "5332f0679c9add04c1b27f6ee9e893f9408c1052dc44208726fcc1e2f8f7a5a5"
+    }
+  ]
+}
