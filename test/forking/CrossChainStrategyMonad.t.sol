@@ -41,8 +41,12 @@ import {ForkPins} from "./ForkPins.sol";
  *      A plain `forge test --match-path 'test/forking/*'` therefore reports this file as
  *      SKIPPED, not passed and not failed. That is deliberate: `vm.skip` keeps the absence
  *      visible, where the early-return idiom used elsewhere in this directory would report a
- *      vacuous PASS that looks identical to a real one. Setting MONAD_RPC_URL without the two
- *      flags fails loudly in setUp rather than skipping, which is also intended.
+ *      vacuous PASS that looks identical to a real one.
+ *
+ *      Pass MONAD_RPC_URL inline as shown, not exported into .env. Setting it globally makes
+ *      the aggregate forking run fail in setUp with the EVM mismatch above, because that run
+ *      does not carry --rpc-url. Failing loudly there is better than skipping silently, but it
+ *      is not something to leave in a shared environment file.
  */
 contract CrossChainStrategyMonadForkTest is Test {
     uint256 internal constant ONE = 1e6;
