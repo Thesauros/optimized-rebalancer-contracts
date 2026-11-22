@@ -153,12 +153,29 @@ not exist on Monad, so the `production` profile gate in `01-deploy.ts` would
 refuse; only `stand` can deploy there today. The deployer holds 13.03 MON and
 3.04 USDC, enough for the 1 USDC seed.
 
-**Plasma.** CCTP domain 33 is live and native USDC exists, but the asset
-question is unresolved and gates everything else. A USDC spoke has no Aave
-market and only a Fluid fUSDC holding 0.017 USDC; the deep venue, 470M, is
-USDT0, which CCTP does not deliver and `TickAccountant` cannot price without an
-FX rule. Adding Plasma to the registry before that is chosen would encode a
-guess. The decision and its evidence belong in a separate proposal.
+**Plasma.** Not registered, and deliberately so. CCTP domain 33 is live and
+native USDC exists, so the inbound leg works, but the outbound leg does not: the
+only USDC liquidity on the chain is one pool holding about 30k USDC against
+2.37M USDT0, entirely provided by a single EOA-owned NFT position whose upper
+tick sits one tick above spot. Capital can enter at 7.25 bp on a million and
+cannot leave beyond roughly 30k. A USDC spoke with no swap is worse — there is
+no USDC yield venue at all, so it would be a 0% idle balance.
+
+Registering Plasma now would encode a design that cannot redeem a hub
+withdrawal. The evidence is in `research.md`. The remaining options are a
+USDT0-denominated spoke, which needs an FX rule in NAV that `TickAccountant`
+does not currently make and is a product decision rather than an integration
+task, or deferral. Everything else about Plasma is ready: the RPC serves archive
+state with a 10,000-block log window, `hardhat.config.ts` and
+`network-config.ts` already carry the chain, and CCTP needs no adapter change.
+
+Two operational items surfaced alongside this and belong to whichever Plasma
+path is chosen. `providerRangeLimit` in `ops/src/util.ts` does not recognise
+Plasma's `eth_getLogs is limited to a 10,000 range` error and rethrows it, which
+only bites if `LOG_RANGE` is raised above the default 9000. And `logStep` there
+is a module global shared by every chain in the process, so Monad's roughly
+101-block log cap would drag the step down for Base, Arbitrum and Ethereum in
+the same monitor or indexer process.
 
 **Solana.** Source is complete in `main` and CI builds both programs with
 `cargo build-sbf --arch v2` and runs the local-validator suite. Activation is a

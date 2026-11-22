@@ -335,16 +335,78 @@ no chain identity, so a cross-chain mix-up here would fail silently rather than
 loudly.
 
 
+## Plasma: a USDC spoke cannot return funds
+
+CCTP delivers USDC and native USDC exists on Plasma, so the inbound leg works.
+The outbound leg does not. A spoke must be able to convert back to USDC to
+answer a hub withdrawal, and the only USDC on Plasma is what one pool holds.
+
+An exhaustive sweep of the chain found the venue inventory. The canonical
+Uniswap V3 factory, V3 position manager, V4 PoolManager, seven other canonical
+V2/V3 addresses, Morpho Blue at both its canonical and its Arbitrum address, and
+Compound's Configurator all return zero bytes. A Uniswap-V3-compatible venue
+does run at non-canonical addresses, factory
+`0xcb2436774C3e191c85056d248EF4260ce5f27A9D` with a position manager naming
+itself "Uniswap V3 Positions NFT-V1" and canonical tick spacings, found from
+`Swap` logs rather than assumed. Whether it is an official Uniswap Labs
+deployment or a fork is not established, so it has to be treated as an
+unaudited third-party venue.
+
+Scanning `PoolCreated` from block 0 to head across all four V3-style factories
+and both indexed token positions yields three pools containing USDC; two have
+zero liquidity against lookalike tokens. There is exactly one live USDC pool:
+
+| Field | Value |
+|---|---|
+| Pool | `0x56cf5Fc8a6d04f52dF99752EeD255EE8a64504DE` |
+| token0 / token1 | USDC `0x2d661C89…` / USDT0 `0xB8CE59FC…` |
+| fee | 100 (0.01%) |
+| `liquidity()` | `1600150433586742` |
+| **USDC held** | **30,215.64** |
+| **USDT0 held** | **2,371,265.76** |
+| Chain-wide USDC supply | 2,447,795 |
+| Chain-wide USDT0 supply | 891,852,885 |
+
+Read again a few hours earlier the USDC leg held 18,086, so the figure moves;
+both readings are two orders of magnitude below anything this vault would route.
+The pool cannot pay out more USDC than it holds, so ~30k is a hard ceiling on
+the exit leg regardless of swap mathematics, and the exact V3 walk puts it lower
+at 17,373.91 USDC because only two ticks are initialized, −16 and +14, with spot
+at 13. One NFT, tokenId 21465, is 100% of the liquidity and its owner
+`0x5782D52E1149a3bA5569E24448F58A19F75D0E12` has no code — a bare EOA that can
+withdraw all of it in one transaction.
+
+The inbound direction is fine and that is what makes the trap: 100,000 USDC in
+costs 1.63 bp and 1,000,000 costs 7.25 bp. Capital can enter and cannot leave.
+
+Two cross-checks close the question. A 1,000,000-block census of USDC
+`Transfer` logs found 1,944 transfers across 130 counterparties in which every
+contract holder combined holds 48,562.99 USDC out of 2,447,795 total — 98% of
+Plasma's USDC sits in EOAs, so no hidden venue exists. And the deep market is
+USDT0, not USDC: Aave V3 Plasma holds 468,084,694 USDT0 supplied with
+109,000,056 available to withdraw, supply cap 670M, active, not frozen, not
+paused, borrowing enabled, 2.736% supply rate, `ltv = 0` so it yields but grants
+no borrowing power.
+
+Fluid fUSDC exists with correct plumbing over native USDC but holds 17062
+micro-USDC and its Liquidity layer holds 7953; its rate parameters are
+configured at 5.50% borrow and 70.80% target utilisation, which on that balance
+means any real deposit drives utilisation and therefore APR to roughly zero.
+Balancer V2 is live and unpaused at the canonical address holding 0 USDC.
+
+So neither design works. A USDC spoke has no yield venue at all and would be a
+0% idle balance. A USDC-in / USDT0-out spoke enters cheaply and is capped at
+about 30k USDC on the way out, with the cap owned by one EOA. The choice is
+between a USDT0-denominated spoke, which needs an FX rule in NAV that
+`TickAccountant` does not currently make, and deferring Plasma.
+
 ## Open decisions
 
-- **Plasma asset.** CCTP delivers USDC and native USDC exists on Plasma
-  (`0x2d661C89…`, 2.43M total supply), but Aave V3 there lists no USDC, and the
-  only USDC venue found is Fluid fUSDC with 0.017 USDC in it. Meanwhile the
-  Aave USDT0 market holds 469,863,543 USDT0 and total USDT0 supply on Plasma is
-  roughly 998M against 2.43M of USDC. Keeping a Plasma spoke in USDC avoids FX
-  risk but has no depth today; converting to USDT0 reaches real depth but needs
-  a reviewed swap venue, an FX rule and slippage limits in NAV, which
-  `TickAccountant` does not currently price.
+- **Plasma asset.** Decided above on the evidence: a USDC spoke is not
+  executable. The live options are a USDT0-denominated spoke with an FX rule, or
+  deferral. What is not available is the design originally chosen, USDC in and a
+  swap to USDT0, because the exit leg is capped at roughly 30k USDC.
+
 - **Ethereum AaveV3 cap.** Set to 0, uncapped, matching how AaveV3 is capped on
   Base and Arbitrum. On those two it is the entry provider, where uncapped is
   structural; on Ethereum the entry is Steakhouse, so this is the one cap on
