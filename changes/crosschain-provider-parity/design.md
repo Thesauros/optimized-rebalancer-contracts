@@ -95,14 +95,26 @@ Ordering follows one rule: a network is added only when every fact it depends on
 is measured, and a live spoke is only extended after its registry entry has been
 fork-tested.
 
-**Arbitrum Fluid, live.** The registry entry is in; the live spoke
-`0xD211Bf…2B71` still runs five providers. Registering Fluid there is a
-Timelock `setProviders` with all six plus a `setProviderCap` at 3000, which is
-the sequence `BaseStrategyExpansionForkTest` already replays against the live
-Base strategy. What is missing is the Arbitrum equivalent of that replay: a
-fork test that loads the real Arbitrum spoke, extends it through its own
-Timelock and round-trips USDC through Fluid. Until that passes, the live spoke
-is unchanged.
+**Arbitrum Fluid, live.** The registry entry is in, and
+`test/forking/ArbitrumStrategyExpansion.t.sol` now rehearses the whole path
+against the live spoke: it asserts the spoke still runs the pre-upgrade
+implementation, upgrades it atomically through its ProxyAdmin with
+`initializeSecurityAccounting`, registers six providers through the spoke
+Timelock at its 24h delay, and round-trips USDC through Fluid with NAV
+reconciled across all six sources. Nothing is executed on-chain.
+
+Two things make this more than the Base replay. First, the Arbitrum spoke has
+not been upgraded, so the governance action is four Timelock calls and a proxy
+upgrade rather than two calls, and whether the upgrade should ride along with
+the Fluid registration is a scope decision for whoever signs. Second, the
+expansion is to six providers, not seven: Arbitrum gets no Morpho V2. The vault
+exists and is interface-identical to Base's under the same curator, but at
+191,941 USDC with underlying markets near 91% utilisation the spoke would
+dominate it and its own withdrawals would drain the idle balance.
+
+Because `ForkPins.ARBITRUM` is 0, the test floats at head and its `setUp`
+assertions describe a spoke that has not been upgraded. They will fail once the
+real upgrade lands, which is the intended signal to retire the file.
 
 **Ethereum spoke.** Registry is complete at seven providers. Remaining work is
 operational: run phases 1 to 5, produce
