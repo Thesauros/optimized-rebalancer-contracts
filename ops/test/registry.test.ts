@@ -90,9 +90,13 @@ test('Arbitrum expands with Fluid; Ethereum expands with Aave, Fluid and V2', ()
   // FluidProvider._checkVault reverts AssetMismatch on every action.
   assert.equal(arbitrum.strategy.fluidFToken, '0x1A996cb54bb95462040408C06122D45D6Cdb6096');
   assert.equal(arbitrum.strategy.capsBps.Fluid, 3_000);
-  // No Morpho Vault V2 source is published for Arbitrum: utils/constants.ts lists
-  // only V1 vaults there, so morphoV2Vault must stay unset rather than point at a
-  // V1 vault, which the MorphoV2Provider constructor gates would reject anyway.
+  // A Gauntlet V2 USDC vault does exist on Arbitrum, 0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78,
+  // same curator and owner as the Base one and interface-identical. It is deliberately
+  // not registered: totalAssets is 191,941 USDC against a Base vault of 284M, and its
+  // underlying Morpho markets run at about 91% utilisation, so a single rebalance from
+  // this spoke would dominate the vault and our own withdraw would be what drains market
+  // idle. morphoV2Vault therefore stays unset, and utils/constants.ts records no version 2
+  // entry for the chain, so the two agree.
   assert.equal(arbitrum.strategy.morphoV2Vault, undefined);
   assert.equal(chainConfigs[42161].morphoVaults.some((v) => v.version === 2), false);
 

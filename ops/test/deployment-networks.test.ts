@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Interface, Provider, zeroPadValue } from 'ethers';
-import { ACCESS, ADAPTER, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, PROVIDER, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../src/abi';
+import { ACCESS, ADAPTER, CHAIN_AGENT, EPOCH_VAULT, MORPHO_V2_VAULT, OWNABLE, PROVIDER, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../src/abi';
 import { checkDeployment } from '../src/checks/deployment';
 import { HUB_PARAMS, NETWORKS } from '../../deploy/crosschain/registry';
 
@@ -17,10 +17,15 @@ const manifests = Object.fromEntries(['base', 'arbitrum'].map((key) => {
   return [key, { ...m, codehashes: {} }];
 }));
 const runtime = Object.fromEntries(['base', 'arbitrum'].map((key) => [key, NETWORKS[key]]));
-const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...OWNABLE, ...PROVIDER, ...PROVIDER_MANAGER, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK]);
+const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...MORPHO_V2_VAULT, ...OWNABLE, ...PROVIDER, ...PROVIDER_MANAGER, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK]);
+
+/** The curator every genuine Gauntlet Morpho vault returns; see GAUNTLET_CURATOR in the check. */
+const GAUNTLET_CURATOR = '0x9E33faAE38ff641094fa68c65c2cE600b3410585';
+/** Stands in for one of the decoy vaults that copy a Gauntlet name under another curator. */
+const DECOY_CURATOR = '0x1b0448bf6bD7eF8165A6350191d7338F5c2464f4';
 
 /** Two-chain deployment fixture. Unexpected third-chain reads are errors. */
-function provider(tracked = [8453n, 42161n], wrongFluidSource = false): Provider {
+function provider(tracked = [8453n, 42161n], wrongFluidSource = false, wrongCurator = false): Provider {
   const m = manifests.base;
   const c = m.contracts;
   const safe = m.deployer;
@@ -62,6 +67,10 @@ function provider(tracked = [8453n, 42161n], wrongFluidSource = false): Provider
         case 'getSource': value = [to.toLowerCase() === c.FluidProvider.toLowerCase()
           ? (wrongFluidSource ? runtime.base.strategy.morphoV2Vault : runtime.base.strategy.fluidFToken)
           : runtime.base.strategy.morphoV2Vault]; break;
+        // checkDeployment reads the Morpho V2 vault directly, not through its provider,
+        // because a registry that named a decoy would still pass the getSource check.
+        case 'curator': value = [wrongCurator ? DECOY_CURATOR : GAUNTLET_CURATOR]; break;
+        case 'asset': value = [runtime.base.usdc]; break;
         // CompoundV3Provider resolves its Comet through the ProviderManager, so
         // checkDeployment reads it back and compares against the registry. Every
         // call into this fixture checks 'base'.
@@ -111,4 +120,20 @@ test('missing new provider manifests produce pending checks rather than invalid-
 test('monitor rejects a Fluid provider bound to another source', async () => {
   const results = await checkDeployment(provider(undefined, true), 'base', manifests.base, manifests, ids, runtime);
   assert.ok(results.some((r) => r.label === 'strategy source Fluid' && !r.ok));
+});
+
+test('monitor rejects a Morpho V2 vault curated by someone other than Gauntlet', async () => {
+  // Six V2 vaults on Ethereum and Arbitrum copy a Gauntlet name and symbol; two are decoys,
+  // one of them a 15% performance fee wrapper under another curator. Its provider still
+  // resolves to whatever the registry names, so only curator() catches it.
+  const clean = await checkDeployment(provider(), 'base', manifests.base, manifests, ids, runtime);
+  assert.deepEqual(clean.filter((r) => r.label === 'morpho v2 curator' && !r.ok), [], 'the genuine curator passes');
+  assert.ok(clean.some((r) => r.label === 'morpho v2 curator'), 'the curator is checked at all');
+
+  const results = await checkDeployment(provider(undefined, false, true), 'base', manifests.base, manifests, ids, runtime);
+  const failed = results.filter((r) => r.label === 'morpho v2 curator' && !r.ok);
+  assert.equal(failed.length, 1, 'a decoy curator fails exactly one check');
+  assert.ok(failed[0].detail.includes(DECOY_CURATOR), 'the report names the curator it found');
+  assert.deepEqual(results.filter((r) => r.label === 'strategy source GauntletPrimeV2Morpho' && !r.ok), [],
+    'the source check alone would not have caught it');
 });

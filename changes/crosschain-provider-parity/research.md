@@ -120,18 +120,27 @@ Fluid publishes no Monad deployment. Its Liquidity layer sits at the same
 address on every chain it serves; `rebalancer` is `0x264786EF…ce92` on Base,
 Ethereum and Arbitrum but `0x0` on Plasma.
 
-Morpho Vault V2, from `utils/constants.ts` and then verified on-chain:
+Morpho Vault V2, from `utils/constants.ts` and Morpho's curator registry, then
+verified on-chain:
 
 | Chain | V2 vault | Evidence |
 |---|---|---|
-| Base | `0x050cE30b…56f0` | live in production; 21808 bytes; Gauntlet USDC Prime; curator `0x9E33faAE…0585`; 284,480,245 USDC |
-| Ethereum | `0x8c106EED…A3D0` | 21808 bytes, identical to Base; asset is Ethereum USDC; `accrueInterestView` and `adaptersLength` both answer; same Gauntlet curator; 103,247,937 USDC |
-| Arbitrum | none | `chainConfigs[42161].morphoVaults` lists three V1 vaults and no `version: 2` entry |
+| Base | `0x050cE30b…56f0` | live in production; 21808 bytes; Gauntlet USDC Prime; curator `0x9E33faAE…0585`; 284,480,421 USDC |
+| Ethereum | `0x8c106EED…A3D0` | 21808 bytes, identical to Base; asset is Ethereum USDC; `accrueInterestView` and `adaptersLength` both answer; same Gauntlet curator; 103,247,959 USDC |
+| Arbitrum | `0x610D151a…AE78` exists but is not registered | interface-identical to Base, same curator and same owner, asset is Arbitrum USDC, gates open — and `totalAssets()` is **191,941 USDC** with its four underlying Morpho markets at about 91% utilisation |
 | Plasma, Monad | none | `morphoVaults: []` for both |
 
-`GauntletV2EthereumForkTest` already existed in `test/forking/` against
-`0x8c106EED…A3D0`, so the Ethereum V2 vault was fork-tested before it was
-wired into the registry.
+Arbitrum is the one place where the earlier reading was wrong in the other
+direction. `utils/constants.ts` lists no `version: 2` vault for chainId 42161 and
+`docs/gauntlet-v2-provider.md` says no V2 source is configured there, which is
+true of our config, but a genuine Gauntlet V2 USDC vault does exist on the
+chain. It is simply too thin to use: the whole Arbitrum Gauntlet USDC V2
+complex, Prime plus Balanced at `0x55a2B207…5E0F` with 143,236 USDC, totals
+about 335k against a Base vault of 284M. A single rebalance from this spoke
+would dominate the vault, and with markets at 91% utilisation our own `withdraw`
+would be what drains the idle balance. Interface compatibility is not usability,
+so `morphoV2Vault` stays unset for Arbitrum and the ops test now records that
+reason rather than claiming no source exists.
 
 Morpho Blue is not at a single address across chains. It is
 `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` on Base and Ethereum but
@@ -139,6 +148,80 @@ Morpho Blue is not at a single address across chains. It is
 live Gauntlet MetaMorpho vaults point through their `MORPHO()` getter. An empty
 read at the canonical address therefore proves nothing; read `MORPHO()` off a
 live vault instead.
+
+## Decoy Morpho V2 vaults
+
+Selection by name or symbol is unsafe. Six V2 vaults across Ethereum and
+Arbitrum carry `name()` "Gauntlet USDC Prime" or "Gauntlet USDC Balanced" with
+the correct `asset()`, and two are actively dangerous:
+
+| Address | Chain | Why it is a trap |
+|---|---|---|
+| `0x43A1A94a…3c7E` | Ethereum | `name()` and `symbol()` byte-identical to the real vault, `totalAssets()` 0, unlisted |
+| `0x7aD470Ba…d0B6` | Ethereum | `name()` "Gauntlet USDC Prime", symbol `SGUCP`, 15% performance fee, curator `0x1b0448bf…64f4` who is not Gauntlet, and its adapter wraps the V1 MetaMorpho `0xdd0f28e1…490d` |
+| `0x27B5e60e…60e6`, `0x7c46d039…B25` | Arbitrum | dust and empty duplicates of Prime |
+| `0x5007D4b8…7174` | Arbitrum | empty duplicate of Balanced |
+
+`curator()` is the cheap on-chain discriminator. Every genuine Gauntlet vault on
+all three chains returns `0x9E33faAE38ff641094fa68c65c2cE600b3410585`, which
+Morpho's registry marks verified for curator "Gauntlet" on chains 1, 8453 and
+42161. Measured directly against the two addresses the registry now names and
+the decoy above:
+
+| Vault | `curator()` | `asset()` |
+|---|---|---|
+| Base `0x050cE30b…56f0` | `0x9E33faAE…0585` pass | Base USDC pass |
+| Ethereum `0x8c106EED…A3D0` | `0x9E33faAE…0585` pass | Ethereum USDC pass |
+| Decoy `0x7aD470Ba…d0B6` | `0x1b0448bf…64f4` **fail** | Ethereum USDC pass |
+
+The decoy passes an `asset()` check, so `asset()` alone does not catch it.
+`ops/src/checks/deployment.ts` now asserts both for any registry entry carrying
+`morphoV2Vault`, and `ops/test/deployment-networks.test.ts` covers the negative
+case. The existing `strategy source GauntletPrimeV2Morpho` check does not help
+here: it only proves the provider points where the registry says, so a registry
+naming a decoy passes it.
+
+No depth floor is asserted. A minimum `totalAssets` would be a policy threshold
+rather than an invariant, and the Ethereum vault has already moved from 106.96M
+at block 26270036 to 103.25M, so a hard floor would turn ordinary outflow into
+an ops failure.
+
+`GauntletV2EthereumForkTest` already existed in `test/forking/` against
+`0x8c106EED…A3D0`, so the Ethereum V2 vault was fork-tested before it was wired
+into the registry.
+
+## A dependency this change inherits
+
+`feat/base-crosschain-upgrade` is not merged into `main`. It carries the records
+of the Base expansion that was executed on-chain on 2026-11-15: an updated
+`deployments/base/crosschain.json` plus
+`base-upgrade-execution.json`, `base-governance-execution.json`,
+`base-candidate-deployment.json`, `base-upgrade-plan.json` and
+`hwm-evidence.json` under `changes/base-crosschain-upgrade/`.
+
+So on `main`, and therefore on this branch, the Base manifest does not describe
+the live Base strategy. The chain runs seven providers including Fluid and
+GauntletPrimeV2Morpho; the manifest on `main` lists neither, and there is no
+`deployments/base/GauntletPrimeV2MorphoProvider.json`. That is the origin of one
+of the three open phase-4 failures, and it is inherited rather than introduced
+here. Phase 4 cannot be brought to green on this branch until that branch is
+merged, which is a separate integration decision.
+
+It also means the Base V2 provider is live but unfunded: its
+`getDepositBalance` against the Base strategy reads 0, so the position the
+monitor would misvalue with V1.1 curator math is currently empty. The
+redeployment is still required before any capital is allocated there.
+
+## Verification limits in this environment
+
+Phase 4 against live Base could not be run here. `identities()` requires
+`CROSSCHAIN_SAFE`, `CROSSCHAIN_NAV_UPDATER`, `CROSSCHAIN_EXECUTOR` and
+`CROSSCHAIN_GUARDIAN`, and none is present in the local `.env`. Inventing them
+would have made the Safe-ownership checks meaningless, so the two new checks
+were validated instead by calling `curator()` and `asset()` directly on the live
+vaults, which is the same pair of reads `checkDeployment` performs, and by the
+fixture-level negative test.
+
 
 ## Provider reusability
 
