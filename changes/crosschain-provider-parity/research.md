@@ -156,23 +156,59 @@ validate their source in the constructor, so they need no reuse analysis.
 
 ## Defects found
 
-1. `deployments/plasma/ProviderManager.json` records
-   `0x40F1fBf6a92155a6D321c09936234BFEb9Ec4760`. That address reverts on Plasma
-   and reads on Monad as `Thesauros USDC Vault` / `tUSDC` — it is the Monad
-   vault proxy. The Plasma record is wrong.
-2. The Base upgrade report records that the monitoring service was not
-   redeployed after the `Morpho_V2_Provider` mapping fix, so a running monitor
-   values the live Base V2 position with V1.1 curator math. MorphoV2 is
-   registered and capped on the Base hub now, so this is a live valuation
-   error, not a stale note.
-3. Phase 4 verification stands at 68 of 71. The three open items are the
+1. The monitoring service was not redeployed after the `Morpho_V2_Provider`
+   mapping fix, per the Base upgrade report, so a running monitor values the
+   live Base V2 position with V1.1 curator math. MorphoV2 is registered and
+   capped on the Base hub now, so this is a live valuation error, not a stale
+   note.
+2. Phase 4 verification stands at 68 of 71. The three open items are the
    `route base->arbitrum` parameters, the absent `deployments/mainnet/crosschain.json`,
    and the TickAccountant chain set being narrower than the registry.
-4. `registry.ts` on the stale `feat/solana-kamino-crosschain` branch lacks the
+3. `registry.ts` on the stale `feat/solana-kamino-crosschain` branch lacks the
    Base `fluidFToken` and `morphoV2Vault` entries that have been live since
    2026-11-15. Working from `main` avoids this.
-5. Governance on the stand remains one EOA, `0xafA9ed53…8F9D`, holding
+4. Governance on the stand remains one EOA, `0xafA9ed53…8F9D`, holding
    ProxyAdmin, Timelock ownership, ADMIN_ROLE, EXECUTOR and treasury.
+
+## A collision that is not a defect
+
+`deployments/plasma/ProviderManager.json` and
+`deployments/monad/USDCRebalancerProxy.json` record the same address,
+`0x40F1fBf6a92155a6D321c09936234BFEb9Ec4760`. Both are correct.
+
+A CREATE address is `keccak256(rlp([deployer, nonce]))[12:]` and does not
+include the chain id, so one EOA deploying its sixth contract on two chains
+lands on the same address twice. Deriving the deployer's nonce sequence
+confirms it. From `0xafA9ed53…8F9D`:
+
+| Nonce | Monad | Plasma |
+|---|---|---|
+| 0 | ProviderManager `0x0c5cEd80…96b5` | |
+| 1 | AaveV3Provider `0xAeEcf7F7…24e0` | |
+| 2 | Timelock `0x30dC35B7…8EF9` | |
+| 3 | USDCRebalancerImplementation `0x44eC9D49…3d60` | |
+| 5 | USDCRebalancerProxy `0x40F1fBf6…4760` | ProviderManager `0x40F1fBf6…4760` |
+| 6 | | AaveV3Provider `0x27a1c09e…28B5` |
+| 7 | | Timelock `0xE1Cfb1BD…B65C` |
+| 8 | | USDCRebalancerImplementation `0x4382190F…2aD5` |
+| 10 | | USDCRebalancerProxy `0x2Ed9B7fB…3C99` |
+
+Read on Plasma, `0x40F1fBf6…4760` carries 2844 bytes and `owner()` returns the
+deployer, so it is a live ProviderManager there; `getYieldToken` returns zero
+for every pair, which is what an Aave-only chain with empty `cometPairs`
+leaves behind. On Monad the same address is the vault proxy.
+
+The nonce gaps, 4 on Monad and 9 on Plasma, are transactions that did not
+create a contract at a scanned address, and `deploy/deploy-usdc-vault.ts`
+deploys ProviderManager immediately before AaveV3Provider with nothing between
+them when `cometPairs` is empty, which is why nonce and nonce+1 match on Monad.
+
+The operational consequence is real even though nothing is corrupt: any tooling
+that reads `deployments/<net>/ProviderManager.json` must resolve it against the
+right RPC. `scripts/post-deploy-handover.ts` does, but an address alone carries
+no chain identity, so a cross-chain mix-up here would fail silently rather than
+loudly.
+
 
 ## Open decisions
 
