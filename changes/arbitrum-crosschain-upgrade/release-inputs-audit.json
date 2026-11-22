@@ -811,7 +811,7 @@
     ]
   },
   "historicalHighWaterMarkReconstruction": {
-    "status": "SOURCE_BOUND_RECONSTRUCTION_REQUIRES_SOURCE_HISTORY_PROVENANCE_OR_ATTESTATION",
+    "status": "SOURCE_BACKED_RECONSTRUCTION_REQUIRES_GOVERNANCE_ATTESTATION_AND_FRESHNESS_CHECK",
     "coverage": {
       "fromBlock": 509725811,
       "toBlock": 526525483,
@@ -1198,10 +1198,12 @@
       "Between those operations, both scaled aToken balance and Strategy share supply are fixed. Verified AToken balanceOf equals floor(scaledBalance*normalizedIncome/1e27).",
       "Both verified Pool implementations use nonnegative linear interest; ReserveLogic only initializes a fresh reserve or updates its liquidity index by a factor >=RAY. The single Pool upgrade increases normalized income and leaves scaled balance unchanged. No aToken upgrade occurs.",
       "Evaluate each fixed-balance interval using the normalized index at its closing operation/current snapshot. Floor token assets and ceil PPS explicitly; maximum of interval bounds is the current snapshot ceil PPS. This proof allows rounding dips at share-changing operations and makes no blanket monotonic-PPS assumption.",
-      "The result covers settled canonical economic states, excludes temporary intra-transaction pre-mint/burn states, and relies on complete canonical RPC logs plus verified protocol implementation source. It is a data reconstruction rather than a governance signature. Source-bound condition: no historical ProviderManager/Aave registry retarget or alias is established only when separately proven or attested."
+      "The result covers settled canonical economic states, excludes temporary intra-transaction pre-mint/burn states, and relies on complete canonical RPC logs plus verified protocol implementation source. Source identity provenance is closed separately by source-scope-closure.json. It is a data reconstruction rather than a governance signature."
     ],
-    "sourceHistoryCondition": "Historical ProviderManager/Aave registry sources were not temporarily retargeted or aliased. Strategy/receipt logs alone do not prove this.",
-    "independentReview": "Interval arithmetic and TokenMath.rayMulFloor verified. Generic registry source-change and mutable ProviderManager history provenance remains required."
+    "sourceHistoryCondition": "Closed through the pinned snapshot by exact non-proxy runtime rebuilds and full-address mutation-event history; see source-scope-closure.json.",
+    "independentReview": "Interval arithmetic and TokenMath.rayMulFloor verified. Relevant PM/Aave registry source changes must emit events in the exact deployed runtimes. Complete event coverage excludes temporary retargets or aliases beyond the reviewed Pool upgrade.",
+    "sourceHistoryProof": "source-scope-closure.json",
+    "sourceScopeGapClosed": true
   },
   "knownCurrentRoleHolders": {
     "ADMIN_ROLE": [
@@ -1260,7 +1262,6 @@
     "note": "Establishes the value set on Base, not a transferable Arbitrum historical HWM."
   },
   "remainingReleaseInputs": [
-    "Close historical ProviderManager/Aave registry retarget/alias provenance, or explicitly attest source-history condition for the reconstructed HWM.",
     "Governance attestation referencing the reconstructed Arbitrum history and fresh PPS; no current attestation is asserted here.",
     "Acceptance of resetting legacy fee baseline/waiver (current accrued fees zero).",
     "Actual deployed and source/runtime-verified target implementation and provider addresses, explicit venue caps and source attestations.",

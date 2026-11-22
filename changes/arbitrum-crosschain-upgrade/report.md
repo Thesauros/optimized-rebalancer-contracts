@@ -49,11 +49,12 @@ Snapshot block 526525483 contains 3.015051 USDC in the original Aave position,
 2.999892 Strategy shares, zero management/performance fees and zero accrued fee
 shares. Complete Strategy/token event history and verified Aave source behavior
 support a historical settled-state ceiling PPS reconstruction of
-1005053181914548924 through that snapshot, conditional on historical source
-identity. Independent review identified remaining provenance checks for mutable
-ProviderManager/Aave registry retargets or aliases. Close those checks or attest
-that condition before treating this as an all-time HWM. This is dated evidence,
-not a permanent signing value. Refresh the final interval and all new logs immediately before
+1005053181914548924 through that snapshot. Historical source identity was
+independently checked by rebuilding the exact deployed ProviderManager and Aave
+registry runtimes and proving mandatory mutation events. Complete address logs
+exclude unreviewed retargets/aliases; the known Pool upgrade is already included
+in the interval analysis. Explorer account-call lists were incomplete and were
+not used for this proof. This remains dated evidence, not a permanent signing value. Refresh the final interval and all new logs immediately before
 attesting and signing. The detailed audit retains governance-attestation and
 fee-acceptance flags as false; the evidence itself does not sign or authorize a
 transaction.
@@ -71,5 +72,6 @@ support. Registering adapters alone does not enable allocation into these market
 A compatible allocator release is required before enabling that allocation.
 
 Evidence: `build-verification.json`, `fork-verification.json`, `verification.json`,
-`preparation.json`, `release-inputs-audit.json` and `research.md`. Instructions:
+`preparation.json`, `release-inputs-audit.json`, `source-scope-closure.json`
+and `research.md`. Instructions:
 `docs/arbitrum-crosschain-upgrade.md`.
