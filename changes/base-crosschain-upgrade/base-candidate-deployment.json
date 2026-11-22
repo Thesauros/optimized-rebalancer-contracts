@@ -1,0 +1,47 @@
+{
+  "change": "base-crosschain-upgrade",
+  "chainId": 8453,
+  "deployedAtUtc": "2026-11-13T09:26:13.227Z",
+  "deployer": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+  "rpcHost": "mainnet.base.org",
+  "sourceBundle": "out/base-upgrade-draft-20261113a/base-upgrade.json",
+  "contracts": {
+    "Rebalancer": {
+      "address": "0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D",
+      "txHash": "0x853eb4522a492e1e9b55bb27e6ddfb6b391a1311c3df25fcc5ba6eed826de2ba",
+      "blockNumber": 56857976,
+      "gasUsed": "4963781",
+      "effectiveGasPrice": "6000000",
+      "runtimeHash": "0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b",
+      "runtimeMatchesReviewed": true,
+      "constructorArguments": []
+    },
+    "FluidProvider": {
+      "address": "0x7ca72c28Aec15c359cC1e9cFc3021519D02E1304",
+      "txHash": "0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a",
+      "blockNumber": 56857984,
+      "gasUsed": "638097",
+      "effectiveGasPrice": "6000000",
+      "runtimeHash": "0x5414d072553e7d04a8399198d870c156ea20d70cc117616c92bd255fd8b9cf14",
+      "runtimeMatchesReviewed": true,
+      "constructorArguments": [
+        "0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169"
+      ]
+    },
+    "MorphoV2Provider": {
+      "address": "0x23bbE424F1B621229c6A237F93D4234B646cf6e7",
+      "txHash": "0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457",
+      "blockNumber": 56857994,
+      "gasUsed": "1879342",
+      "effectiveGasPrice": "6000000",
+      "runtimeHash": "0x5e09a5d4f8bbb1e127df10d962d9dc8f335b8ab4cfec9476409b7b8bd93a5020",
+      "runtimeMatchesReviewed": true,
+      "constructorArguments": [
+        "0x050cE30b927Da55177A4914EC73480238BAD56f0"
+      ]
+    }
+  },
+  "confirmations": "each deployment waited for 2 block confirmations",
+  "creationDataIntegrity": "keccak256 of each bundle creation payload equalled the reviewed creationCodeHash in changes/base-crosschain-upgrade/preparation.json before broadcast",
+  "runtimeIntegrity": "keccak256 of each deployed runtime equalled the reviewed expectedRuntimeHash after deployment"
+}
