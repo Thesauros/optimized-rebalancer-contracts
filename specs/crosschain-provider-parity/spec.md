@@ -41,16 +41,33 @@ over from documentation alone.
 
 ## Scope of this change
 
-Stage 1, implemented here:
+Implemented here:
 
 - Ethereum: add the standalone vault's `AaveV3Provider` and a Morpho Vault V2
   source (Gauntlet USDC Prime) to the `mainnet` registry entry.
-- Arbitrum: add the official Fluid fUSDC to the `arbitrum` registry entry.
-- Fork coverage for both, and ops tests pinning the new registry state.
+- Arbitrum: add the official Fluid fUSDC to the `arbitrum` registry entry, and
+  rehearse the live spoke's upgrade-plus-registration path on a fork.
+- Monad: register as an Aave-only spoke, with the hub route in both directions
+  and a pinned fork test.
+- Phase 4 gains a Morpho V2 `curator()` and `asset()` check, because six decoy
+  vaults on Ethereum and Arbitrum copy a genuine Gauntlet name and symbol.
+- Solana: a written activation plan. No keypair generated, nothing built.
 
-Later stages, specified but not implemented here: deploy the Ethereum spoke,
-add Monad and Plasma as spokes, deploy and activate the Solana spoke, and
-register Fluid on the live Arbitrum strategy through its Timelock.
+Decided against:
+
+- Plasma. Deferred on measured evidence. A USDC spoke could receive funds and
+  could not return them: the chain's entire USDC exit capacity is one
+  EOA-controlled pool holding about 30k USDC against 2.37M USDT0, and there is
+  no USDC yield venue of any kind. A USDT0-denominated spoke would work against
+  a 468M USDT0 Aave market but needs an FX rule in NAV that `TickAccountant`
+  does not make, which is a product decision.
+- Arbitrum Morpho V2. The vault exists and is interface-identical to Base's
+  under the same curator, but holds 191,941 USDC with its underlying markets
+  near 91% utilisation, so this spoke would dominate it.
+
+Not done here, and needing separate authorization: deploying the Ethereum and
+Monad spokes, registering Fluid on the live Arbitrum strategy, the Solana
+deployment itself, and rotating governance off the single deployer EOA.
 
 ## Acceptance
 

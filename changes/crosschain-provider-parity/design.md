@@ -153,48 +153,98 @@ not exist on Monad, so the `production` profile gate in `01-deploy.ts` would
 refuse; only `stand` can deploy there today. The deployer holds 13.03 MON and
 3.04 USDC, enough for the 1 USDC seed.
 
-**Plasma.** Not registered, and deliberately so. CCTP domain 33 is live and
-native USDC exists, so the inbound leg works, but the outbound leg does not: the
-only USDC liquidity on the chain is one pool holding about 30k USDC against
-2.37M USDT0, entirely provided by a single EOA-owned NFT position whose upper
-tick sits one tick above spot. Capital can enter at 7.25 bp on a million and
-cannot leave beyond roughly 30k. A USDC spoke with no swap is worse — there is
-no USDC yield venue at all, so it would be a 0% idle balance.
-
-Registering Plasma now would encode a design that cannot redeem a hub
-withdrawal. The evidence is in `research.md`. The remaining options are a
-USDT0-denominated spoke, which needs an FX rule in NAV that `TickAccountant`
-does not currently make and is a product decision rather than an integration
-task, or deferral. Everything else about Plasma is ready: the RPC serves archive
-state with a 10,000-block log window, `hardhat.config.ts` and
-`network-config.ts` already carry the chain, and CCTP needs no adapter change.
-
-Two operational items surfaced alongside this and belong to whichever Plasma
-path is chosen. `providerRangeLimit` in `ops/src/util.ts` does not recognise
-Plasma's `eth_getLogs is limited to a 10,000 range` error and rethrows it, which
-only bites if `LOG_RANGE` is raised above the default 9000. And `logStep` there
-is a module global shared by every chain in the process, so Monad's roughly
-101-block log cap would drag the step down for Base, Arbitrum and Ethereum in
-the same monitor or indexer process.
-
 **Solana.** Source is complete in `main` and CI builds both programs with
-`cargo build-sbf --arch v2` and runs the local-validator suite. Activation is a
-manual gate with prerequisites that are custody decisions rather than code:
-generate the deployment keypair, set it in `declare_id!`, rebuild verifiably in
-the pinned image and record the base58 `programDataSha256`, then write the
-manifest with the reviewed program ID, the derived agent and idle PDAs and the
-Kamino reserve and market. On the hub side, register `CctpSolanaAdapter`, add
-the peer and route, and extend the accountant chain set. Circle's two mainnet
-programs are not repository artifacts, so the bridge assertions stay skipped
-until `CCTP_MAINNET_DUMP=true` is run once and its output kept with the dated
-verification report. `solana-cli` 4.4.1 and `cargo` 1.98 are present on this
-machine; `anchor` is not installable here, which does not matter because the
-programs are native, and SBPF v3 build compatibility is a separate check from
-the v2 testing already done.
+`cargo build-sbf --arch v2` and runs the local-validator suite. This change
+prepares activation only: no keypair is generated, nothing is built or deployed,
+because every remaining prerequisite is a custody decision rather than code.
+
+Decisions that gate everything else, in the order they block:
+
+1. **Deployment identity.** The program ID in source is a build identity, not a
+   deployed program. Generating the deployment keypair, updating `declare_id!`
+   and rebuilding verifiably in the pinned image decides the address every PDA
+   derives from, so it cannot be revisited later.
+2. **Authority.** Program upgrade authority and native governance go under the
+   reviewed timelocked multisig PDA. The EOAs in the local VM tests are test
+   identities and are not a governance recommendation.
+3. **Cluster and SBPF version.** SBPF v3 build compatibility is a separate check
+   from the v2 testing CI already does.
+4. **Public config.** `governance`, `executor`, `guardian`, `maxPerTransfer`,
+   `capacity`, `refillPerSecond`, `maxFeeBps` and `strategyCaps` keyed by
+   reserve. Amounts are integer strings in USDC micro-units and identities are
+   public keys.
+
+Then the sequence, with the working directory made explicit because the `solana`
+script lives in `ops/package.json` and fails from the repository root:
+
+1. Build verifiably, record the base58 `programDataSha256` over deployed
+   ProgramData bytes after the 45-byte loader header including reserved zero
+   padding, and check it against the reviewed build. Native readers verify that
+   digest at startup and periodically, so a wrong digest fails closed later
+   rather than at deploy time.
+2. Write the manifest against the `SolanaManifest` interface in
+   `deploy/crosschain/native-registry.ts`: `family`, `network`, reviewed program
+   ID, bytes32 seed, derived agent and idle PDAs, Base hub agent, the new native
+   `hubAdapter` address, `maxCheckpointAgeSeconds`, `programDataSha256` and the
+   explicit `{ protocol: 'kamino-lending', reserve, market }` entries. The
+   registry already carries the main-market USDC reserve
+   `D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59` in market
+   `7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF`; check owner, mint, market and
+   native token program before trusting it. Do not set `localValidator` on a
+   mainnet manifest.
+3. `cd ops && npm run solana -- prepare public-config.json` for the unsigned
+   native initialization, collateral ATA and strategy registration
+   instructions, plus the address lookup table. The table uses a recent slot, so
+   regenerate immediately before execution, run the extension batches in order,
+   and wait for activation before setting `SOLANA_LOOKUP_TABLES`.
+4. `cd ops && npm run solana -- plan public-config.json` for the EVM adapter's
+   constructor parameters and the unsigned Base Timelock calldata. The native
+   adapter's endpoints are immutable, so a wrong endpoint means a new adapter
+   and route rather than a fix.
+5. Deploy and verify the adapter, native agent, strategies and the first
+   checkpoint. Only then activate the chain in the Base accountant and unpause
+   the native agent through its governance.
+6. Run one separately authorized capped round trip and a full unwind before
+   raising any limit.
+
+The ordering in step 5 is forced by the code, not by preference:
+`loadNativeSpokes()` returns nothing unless `CROSSCHAIN_SOLANA_MANIFEST` is set,
+and an accountant tracking Solana without its configured native reader fails
+closed. So every service needs `CROSSCHAIN_SOLANA_MANIFEST`, `RPC_SOLANA` with
+finalized and historical support, and the executor, relayer and checkpoint
+keypair file paths configured before the hub chain set changes, not after.
+Solana's accounting id is `0x8000000000000005`, which is what the hub accountant
+will gain.
+
+One verification item stays open. Circle's two mainnet programs,
+`CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe` and
+`CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC`, are not repository artifacts, so
+the bridge assertions are skipped until `CCTP_MAINNET_DUMP=true` is run once and
+its output is kept alongside the dated verification report.
+`specs/solana-kamino-crosschain/verification.md` already records mainnet bytecode
+hashes for both, so this is a re-run and archive step rather than new research.
+
+**Plasma: deferred.** Decided 2026-11-22 on the evidence in `research.md`. Not
+registered, and the reason is not the bridge: a USDC spoke could receive funds
+and could not return them, because the whole chain's USDC exit capacity is one
+EOA-controlled pool holding about 30k USDC. Revisit only if that liquidity
+materially changes, if a real USDC yield venue appears on Plasma, or if the
+product decides on a USDT0-denominated spoke with an FX rule in NAV.
 
 **Cross-cutting.** Three things are prerequisites for any of the above going
 live rather than follow-ups: redeploying the monitoring service so the live Base
 Morpho V2 position is valued with V2 math, closing the two remaining phase-4
 failures, and rotating the stand's governance off the single deployer EOA
 before it holds material value.
+
+Two `ops/src/util.ts` defects should be fixed before Monad goes live, and are
+deliberately not fixed in this change because they touch the running monitor's
+log scanning and deserve their own tests. `logStep` is a module global shared by
+every chain in the process, so Monad's roughly 101-block `eth_getLogs` cap would
+drag the step down for Base, Arbitrum and Ethereum in the same monitor or
+indexer process and multiply their request counts against the shared pacers. And
+`providerRangeLimit` does not recognise Plasma's
+`eth_getLogs is limited to a 10,000 range` error, so `scanMany` rethrows instead
+of halving; that only bites if `LOG_RANGE` is raised above the 9000 default, and
+Plasma is deferred, so it is not urgent.
 
