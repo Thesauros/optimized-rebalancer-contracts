@@ -141,7 +141,7 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
         GauntletPrimeV2Morpho: 2_000,
       },
     },
-    routes: { '1': DEFAULT_ROUTE, '42161': DEFAULT_ROUTE },
+    routes: { '1': DEFAULT_ROUTE, '42161': DEFAULT_ROUTE, '143': DEFAULT_ROUTE },
     confirmations: 10,
   },
   arbitrum: {
@@ -245,6 +245,51 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     // Bridged funds do not depend on it: CCTP attests a burn only after
     // Ethereum finality (64 blocks).
     confirmations: 12,
+  },
+  monad: {
+    family: 'evm',
+    hardhatName: 'monad',
+    chainId: 143n,
+    role: 'spoke',
+    usdc: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+    // CCTP V2 is live here at the same addresses every other EVM chain uses:
+    // MessageTransmitter.localDomain() returns 15 and both contracts carry the
+    // same runtime codehash as on Base, Arbitrum and Ethereum.
+    cctp: {
+      tokenMessenger: CCTP_V2_TOKEN_MESSENGER,
+      messageTransmitter: CCTP_V2_MESSAGE_TRANSMITTER,
+      domain: 15,
+      minFinalityThreshold: 2000,
+    },
+    strategy: {
+      name: 'Thesauros Cross-Chain Strategy (Monad)',
+      symbol: 'tcsUSDC-mon',
+      // The standalone Monad vault already runs this provider, and it is the only
+      // venue on the chain this registry can name. AaveV3Provider has one
+      // immutable, the PoolAddressesProvider 0x34793Fb9935F7bB5E5aE920fb963F39063E7A615,
+      // and no storage of its own, so the cross-chain Strategy reuses it under
+      // delegatecall and holds its own position: getSource ignores its arguments
+      // and returns the Pool 0x69a5F9AD4f96ebf0a0C792dD42a01cC5C0102fef, so the
+      // pin recorded at registration cannot drift. Verified on-chain 2026-11-22:
+      // USDC reserve ACTIVE and not frozen, aToken
+      // 0x35a73BAcb179d3740395A3ceCc87FF2e581d6042, 86,352,043 USDC supplied.
+      reusedProviders: [
+        { label: 'AaveV3', address: '0xAeEcf7F780e88B155df330434Ef29b2B077024e0' },
+      ],
+      // No comet, no fluidFToken, no morphoV2Vault. chainConfigs[143] lists empty
+      // cometPairs and morphoVaults, and Fluid publishes no Monad deployment, so
+      // Aave is the whole strategy and therefore the entry provider.
+      capsBps: {
+        AaveV3: 0,
+      },
+    },
+    routes: { '8453': DEFAULT_ROUTE },
+    // 20 blocks at the measured 0.307 s Monad block time is about 6 s behind the
+    // head, the same wall-clock depth Arbitrum's 20 blocks give at 0.284 s. Monad
+    // reorg behaviour is not yet observed, so this is the closest analogue rather
+    // than a measured value; bridged funds do not depend on it, since CCTP
+    // attestation is what gates a transfer.
+    confirmations: 20,
   },
 };
 

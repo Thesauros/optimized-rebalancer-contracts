@@ -111,6 +111,40 @@ test('Arbitrum expands with Fluid; Ethereum expands with Aave, Fluid and V2', ()
   assert.equal(aave!.address, '0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941');
 });
 
+test('Monad is an Aave-only spoke whose single provider is also its entry', () => {
+  const monad = NETWORKS.monad;
+  assert.equal(monad.role, 'spoke');
+  assert.equal(monad.chainId, 143n);
+  // Measured on-chain: MessageTransmitter.localDomain() on Monad returns 15, and both CCTP
+  // contracts carry the same runtime codehash there as on Base, Arbitrum and Ethereum.
+  assert.equal(monad.cctp.domain, 15);
+  assert.equal(monad.usdc.toLowerCase(), chainConfigs[143].asset.toLowerCase(), 'the spoke asset is Monad USDC');
+
+  // Aave is the only venue Monad has that this registry can name, so it is the whole strategy
+  // and therefore the entry provider, which has to stay uncapped.
+  assert.deepEqual(monad.strategy.reusedProviders, [
+    { label: 'AaveV3', address: '0xAeEcf7F780e88B155df330434Ef29b2B077024e0' },
+  ]);
+  assert.deepEqual(monad.strategy.capsBps, { AaveV3: 0 });
+  assert.deepEqual(strategyProviders(monad, {}).map((p) => p.label), ['AaveV3']);
+
+  // chainConfigs[143] lists no Comet and no Morpho vault, and Fluid publishes no Monad
+  // deployment, so none of the three optional venues may be set: setting `comet` would fail
+  // the Comet cross-check above, and the other two would deploy a provider over a market
+  // that does not exist.
+  assert.equal(monad.strategy.comet, undefined);
+  assert.equal(monad.strategy.fluidFToken, undefined);
+  assert.equal(monad.strategy.morphoV2Vault, undefined);
+  assert.deepEqual(chainConfigs[143].cometPairs, []);
+  assert.deepEqual(chainConfigs[143].morphoVaults, []);
+
+  // 20 blocks at Monad's measured 0.307 s block time is about 6 s, the wall-clock depth
+  // Arbitrum's 20 blocks give at 0.284 s. Not a measured reorg depth.
+  assert.equal(monad.confirmations, 20);
+  assert.deepEqual(Object.keys(monad.routes), ['8453'], 'routes to the hub only');
+  assert.ok(NETWORKS.base.routes['143'], 'the hub routes back');
+});
+
 test('the hub routes to every spoke and every spoke routes back to the hub', () => {
   const [hubKey, hub] = hubEntry();
   for (const [key, net] of Object.entries(NETWORKS)) {

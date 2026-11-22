@@ -125,15 +125,33 @@ directions. Phase 5 derives the hub chain set from the registry, and
 must be built from the full registry rather than a narrowed one. Adding
 Ethereum also closes one of the three open phase-4 failures.
 
-**Monad.** AaveV3Provider `0xAeEcf7F7…24e0` is reusable and its USDC market is
-active with 86M USDC. CCTP domain 15 is live. `chainConfigs[143]` already
-carries the chain with `cometPairs: []` and `morphoVaults: []`, so the registry
-entry names AaveV3 as the sole and therefore entry provider, sets no `comet`,
-no `fluidFToken` and no `morphoV2Vault`, and the ops test that requires an
-absent Comet to match an empty `cometPairs` passes unchanged. Fluid publishes no
-Monad deployment, so Monad is Aave-only until that changes. Blocker to clear
-first: whether `https://rpc.monad.xyz` serves the archive state a pinned fork
-test needs.
+**Monad.** Registered. `AaveV3Provider 0xAeEcf7F7…24e0` is reused from the
+standalone vault, CCTP domain 15 is live, and the Aave USDC market is active
+with 86M USDC supplied. `chainConfigs[143]` already carried the chain with
+`cometPairs: []` and `morphoVaults: []`, so the entry names AaveV3 as the sole
+and therefore entry provider and sets no `comet`, `fluidFToken` or
+`morphoV2Vault`; Fluid publishes no Monad deployment at all, so Monad is
+Aave-only until that changes. `base.routes` gained `'143'` in the same commit,
+because the ops test asserts routes are bidirectional.
+
+Two things about Monad were measured rather than assumed. Its RPC serves archive
+state, unlike the Ethereum and Arbitrum endpoints, so `ForkPins.MONAD` is a real
+pin at block 124_400_000 and the suite is reproducible as shipped. And forge
+1.10.0 will not build a Monad fork inside an Ethereum EVM, so the suite needs
+`--rpc-url` and `--fork-block-number` on the command line; without
+`MONAD_RPC_URL` it reports SKIPPED rather than passing vacuously.
+
+`confirmations` is 20, which at Monad's measured 0.307 s block time is the same
+~6 s wall-clock depth Arbitrum's 20 gives at 0.284 s. Monad reorg behaviour is
+not observed yet, so this is the closest analogue rather than a measured value,
+and the registry comment says so. Bridged funds do not depend on it.
+
+What remains is operational and needs authorization: phases 1 to 3 on Monad,
+then the hub Timelock batch adding 143 to `TickAccountant.chainIds()` with the
+peer, remote and route in both directions. Note that the governance Safe does
+not exist on Monad, so the `production` profile gate in `01-deploy.ts` would
+refuse; only `stand` can deploy there today. The deployer holds 13.03 MON and
+3.04 USDC, enough for the 1 USDC seed.
 
 **Plasma.** CCTP domain 33 is live and native USDC exists, but the asset
 question is unresolved and gates everything else. A USDC spoke has no Aave
