@@ -256,14 +256,26 @@ Morpho V2 position is valued with V2 math, closing the two remaining phase-4
 failures, and rotating the stand's governance off the single deployer EOA
 before it holds material value.
 
-Two `ops/src/util.ts` defects should be fixed before Monad goes live, and are
-deliberately not fixed in this change because they touch the running monitor's
-log scanning and deserve their own tests. `logStep` is a module global shared by
-every chain in the process, so Monad's roughly 101-block `eth_getLogs` cap would
-drag the step down for Base, Arbitrum and Ethereum in the same monitor or
-indexer process and multiply their request counts against the shared pacers. And
-`providerRangeLimit` does not recognise Plasma's
-`eth_getLogs is limited to a 10,000 range` error, so `scanMany` rethrows instead
-of halving; that only bites if `LOG_RANGE` is raised above the 9000 default, and
-Plasma is deferred, so it is not urgent.
+Two `ops/src/util.ts` defects are fixed here because Monad makes them live. The
+scan step was a single module global, so one endpoint's `eth_getLogs` ceiling
+shrank scanning for every chain in the same process; Monad's public RPC caps at
+about 101 blocks, which would have dragged Base, Arbitrum and Ethereum down with
+it and multiplied their request counts against the shared read and compute
+pacers. It is now keyed by provider instance, so a cap is learned per endpoint
+and persists for that endpoint alone.
+
+And `providerRangeLimit` did not recognise Plasma's
+`eth_getLogs is limited to a 10,000 range`, so `scanMany` rethrew instead of
+narrowing. It now reads a ceiling stated before the word "range" and with a
+thousands separator. The same pass separated block-range ceilings from
+result-count ceilings: Plasma's `query exceeds max results 20000, retry with the
+range 38404248-38414248` carries a block number that is not the limit, and the
+old code adopted it, producing a step larger than the span that halved only by
+accident. Result-count ceilings now halve deliberately.
+
+Neither fix is speculative. `ops/test/log-range.test.ts` pins the real rejection
+texts, keeps the ceilings the code already understood, confirms that throttling,
+head lag and unrelated errors still never shrink a range, and drives `scanMany`
+with two providers to prove that one chain hitting its cap leaves the other
+scanning in wide ranges.
 

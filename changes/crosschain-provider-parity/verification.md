@@ -16,15 +16,24 @@ local fork.
 
 | Suite | Command | Result |
 |---|---|---|
-| ops | `cd ops && npm test` | 105 passed, 0 failed, 0 skipped |
+| ops | `cd ops && npm test` | 111 passed, 0 failed, 0 skipped |
 | ops types | `cd ops && npm run typecheck` | clean |
+| ops dependencies | `cd ops && npm audit` | 0 vulnerabilities |
 | deploy simulation | `npm run test:deploy` | 34 passed, 0 failed |
 | Solidity, non-forking | `forge test --no-match-path 'test/forking/*'` | 199 passed, 0 failed, 14 suites |
+| Solidity, compile | `FOUNDRY_AUTO_DETECT_REMAPPINGS=false npx hardhat compile` | clean |
 
 The ops suite ran 96 passed / 7 skipped before `main` was fast-forwarded to
 `62890c0`, and 104 with none skipped after, so merging the executed Base records
 unblocked seven tests that had been skipping. The Monad registry assertions take
-it to 105.
+it to 105 and `ops/test/log-range.test.ts` to 111.
+
+`ops/test/log-range.test.ts` covers the two `ops/src/util.ts` fixes: the real
+Plasma, Moralis and generic rejection texts, that a result-count ceiling halves
+rather than adopting the block number embedded in it, that throttling, head lag
+and unrelated errors still never shrink a range, that a learned ceiling persists
+for one provider across calls, and — driving `scanMany` with two providers —
+that Monad's cap leaves another chain scanning in wide ranges.
 
 ## Fork suites, against live chain state
 
