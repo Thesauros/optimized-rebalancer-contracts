@@ -4,7 +4,7 @@
  * say must be true on-chain.
  */
 import { Contract, Provider, ZeroAddress, getAddress, id, keccak256 } from 'ethers';
-import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, PROVIDER, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
+import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, MORPHO_V2_VAULT, OWNABLE, PROVIDER, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
 import { NETWORKS, NetworkEntry, providerLabels, routeId, strategyProviders } from '../../../deploy/crosschain/registry';
 import { loadNativeSpokes } from '../native';
 
@@ -15,6 +15,11 @@ const ADMIN_SLOT = '0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b
 const IMPL_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
 /** `CompoundV3Provider.getIdentifier()`: the key its Comet is registered under in the ProviderManager. */
 const COMPOUND_IDENTIFIER = 'Compound_V3_Provider';
+/**
+ * Returned by `curator()` on every genuine Gauntlet-curated Morpho vault, on Base,
+ * Ethereum and Arbitrum alike, and marked verified in Morpho's curator registry.
+ */
+const GAUNTLET_CURATOR = '0x9E33faAE38ff641094fa68c65c2cE600b3410585';
 
 export interface CheckResult {
   ok: boolean;
@@ -163,6 +168,19 @@ export async function checkDeployment(
     if (!source || !labelled[label]) continue;
     const actual = await new Contract(labelled[label], PROVIDER, provider).getSource(entry.usdc, c.Strategy, ZeroAddress);
     check(eq(actual, source), `strategy source ${label}`, `${actual}; expected ${source}`);
+  }
+  // Six Morpho Vault V2 contracts across Ethereum and Arbitrum carry the name and symbol of
+  // the genuine Gauntlet vaults; two are actively dangerous, one being an empty vault with a
+  // byte-identical name and symbol and the other a 15% performance fee wrapper under a
+  // different curator that resolves to a V1 MetaMorpho. The check above only proves the
+  // provider points where the registry says, so a registry that named a decoy would pass it.
+  // curator() and asset() are what actually identify the vault.
+  if (entry.strategy.morphoV2Vault) {
+    const v2 = new Contract(entry.strategy.morphoV2Vault, MORPHO_V2_VAULT, provider);
+    const curator: string = await v2.curator();
+    check(eq(curator, GAUNTLET_CURATOR), 'morpho v2 curator', eq(curator, GAUNTLET_CURATOR) ? curator : `${curator}, expected Gauntlet ${GAUNTLET_CURATOR}`);
+    const v2Asset: string = await v2.asset();
+    check(eq(v2Asset, entry.usdc), 'morpho v2 asset', eq(v2Asset, entry.usdc) ? v2Asset : `${v2Asset}, spoke USDC is ${entry.usdc}`);
   }
   if (c.ProviderManager) {
     const pmgr = new Contract(c.ProviderManager, OWNABLE, provider);

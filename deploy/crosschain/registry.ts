@@ -141,7 +141,7 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
         GauntletPrimeV2Morpho: 2_000,
       },
     },
-    routes: { '1': DEFAULT_ROUTE, '42161': DEFAULT_ROUTE },
+    routes: { '1': DEFAULT_ROUTE, '42161': DEFAULT_ROUTE, '143': DEFAULT_ROUTE },
     confirmations: 10,
   },
   arbitrum: {
@@ -166,6 +166,12 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484' },
       ],
       comet: '0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf',
+      // Fluid and Morpho Vault V2 on Arbitrum are owned by the
+      // `feat/arbitrum-crosschain-upgrade` branch, which carries the exact-bytecode
+      // candidate build, the historical HWM reconstruction and the scoped unsigned
+      // preparation CLI this entry would otherwise have to duplicate. Deliberately
+      // not set here. The depth measurement that bears on its V2 choice is recorded
+      // in changes/crosschain-provider-parity/research.md.
       capsBps: {
         AaveV3: 0,
         CompoundV3: 5_000,
@@ -192,24 +198,45 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     strategy: {
       name: 'Thesauros Cross-Chain Strategy (Ethereum)',
       symbol: 'tcsUSDC-eth',
-      // Compound and Morpho (TS-419), Fluid (TS-420). The Morpho providers are the
-      // ones the Ethereum vault already runs: MetaMorpho V1.0, the version
-      // GauntletCore uses on Base, with the same MorphoProvider code. Steakhouse is
-      // the entry provider as the largest of the three.
+      // Compound and Morpho (TS-419), Fluid (TS-420), Aave (provider parity). The
+      // Morpho providers are the ones the Ethereum vault already runs: MetaMorpho
+      // V1.0, the version GauntletCore uses on Base, with the same MorphoProvider
+      // code. Steakhouse is the entry provider as the largest of the three.
       reusedProviders: [
         { label: 'SteakhouseMorpho', address: '0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622' },
         { label: 'GauntletPrimeMorpho', address: '0xBC64abbCa87289746f2B01C8ab02A78c9fC92B89' },
         { label: 'SmokehouseMorpho', address: '0x2fe36048F394A0732E8F28C43DbF351F0253C6E5' },
+        // The standalone Ethereum vault already runs this provider. AaveV3Provider
+        // holds no vault binding - its only immutable is the PoolAddressesProvider
+        // (0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e) and every method takes the
+        // vault as an argument - so the cross-chain Strategy reuses it as-is, the
+        // way Base and Arbitrum do. Listed last so Steakhouse stays the entry
+        // provider. Verified on mainnet 2026-11-22: reserve ACTIVE, not frozen,
+        // aToken 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c.
+        { label: 'AaveV3', address: '0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941' },
       ],
       comet: '0xc3d688B66703497DAA19211EEdff47f25384cdc3',
       // fUSDC: an immutable fToken (no proxy) over the Fluid Liquidity layer
       fluidFToken: '0x9Fb7b4477576Fe5B32be4C1843aFB1e55F251B33',
+      // Gauntlet USDC Prime (gtusdcp) on Morpho Vault V2 - the Ethereum counterpart
+      // of the vault the Base spoke already runs, listed as GauntletPrimeV2 in
+      // utils/constants.ts. Verified on mainnet 2026-11-22: runtime 21808 bytes,
+      // identical to Base's 0x050cE30b...; asset is this spoke's USDC; both
+      // MorphoV2Provider constructor gates pass (accrueInterestView, adaptersLength
+      // = 1); same Gauntlet curator 0x9E33faAE38ff641094fa68c65c2cE600b3410585 as
+      // Base; totalAssets 103,247,937 USDC.
+      morphoV2Vault: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
       capsBps: {
         SteakhouseMorpho: 0,
         CompoundV3: 5_000,
         GauntletPrimeMorpho: 4_000,
         SmokehouseMorpho: 3_000,
         Fluid: 3_000,
+        // 0 = uncapped, matching how AaveV3 is capped on Base and Arbitrum, where
+        // it is the entry provider. Here it is not, so this is the one cap on this
+        // spoke that is a risk decision rather than a structural requirement.
+        AaveV3: 0,
+        GauntletPrimeV2Morpho: 2_000,
       },
     },
     routes: { '8453': DEFAULT_ROUTE },
@@ -217,6 +244,51 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
     // Bridged funds do not depend on it: CCTP attests a burn only after
     // Ethereum finality (64 blocks).
     confirmations: 12,
+  },
+  monad: {
+    family: 'evm',
+    hardhatName: 'monad',
+    chainId: 143n,
+    role: 'spoke',
+    usdc: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+    // CCTP V2 is live here at the same addresses every other EVM chain uses:
+    // MessageTransmitter.localDomain() returns 15 and both contracts carry the
+    // same runtime codehash as on Base, Arbitrum and Ethereum.
+    cctp: {
+      tokenMessenger: CCTP_V2_TOKEN_MESSENGER,
+      messageTransmitter: CCTP_V2_MESSAGE_TRANSMITTER,
+      domain: 15,
+      minFinalityThreshold: 2000,
+    },
+    strategy: {
+      name: 'Thesauros Cross-Chain Strategy (Monad)',
+      symbol: 'tcsUSDC-mon',
+      // The standalone Monad vault already runs this provider, and it is the only
+      // venue on the chain this registry can name. AaveV3Provider has one
+      // immutable, the PoolAddressesProvider 0x34793Fb9935F7bB5E5aE920fb963F39063E7A615,
+      // and no storage of its own, so the cross-chain Strategy reuses it under
+      // delegatecall and holds its own position: getSource ignores its arguments
+      // and returns the Pool 0x69a5F9AD4f96ebf0a0C792dD42a01cC5C0102fef, so the
+      // pin recorded at registration cannot drift. Verified on-chain 2026-11-22:
+      // USDC reserve ACTIVE and not frozen, aToken
+      // 0x35a73BAcb179d3740395A3ceCc87FF2e581d6042, 86,352,043 USDC supplied.
+      reusedProviders: [
+        { label: 'AaveV3', address: '0xAeEcf7F780e88B155df330434Ef29b2B077024e0' },
+      ],
+      // No comet, no fluidFToken, no morphoV2Vault. chainConfigs[143] lists empty
+      // cometPairs and morphoVaults, and Fluid publishes no Monad deployment, so
+      // Aave is the whole strategy and therefore the entry provider.
+      capsBps: {
+        AaveV3: 0,
+      },
+    },
+    routes: { '8453': DEFAULT_ROUTE },
+    // 20 blocks at the measured 0.307 s Monad block time is about 6 s behind the
+    // head, the same wall-clock depth Arbitrum's 20 blocks give at 0.284 s. Monad
+    // reorg behaviour is not yet observed, so this is the closest analogue rather
+    // than a measured value; bridged funds do not depend on it, since CCTP
+    // attestation is what gates a transfer.
+    confirmations: 20,
   },
 };
 
