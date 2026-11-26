@@ -3,7 +3,9 @@
   "scripts": {
     "test:deploy": "FOUNDRY_AUTO_DETECT_REMAPPINGS=false node --require ts-node/register/transpile-only --test test/deploy/*.test.ts",
     "prepare:gauntlet-v2": "node --require ts-node/register/transpile-only scripts/prepare-gauntlet-v2-deploy.ts",
-    "prepare:base-crosschain": "node --require ts-node/register/transpile-only scripts/prepare-base-crosschain-upgrade.ts"
+    "prepare:base-crosschain": "node --require ts-node/register/transpile-only scripts/prepare-base-crosschain-upgrade.ts",
+    "prepare:arbitrum-crosschain": "node --require ts-node/register/transpile-only scripts/prepare-arbitrum-crosschain-upgrade.ts",
+    "test:arbitrum-crosschain": "node scripts/test-arbitrum-crosschain-upgrade.cjs"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-foundry": "^1.2.1",

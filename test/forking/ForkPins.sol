@@ -22,6 +22,13 @@ import {Vm} from "forge-std/Vm.sol";
  *        ARBITRUM_FORK_BLOCK floats. Neither https://arb1.arbitrum.io/rpc ("missing trie node"
  *                            / "historical state") nor a free archive endpoint served state at
  *                            any depth tested, down to head-50k.
+ *        MONAD_FORK_BLOCK    pinned. https://rpc.monad.xyz serves historical state: USDC
+ *                            totalSupply reads four distinct values at latest, head-100k,
+ *                            head-1M and head-5M, and an anvil fork at a pinned block returns
+ *                            that block's AaveV3Provider balance rather than head's. Monad is
+ *                            therefore the one non-Base chain whose suite is reproducible as
+ *                            shipped. It sits behind Cloudflare, which rejects non-browser
+ *                            User-Agents with HTTP 403 error 1010; forge and cast are fine.
  *
  *      To get a reproducible run, point the RPC at an archive endpoint and set the pin:
  *
@@ -38,6 +45,8 @@ library ForkPins {
     string internal constant ETHEREUM_VAR = "ETHEREUM_FORK_BLOCK";
     /// @notice Env var naming the Arbitrum pin.
     string internal constant ARBITRUM_VAR = "ARBITRUM_FORK_BLOCK";
+    /// @notice Env var naming the Monad pin.
+    string internal constant MONAD_VAR = "MONAD_FORK_BLOCK";
 
     /// @notice Base block the suite was last verified green at (~5 days behind head 56_079_351).
     uint256 internal constant BASE = 55_863_000;
@@ -45,6 +54,8 @@ library ForkPins {
     uint256 internal constant ETHEREUM = 0;
     /// @notice Arbitrum floats; see the contract NatSpec for why.
     uint256 internal constant ARBITRUM = 0;
+    /// @notice Monad block the suite was last verified green at (head was 124_449_172).
+    uint256 internal constant MONAD = 124_400_000;
 
     /**
      * @notice Forks and selects `url` at the pin from `pinVar`, falling back to `fallbackPin`.

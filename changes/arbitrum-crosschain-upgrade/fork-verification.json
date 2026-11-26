@@ -1,0 +1,38 @@
+{
+  "network": "arbitrum",
+  "chainId": 42161,
+  "forkBlock": 526524948,
+  "forkBlockTimeUtc": "2026-11-22T13:17:22Z",
+  "productionWrites": false,
+  "passed": 6,
+  "failed": 0,
+  "skipped": 0,
+  "testCases": [
+    "testAtomicUpgradePreservesLegacyStorageRolesAndPositions",
+    "testBareUpgradeAndInvalidInitializersFailClosed",
+    "testExistingSpokeAgentAllocateAndDeallocate",
+    "testFluidRegistrationAndNormalRoundTrip",
+    "testGauntletV2RegistrationAndNormalRoundTrip",
+    "testNewVenueCapsRejectOversizedAllocationAtomically"
+  ],
+  "candidateCompilerProfile": {
+    "solidity": "0.8.33",
+    "evmVersion": "paris",
+    "optimizerRuns": 200,
+    "openzeppelin": "5.4.0"
+  },
+  "testHarnessEvmVersion": "prague",
+  "exactHardhatCreationAndRuntimeHashesAsserted": true,
+  "logSha256": "7a292d9f4ca96843e4c71d6443d11c92edf0faa0bdfa7d486daa85b43695e620",
+  "hwmIsSimulationOnly": true,
+  "venueCapsAreSimulationInputs": [
+    3000,
+    2000
+  ],
+  "limits": [
+    "All transactions are local fork operations with impersonated authorities and synthetic user funding.",
+    "Existing Base hub and complete cross-chain bridge/NAV service execution are outside this fork.",
+    "Live HWM, actual candidate deployments and current fee/source/gas state must be refreshed before signing."
+  ],
+  "forkBlockHash": "0x13b712ea8687753aa53f8de3a295755a1bd3d03a617a0d9313bac1815c425b1e"
+}

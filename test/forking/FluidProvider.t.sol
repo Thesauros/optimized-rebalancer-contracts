@@ -162,3 +162,149 @@ contract FluidProviderEthereumForkTest is Test {
         assertApproxEqAbs(vault.totalAssets(), 10_001e6, FLUID_TOLERANCE, "rebalancing keeps NAV");
     }
 }
+
+/**
+ * FluidProvider over fUSDC on Arbitrum, the fToken registry `arbitrum.strategy.fluidFToken`
+ * names. The point of a per-chain copy is `testRateIsTheAccrualOfTheSupplyExchangePrice`:
+ * FluidProvider reads the supply exchange price out of the Liquidity layer's storage, so a
+ * chain whose Liquidity deployment differs in layout would price yield wrongly rather than
+ * loudly. Base and Ethereum each prove their own layout; this proves Arbitrum's.
+ * Needs ARBITRUM_RPC_URL; skipped without it.
+ */
+contract FluidProviderArbitrumForkTest is Test {
+    address internal constant USDC = 0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
+    address internal constant FUSDC = 0x1A996cb54bb95462040408C06122D45D6Cdb6096;
+    address internal constant LIQUIDITY = 0x52Aa899454998Be5b000Ad077a46Bbe360F4e497;
+    /// the deployed Arbitrum AaveV3Provider, the cross-chain spoke's entry provider
+    IProvider internal constant AAVE = IProvider(0xA34574Dae6284EDc7348C36A80242b92CFBd13A5);
+    address internal constant AAVE_POOL = 0x794a61358D6845594F94dc1DB02A252b5b4814aD;
+    /// a MetaMorpho V1 vault, used only as "an ERC4626 that is not an fToken"
+    address internal constant GAUNTLET_CORE_VAULT = 0x7e97fa6893871A2751B5fE961978DCCb2c201E65;
+
+    /// See FLUID_TOLERANCE above: 0.0001 USDC, far above exchange-price drift and far
+    /// below the 1 USDC error these assertions exist to catch.
+    uint256 internal constant FLUID_TOLERANCE = 1e2;
+
+    IERC20 internal usdc = IERC20(USDC);
+    IFluidFToken internal fToken = IFluidFToken(FUSDC);
+    FluidProvider internal provider;
+    Rebalancer internal vault;
+    address internal alice = makeAddr("alice");
+    bool internal forked;
+
+    function setUp() public {
+        string memory url = vm.envOr("ARBITRUM_RPC_URL", string(""));
+        if (bytes(url).length == 0) return;
+        ForkPins.selectFork(vm, url, ForkPins.ARBITRUM_VAR, ForkPins.ARBITRUM);
+        forked = true;
+
+        provider = new FluidProvider(FUSDC);
+        Rebalancer impl = new Rebalancer();
+        vault = Rebalancer(payable(address(new TransparentUpgradeableProxy(address(impl), address(this), ""))));
+        IProvider[] memory providers = new IProvider[](2);
+        providers[0] = provider;
+        providers[1] = AAVE;
+        deal(USDC, address(this), 1e6);
+        usdc.approve(address(vault), 1e6);
+        vault.initialize(
+            address(this), address(this), USDC, "Fluid Rebalancer", "flr", providers, makeAddr("treasury"), 0, 0, 1e6
+        );
+        vault.grantRole(keccak256("EXECUTOR_ROLE"), address(this));
+    }
+
+    function _deposit(uint256 amount) internal returns (uint256 shares) {
+        deal(USDC, alice, amount);
+        vm.startPrank(alice);
+        usdc.approve(address(vault), amount);
+        shares = vault.deposit(amount, alice);
+        vm.stopPrank();
+    }
+
+    function testWiring() public view {
+        if (!forked) return;
+        assertEq(address(provider.fToken()), FUSDC);
+        assertEq(address(provider.liquidity()), LIQUIDITY, "Liquidity layer from fToken.getData()");
+        assertEq(provider.getSource(USDC, address(vault), address(0)), FUSDC);
+        assertEq(provider.getIdentifier(), "Fluid_Provider");
+        assertEq(vault.getPinnedProviderSource(provider), FUSDC, "source pinned");
+        assertEq(AAVE.getIdentifier(), "Aave_V3_Provider");
+        assertEq(AAVE.getSource(USDC, address(vault), address(0)), AAVE_POOL, "Aave resolves the Pool");
+        assertTrue(vault.providersHealthy());
+    }
+
+    function testConstructorRejectsAnythingButAnFToken() public {
+        if (!forked) return;
+        address empty = makeAddr("fluid provider: no code at this address");
+        assertEq(empty.code.length, 0);
+        vm.expectRevert(FluidProvider.InvalidFToken.selector);
+        new FluidProvider(empty);
+        // a generic ERC4626 (MetaMorpho) has no getData(): reverts without data
+        vm.expectRevert(bytes(""));
+        new FluidProvider(GAUNTLET_CORE_VAULT);
+    }
+
+    /// The Arbitrum Liquidity layer must accrue the supply exchange price at the rate
+    /// FluidProvider reports, otherwise every Arbitrum Fluid position is mispriced.
+    function testRateIsTheAccrualOfTheSupplyExchangePrice() public {
+        if (!forked) return;
+        uint256 rate = provider.getDepositRate(vault);
+        assertGt(rate, 0);
+        (,,,,,,, uint256 before,) = fToken.getData();
+        skip(30 days);
+        (,,,,,,, uint256 later,) = fToken.getData();
+        uint256 implied = ((later - before) * 1e27 * 365 days) / (before * 30 days);
+        assertApproxEqRel(rate, implied, 1e15, "ray rate equals the accrual of Fluid's supply exchange price");
+    }
+
+    function testActionsOnlyThroughTheVault() public {
+        if (!forked) return;
+        vm.expectRevert(FluidProvider.InvalidVaultContext.selector);
+        provider.deposit(1e6, vault);
+        vm.expectRevert(FluidProvider.InvalidVaultContext.selector);
+        provider.withdraw(1e6, vault);
+    }
+
+    function testDepositAccruesAndFullExit() public {
+        if (!forked) return;
+        uint256 shares = _deposit(10_000e6);
+        uint256 held = fToken.balanceOf(address(vault));
+        assertGt(held, 0, "fToken shares held by the vault");
+        assertEq(fToken.balanceOf(address(provider)), 0, "nothing held by the provider itself");
+        assertEq(provider.getDepositBalance(address(vault), vault), fToken.previewRedeem(held));
+        assertApproxEqAbs(provider.getDepositBalance(address(vault), vault), 10_001e6, FLUID_TOLERANCE);
+
+        skip(30 days);
+        vm.roll(block.number + 1);
+        uint256 grown = provider.getDepositBalance(address(vault), vault);
+        assertGt(grown, 10_001e6, "the exchange price accrues in the view, without a transaction");
+        assertEq(grown, fToken.previewRedeem(held));
+        assertTrue(vault.providersHealthy());
+
+        vm.prank(alice);
+        uint256 received = vault.redeem(shares, alice, alice);
+        assertGt(received, 10_000e6, "principal and interest back");
+        assertEq(usdc.balanceOf(alice), received);
+        assertEq(vault.balanceOf(alice), 0);
+    }
+
+    function testRebalanceBetweenFluidAndAave() public {
+        if (!forked) return;
+        _deposit(10_000e6);
+        uint256[] memory amounts = new uint256[](1);
+        IProvider[] memory from = new IProvider[](1);
+        IProvider[] memory to = new IProvider[](1);
+        amounts[0] = 4_000e6;
+        from[0] = provider;
+        to[0] = AAVE;
+        vault.rebalance(amounts, from, to);
+        assertApproxEqAbs(AAVE.getDepositBalance(address(vault), vault), 4_000e6, 2);
+        assertApproxEqAbs(provider.getDepositBalance(address(vault), vault), 6_001e6, FLUID_TOLERANCE);
+
+        amounts[0] = 3_000e6;
+        from[0] = AAVE;
+        to[0] = provider;
+        vault.rebalance(amounts, from, to);
+        assertApproxEqAbs(provider.getDepositBalance(address(vault), vault), 9_001e6, FLUID_TOLERANCE);
+        assertApproxEqAbs(vault.totalAssets(), 10_001e6, FLUID_TOLERANCE, "rebalancing keeps NAV");
+    }
+}

@@ -40,7 +40,7 @@ test('caps name known providers and leave the entry provider uncapped', () => {
   }
 });
 
-test('strategy providers: entry first, fresh Compound second, fresh Fluid last, as phase 1 builds them', () => {
+test('strategy providers: entry first, fresh Compound second, fresh Fluid and V2 last, as phase 1 builds them', () => {
   const mainnet = NETWORKS.mainnet;
   const fresh = {
     CompoundV3Provider: '0x00000000000000000000000000000000000000c3',
@@ -49,12 +49,12 @@ test('strategy providers: entry first, fresh Compound second, fresh Fluid last, 
   };
   assert.deepEqual(
     strategyProviders(mainnet, fresh).map((p) => p.label),
-    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'Fluid'],
+    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'AaveV3', 'Fluid', 'GauntletPrimeV2Morpho'],
   );
-  assert.equal(strategyProviders(mainnet, fresh).at(-1)!.address, fresh.FluidProvider);
+  assert.equal(strategyProviders(mainnet, fresh).at(-1)!.address, fresh.GauntletPrimeV2MorphoProvider);
   assert.deepEqual(
     strategyProviders(mainnet, { CompoundV3Provider: fresh.CompoundV3Provider }).map((p) => p.label),
-    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho'],
+    ['SteakhouseMorpho', 'CompoundV3', 'GauntletPrimeMorpho', 'SmokehouseMorpho', 'AaveV3'],
     'a fresh provider not deployed yet is absent',
   );
   for (const [key, net] of Object.entries(NETWORKS)) {
@@ -82,9 +82,53 @@ test('Base expansion appends Fluid and V2 while retaining the five original venu
   assert.equal(base.strategy.morphoV2Vault, chainConfigs[8453].morphoVaults.find((v) => v.version === 2)!.vaultAddress);
   assert.equal(base.strategy.capsBps.Fluid, 3_000);
   assert.equal(base.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
-  assert.equal(NETWORKS.arbitrum.strategy.fluidFToken, undefined);
-  assert.equal(NETWORKS.arbitrum.strategy.morphoV2Vault, undefined);
-  assert.equal(NETWORKS.mainnet.strategy.morphoV2Vault, undefined);
+});
+
+test('Ethereum expands with Aave, Fluid and Morpho V2', () => {
+  const mainnet = NETWORKS.mainnet;
+  assert.equal(mainnet.strategy.morphoV2Vault, chainConfigs[1].morphoVaults.find((v) => v.version === 2)!.vaultAddress);
+  assert.equal(mainnet.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
+  assert.equal(mainnet.strategy.capsBps.Fluid, 3_000);
+  // Provider parity with the standalone Ethereum vault, which already runs this
+  // AaveV3Provider. It is appended, so Steakhouse stays the entry provider.
+  const aave = mainnet.strategy.reusedProviders.find((p) => p.label === 'AaveV3');
+  assert.ok(aave, 'mainnet: AaveV3 is registered');
+  assert.equal(mainnet.strategy.reusedProviders[0].label, 'SteakhouseMorpho', 'the entry provider is unchanged');
+  assert.equal(aave!.address, '0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941');
+});
+
+test('Monad is an Aave-only spoke whose single provider is also its entry', () => {
+  const monad = NETWORKS.monad;
+  assert.equal(monad.role, 'spoke');
+  assert.equal(monad.chainId, 143n);
+  // Measured on-chain: MessageTransmitter.localDomain() on Monad returns 15, and both CCTP
+  // contracts carry the same runtime codehash there as on Base, Arbitrum and Ethereum.
+  assert.equal(monad.cctp.domain, 15);
+  assert.equal(monad.usdc.toLowerCase(), chainConfigs[143].asset.toLowerCase(), 'the spoke asset is Monad USDC');
+
+  // Aave is the only venue Monad has that this registry can name, so it is the whole strategy
+  // and therefore the entry provider, which has to stay uncapped.
+  assert.deepEqual(monad.strategy.reusedProviders, [
+    { label: 'AaveV3', address: '0xAeEcf7F780e88B155df330434Ef29b2B077024e0' },
+  ]);
+  assert.deepEqual(monad.strategy.capsBps, { AaveV3: 0 });
+  assert.deepEqual(strategyProviders(monad, {}).map((p) => p.label), ['AaveV3']);
+
+  // chainConfigs[143] lists no Comet and no Morpho vault, and Fluid publishes no Monad
+  // deployment, so none of the three optional venues may be set: setting `comet` would fail
+  // the Comet cross-check above, and the other two would deploy a provider over a market
+  // that does not exist.
+  assert.equal(monad.strategy.comet, undefined);
+  assert.equal(monad.strategy.fluidFToken, undefined);
+  assert.equal(monad.strategy.morphoV2Vault, undefined);
+  assert.deepEqual(chainConfigs[143].cometPairs, []);
+  assert.deepEqual(chainConfigs[143].morphoVaults, []);
+
+  // 20 blocks at Monad's measured 0.307 s block time is about 6 s, the wall-clock depth
+  // Arbitrum's 20 blocks give at 0.284 s. Not a measured reorg depth.
+  assert.equal(monad.confirmations, 20);
+  assert.deepEqual(Object.keys(monad.routes), ['8453'], 'routes to the hub only');
+  assert.ok(NETWORKS.base.routes['143'], 'the hub routes back');
 });
 
 test('the hub routes to every spoke and every spoke routes back to the hub', () => {
@@ -106,4 +150,26 @@ test('chain ids and CCTP domains are unique', () => {
   const nets = Object.values(NETWORKS);
   assert.equal(new Set(nets.map((n) => n.chainId)).size, nets.length, 'chain ids');
   assert.equal(new Set(nets.map((n) => n.cctp.domain)).size, nets.length, 'CCTP domains');
+});
+
+test('Arbitrum expansion preserves legacy venues and uses distinct native-USDC sources', () => {
+  const arb = NETWORKS.arbitrum;
+  const manifest = JSON.parse(readFileSync(path.join(deployments, 'arbitrum/crosschain.json'), 'utf8'));
+  const original = strategyProviders(arb, manifest.contracts);
+  assert.equal(original.length, 5, 'committed manifest must not invent deployments');
+  const adapters = { ...manifest.contracts,
+    FluidProvider: '0x00000000000000000000000000000000000000f1',
+    GauntletPrimeV2MorphoProvider: '0x00000000000000000000000000000000000000a2',
+  };
+  const expanded = strategyProviders(arb, adapters);
+  assert.deepEqual(expanded.slice(0, 5), original);
+  assert.deepEqual(expanded.map(p => p.label), ['AaveV3', 'CompoundV3', 'GauntletCoreMorpho',
+    'SteakhouseHighYieldMorpho', 'SteakhousePrimeMorpho', 'Fluid', 'GauntletPrimeV2Morpho']);
+  assert.equal(arb.usdc, '0xaf88d065e77c8cC2239327C5EDb3A432268e5831');
+  assert.equal(arb.strategy.fluidFToken, '0x1A996cb54bb95462040408C06122D45D6Cdb6096');
+  assert.equal(arb.strategy.morphoV2Vault, '0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78');
+  assert.notEqual(arb.strategy.fluidFToken, NETWORKS.base.strategy.fluidFToken);
+  assert.notEqual(arb.strategy.morphoV2Vault, NETWORKS.base.strategy.morphoV2Vault);
+  assert.equal(arb.strategy.capsBps.Fluid, 3000);
+  assert.equal(arb.strategy.capsBps.GauntletPrimeV2Morpho, 2000);
 });

@@ -59,5 +59,60 @@
     "CctpV2Adapter": "0x9f7a3cd68861203ab3c865fbdc523a4cc4d75d1afaefdc2b1970e93fa0b5e873",
     "FluidProvider": "0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a",
     "GauntletPrimeV2MorphoProvider": "0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457"
-  }
+  },
+  "deploymentHistory": [
+    {
+      "contract": "StrategyImplementation",
+      "previous": {
+        "address": "0xfcE142db5FD78F64c97b04d9a587E2C53341b910",
+        "runtimeCodehash": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+        "deploymentTx": "0x13b9ebfaa2171b8658b09f18df490dcb7cea462a48d1877e368332d2ae4782d2"
+      },
+      "current": {
+        "address": "0x6909E3654B060f8D1507F4fE8c71B604cA79eb2D",
+        "runtimeCodehash": "0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b",
+        "deploymentTx": "0x853eb4522a492e1e9b55bb27e6ddfb6b391a1311c3df25fcc5ba6eed826de2ba"
+      },
+      "upgradeTx": "0x5b256b18578f55624a7daaf4c88cd239f965aa1deb1d7faed31ebc0202b7de80",
+      "upgradeBlock": 56864845,
+      "upgradeTimestamp": "2026-11-13T09:49:04Z",
+      "proxyAdmin": "0xDb00Ea4B591aA220bf97e16D4c965196EC223e0e",
+      "sender": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+      "initializer": "initializeSecurityAccounting(uint256)",
+      "initializerArguments": [
+        "1005629483841248682"
+      ],
+      "sourceCommit": "2fb3978f2db6bdfbfe51fd35345a9190f500b36d",
+      "sourceEvidence": "Verified compiler input reproduces the complete live runtime and creation input (solc 0.8.33, paris, optimizer 200)."
+    },
+    {
+      "contract": "Strategy",
+      "operation": "setProviders(address[])",
+      "executionTx": "0x7b92c38db9dc25ced0a5f4bdb4f2c000ba7353ae6f36d524ff0c984d03e127ee",
+      "executionBlock": 57819761,
+      "executionTimestamp": "2026-11-15T14:52:07Z",
+      "timelock": "0x540cAab5492014084502c1dB6F15644eedCa87ee",
+      "sender": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+      "operationId": "0x11dd36bae1392dec686f294c754ef144c8a6a7a6d1445a0592d2ae4208efbbed",
+      "eta": 1794653014,
+      "providers": [
+        "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+        "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+        "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b",
+        "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c",
+        "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1",
+        "0x7ca72c28Aec15c359cC1e9cFc3021519D02E1304",
+        "0x23bbE424F1B621229c6A237F93D4234B646cf6e7"
+      ],
+      "providerIdentityObservedAt": {
+        "block": 59527786,
+        "blockHash": "0xb41b9dda7216a6bcff352631f29e020ca68af39b1d8e6ff9e9c90e3fa24ee649",
+        "timestamp": "2026-11-19T13:45:32Z"
+      },
+      "providerCreationTransactions": {
+        "FluidProvider": "0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a",
+        "GauntletPrimeV2MorphoProvider": "0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457"
+      }
+    }
+  ]
 }

@@ -1,0 +1,13 @@
+# Read-only monitor patch on the exact image already running on this stand.
+# Tag/inspect the original image before building; see the accompanying runbook.
+ARG BASE_IMAGE=thesauros/crosschain-ops:monitor-baseline-source-20261119
+FROM ${BASE_IMAGE}
+
+ARG SOURCE_SHA
+LABEL org.opencontainers.image.revision="${SOURCE_SHA}" \
+      io.thesauros.monitor.baseline="base-upgrade-20261119" \
+      io.thesauros.monitor.original-image="sha256:c8106a450baf68fb7a68c02d18bfe688df5800e8f7f0987ed995784c1ae8cab7"
+
+COPY deploy/crosschain/registry.ts /app/deploy/crosschain/registry.ts
+COPY deployments/base/crosschain.json /app/deployments/base/crosschain.json
+COPY ops/src/checks/deployment.ts /app/ops/src/checks/deployment.ts

@@ -1,0 +1,109 @@
+{
+  "readOnly": true,
+  "chainId": 42161,
+  "coverage": {
+    "fromBlock": 509725811,
+    "toBlock": 526525483,
+    "toBlockHash": "0xd50a9a9b66ea04dcdb92acd05a87c79cc53a18b01f6ac3d41427b6fe3fb8efc6"
+  },
+  "proofs": [
+    {
+      "name": "ProviderManager",
+      "address": "0x0b47A0d3CD25C84D7E6b40030e9B05EC15C1B418",
+      "fromBlock": 509725811,
+      "toBlock": 526525483,
+      "source": "contracts/utils/ProviderManager.sol",
+      "contract": "ProviderManager",
+      "compilerRuntimeHash": "0x3a5763842c7aae0280b14b889c66e760268ab90bc395f3becf55b1f6c2cf3871",
+      "onchainRuntimeHashAtDeployment": "0x3a5763842c7aae0280b14b889c66e760268ab90bc395f3becf55b1f6c2cf3871",
+      "onchainRuntimeHashAtSnapshot": "0x3a5763842c7aae0280b14b889c66e760268ab90bc395f3becf55b1f6c2cf3871",
+      "exactRuntimeMatchAtBothEnds": true,
+      "runtimeBytes": 2844,
+      "standardInputSha256": "eee8506f461734066d22cf404531392d7c8ec5f208296d1b34b4a44f0794e5f5"
+    },
+    {
+      "name": "AavePoolAddressesProvider",
+      "address": "0xa97684ead0e402dc232d5a977953df7ecbab3cdb",
+      "fromBlock": 509725811,
+      "toBlock": 526525483,
+      "source": "@aave/core-v3/contracts/protocol/configuration/PoolAddressesProvider.sol",
+      "contract": "PoolAddressesProvider",
+      "compilerRuntimeHash": "0x1a95f317ee56e0b9aedc4f4b7abd9e546dc45c26d1d77e95bcf62b789d9a5486",
+      "onchainRuntimeHashAtDeployment": "0x1a95f317ee56e0b9aedc4f4b7abd9e546dc45c26d1d77e95bcf62b789d9a5486",
+      "onchainRuntimeHashAtSnapshot": "0x1a95f317ee56e0b9aedc4f4b7abd9e546dc45c26d1d77e95bcf62b789d9a5486",
+      "exactRuntimeMatchAtBothEnds": true,
+      "runtimeBytes": 9846,
+      "standardInputSha256": "06f72e8a3b99b969440c12d43258452a830b576a596343ade3738bffe945f0d6"
+    }
+  ],
+  "providerManager": {
+    "address": "0x0b47A0d3CD25C84D7E6b40030e9B05EC15C1B418",
+    "allMutatorsEmit": true,
+    "mutationEvents": [
+      "YieldTokenUpdated(string,address,address)",
+      "MarketUpdated(string,address,address,address)"
+    ],
+    "fullAddressLogCount": 0,
+    "retargetingOrAliasingExcluded": true
+  },
+  "aaveAddressesProvider": {
+    "address": "0xa97684ead0e402dc232d5a977953df7ecbab3cdb",
+    "poolMappingMutators": [
+      "setAddress(bytes32,address)",
+      "setAddressAsProxy(bytes32,address)",
+      "setPoolImpl(address)"
+    ],
+    "allPoolMappingMutationsEmit": true,
+    "mandatoryEvents": [
+      "AddressSet(bytes32,address,address)",
+      "AddressSetAsProxy(bytes32,address,address,address)",
+      "PoolUpdated(address,address)",
+      "ProxyCreated(bytes32,address,address)"
+    ],
+    "fullAddressLogCount": 1,
+    "logs": [
+      {
+        "block": 523299579,
+        "hash": "0x6f9dce2a81c9b8609b5927cb4b27144700c0ba05181f80ec39a955e081ce6936",
+        "topic": "0x90affc163f1a2dfedcd36aa02ed992eeeba8100a4014f0b4cdc20ea265a66627",
+        "event": "PoolUpdated",
+        "args": [
+          "0xF05Fd3cC911b4c5E36e53c00354F645E22922C9A",
+          "0xa6E7d235A5B2fc7811d10669bbe20fA14B658A1e"
+        ],
+        "raw": {
+          "address": "0xa97684ead0e402dc232d5a977953df7ecbab3cdb",
+          "blockHash": "0x5bdf80ff8bbe3ea4ce6f1f145467549877d04a178454666c815ff9920713ebe9",
+          "blockNumber": "0x1f30eafb",
+          "blockTimestamp": "0x6af4786e",
+          "data": "0x",
+          "logIndex": "0x1",
+          "removed": false,
+          "topics": [
+            "0x90affc163f1a2dfedcd36aa02ed992eeeba8100a4014f0b4cdc20ea265a66627",
+            "0x000000000000000000000000f05fd3cc911b4c5e36e53c00354f645e22922c9a",
+            "0x000000000000000000000000a6e7d235a5b2fc7811d10669bbe20fa14b658a1e"
+          ],
+          "transactionHash": "0x6f9dce2a81c9b8609b5927cb4b27144700c0ba05181f80ec39a955e081ce6936",
+          "transactionIndex": "0x1"
+        }
+      }
+    ],
+    "onlyReviewedPoolUpgrade": true,
+    "unreviewedPoolAliasOrRetargetingExcluded": true
+  },
+  "ownerDelegation": {
+    "address": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "codeAtDeployment": "0xef010063c0c19a282a1b52b07dd5a65b58948a07dae32b",
+    "codeAtSnapshot": "0xef010063c0c19a282a1b52b07dd5a65b58948a07dae32b",
+    "delegatedAtBothEnds": true,
+    "externalTransactionHistoryIsInsufficient": true,
+    "notReliedOnForClosure": true
+  },
+  "explorerAccountHistory": {
+    "notUsedForCompleteness": true,
+    "reason": "Returns no transactions even for known AddressesProvider PoolUpdated internal call; does not establish complete zero-value control-flow history."
+  },
+  "conclusion": "Exact deployed non-proxy runtimes require events on every relevant mapping mutation, and full-address canonical logs show no PM mapping change and only the already-reviewed Aave Pool implementation upgrade. No EOA-only owner assumption or explorer call-history completeness is needed.",
+  "sourceScopeGapClosed": true
+}
