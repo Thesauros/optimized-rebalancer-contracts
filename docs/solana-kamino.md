@@ -58,18 +58,22 @@ identities, not a production governance recommendation.
    `executor`, `guardian`, `maxPerTransfer`, `capacity`, `refillPerSecond`,
    `maxFeeBps`, `strategyCaps` keyed by reserve. Amounts/caps are integer strings
    in **USDC micro-units**; identities are public keys, never private keys.
-3. `npm run solana -- prepare public-config.json` prints unsigned native
-   initialization, collateral ATA and strategy registration instructions. It
-   also prepares the address lookup table needed for atomic CCTP receipt plus
-   checkpoint. Lookup table creation uses a recent slot: regenerate immediately
-   before execution, execute extension batches in order, then wait for activation
-   and finalization. Set `SOLANA_LOOKUP_TABLES` to the resulting table address.
-4. `npm run solana -- plan public-config.json` prints the EVM native adapter's
-   constructor parameters and unsigned Base Timelock calldata for adapter, peer,
-   route and accountant registration. Deploy/verify the adapter, native agent,
-   strategies and first checkpoint before activating the hub chain set. The
-   native adapter's endpoints are immutable: a different endpoint needs a new
-   adapter/route and a reviewed migration.
+3. From `ops/`, `npm run solana -- prepare public-config.json` prints unsigned
+   native initialization, collateral ATA and strategy registration instructions.
+   The `solana` script lives in `ops/package.json`, so the same command from the
+   repository root fails with a missing-script error; use
+   `npm --prefix ops run solana -- prepare public-config.json` if you are not in
+   `ops/`. It also prepares the address lookup table needed for atomic CCTP
+   receipt plus checkpoint. Lookup table creation uses a recent slot: regenerate
+   immediately before execution, execute extension batches in order, then wait
+   for activation and finalization. Set `SOLANA_LOOKUP_TABLES` to the resulting
+   table address.
+4. From `ops/`, `npm run solana -- plan public-config.json` prints the EVM native
+   adapter's constructor parameters and unsigned Base Timelock calldata for
+   adapter, peer, route and accountant registration. Deploy/verify the adapter,
+   native agent, strategies and first checkpoint before activating the hub chain
+   set. The native adapter's endpoints are immutable: a different endpoint needs
+   a new adapter/route and a reviewed migration.
 5. Verify full remote keys, runtime code, native governance/upgrade authority,
    route limits, aliases, RPC genesis, lookup table, funded gas accounts, source
    index and observer/relayer readiness. Activate the native chain in the Base

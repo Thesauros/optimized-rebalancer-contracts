@@ -100,7 +100,8 @@ A complete plan remains unsigned and requires its concrete release review.
 6. After the delay, execute registration followed by both caps while new-venue
    allocations remain stopped. Caps are release ceilings, not an instruction to
    rebalance. Publish matching manifests/codehashes only after actual successful
-   operations, and preserve the previous deployment/provenance records.
+   operations. Remove the Arbitrum `pendingProviderActivations` entries in the same
+   release and preserve previous deployment/provenance records.
 7. Verify the seven sources, original holdings/permissions/fees/entry/caps,
    correctly initialized HWM and complete valuation. Verify fresh cross-chain NAV,
    local allocate/deallocate and the ordinary bridge/recall path before enabling

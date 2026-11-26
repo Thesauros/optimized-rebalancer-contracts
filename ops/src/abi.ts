@@ -145,6 +145,15 @@ export const PROVIDER = [
 /** The Compound yield token is configured per (identifier, asset); phase 4 checks it. */
 export const PROVIDER_MANAGER = ['function getYieldToken(string identifier, address asset) view returns (address)'];
 
+/**
+ * Morpho Vault V2. `curator()` is the only cheap on-chain discriminator between the
+ * genuine Gauntlet vaults and the ones that copy their name and symbol.
+ */
+export const MORPHO_V2_VAULT = [
+  'function curator() view returns (address)',
+  'function asset() view returns (address)',
+];
+
 export const ADAPTER = [
   'function remotes(uint64 chainId) view returns (uint32 domain, address adapter, bool set)',
   'function governance() view returns (address)',
