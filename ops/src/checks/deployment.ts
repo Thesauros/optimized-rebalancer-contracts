@@ -3,9 +3,9 @@
  * the monitor. Read-only. Each check states what the registry and manifests
  * say must be true on-chain.
  */
-import { Contract, Provider, getAddress, id, keccak256 } from 'ethers';
-import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
-import { NETWORKS, NetworkEntry, routeId, strategyProviders } from '../../../deploy/crosschain/registry';
+import { Contract, Provider, ZeroAddress, getAddress, id, keccak256 } from 'ethers';
+import { ACCESS, ADAPTER, ADMIN_ROLE, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, PROVIDER, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../abi';
+import { NETWORKS, NetworkEntry, providerLabels, routeId, strategyProviders } from '../../../deploy/crosschain/registry';
 import { loadNativeSpokes } from '../native';
 
 const EXECUTOR_ROLE = id('EXECUTOR_ROLE');
@@ -148,9 +148,21 @@ export async function checkDeployment(
   check(providers.length === expected.length && providers.every((p, i) => eq(p, expected[i])), 'strategy providers', providers.join(','));
   check(eq(await strategy.getEntryProvider(), expected[0]), 'strategy entry provider');
   const labelled: Record<string, string> = Object.fromEntries(listed.map((p) => [p.label, p.address]));
+  for (const label of providerLabels(entry)) {
+    check(!!labelled[label], `strategy provider manifest ${label}`, labelled[label] ?? 'not deployed; provider activation is pending');
+  }
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
+    if (!labelled[label]) continue; // Report a missing deployment without calling an undefined address.
     const cap = BigInt(await strategy.getProviderCap(labelled[label]));
     check(cap === BigInt(bps), `strategy cap ${label}`, `${cap} bps`);
+  }
+  for (const [label, source] of [
+    ['Fluid', entry.strategy.fluidFToken],
+    ['GauntletPrimeV2Morpho', entry.strategy.morphoV2Vault],
+  ] as const) {
+    if (!source || !labelled[label]) continue;
+    const actual = await new Contract(labelled[label], PROVIDER, provider).getSource(entry.usdc, c.Strategy, ZeroAddress);
+    check(eq(actual, source), `strategy source ${label}`, `${actual}; expected ${source}`);
   }
   if (c.ProviderManager) {
     const pmgr = new Contract(c.ProviderManager, OWNABLE, provider);
