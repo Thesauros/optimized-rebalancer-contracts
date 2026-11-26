@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Interface, Provider, zeroPadValue } from 'ethers';
+import { Interface, Provider, keccak256, zeroPadValue } from 'ethers';
 import { ACCESS, ADAPTER, CHAIN_AGENT, EPOCH_VAULT, MORPHO_V2_VAULT, OWNABLE, PROVIDER, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../src/abi';
 import { checkDeployment } from '../src/checks/deployment';
 import { HUB_PARAMS, NETWORKS } from '../../deploy/crosschain/registry';
 
+const adapterRuntime = '0x60016000';
 const manifests = Object.fromEntries(['base', 'arbitrum'].map((key) => {
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'deployments', key, 'crosschain.json'), 'utf8'));
   // Candidate release manifest, not a claim that the two providers are deployed.
@@ -14,7 +15,11 @@ const manifests = Object.fromEntries(['base', 'arbitrum'].map((key) => {
     FluidProvider: '0x0000000000000000000000000000000000000f10',
     GauntletPrimeV2MorphoProvider: '0x0000000000000000000000000000000000000a20',
   });
-  return [key, { ...m, codehashes: {} }];
+  const codehashes = {
+    FluidProvider: keccak256(adapterRuntime),
+    GauntletPrimeV2MorphoProvider: keccak256(adapterRuntime),
+  };
+  return [key, { ...m, codehashes }];
 }));
 const runtime = Object.fromEntries(['base', 'arbitrum'].map((key) => [key, NETWORKS[key]]));
 const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...MORPHO_V2_VAULT, ...OWNABLE, ...PROVIDER, ...PROVIDER_MANAGER, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK]);
@@ -45,6 +50,9 @@ function provider({
   const implementations = new Map(['Strategy', 'ChainAgent', 'TickAccountant', 'EpochVault'].filter(name => c[name]).map((name) => [c[name].toLowerCase(), c[`${name}Implementation`]]));
   return {
     getStorage: async (at: string, slot: string) => zeroPadValue(slot.endsWith('bbc') ? implementations.get(at.toLowerCase())! : safe, 32),
+    getCode: async (at: string) => [c.FluidProvider, c.GauntletPrimeV2MorphoProvider].some(
+      (address) => address.toLowerCase() === at.toLowerCase(),
+    ) ? adapterRuntime : '0x',
     call: async ({ to, data }: { to: string; data: string }) => {
       const tx = abi.parseTransaction({ data })!;
       const peer = tx.name === 'remotes' ? peers.find((entry) => entry.chainId === tx.args[0]) : undefined;

@@ -168,13 +168,18 @@ export async function checkDeployment(
     const cap = BigInt(await strategy.getProviderCap(labelled[label]));
     check(cap === BigInt(bps), `strategy cap ${label}`, `${cap} bps`);
   }
-  for (const [label, source] of [
-    ['Fluid', entry.strategy.fluidFToken],
-    ['GauntletPrimeV2Morpho', entry.strategy.morphoV2Vault],
+  for (const [label, manifestKey, source] of [
+    ['Fluid', 'FluidProvider', entry.strategy.fluidFToken],
+    ['GauntletPrimeV2Morpho', 'GauntletPrimeV2MorphoProvider', entry.strategy.morphoV2Vault],
   ] as const) {
     if (!source || !labelled[label]) continue;
     const actual = await new Contract(labelled[label], PROVIDER, provider).getSource(entry.usdc, c.Strategy, ZeroAddress);
     check(eq(actual, source), `strategy source ${label}`, `${actual}; expected ${source}`);
+    const expectedHash = m.codehashes[manifestKey];
+    const code = await provider.getCode(labelled[label]);
+    const hash = keccak256(code);
+    check(!!expectedHash && code !== '0x' && eq(hash, expectedHash), `strategy provider code ${label}`,
+      expectedHash ? `${hash}; expected ${expectedHash}` : 'missing pinned runtime hash');
   }
   // Six Morpho Vault V2 contracts across Ethereum and Arbitrum carry the name and symbol of
   // the genuine Gauntlet vaults; two are actively dangerous, one being an empty vault with a

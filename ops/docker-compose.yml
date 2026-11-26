@@ -124,6 +124,8 @@ services:
   # read-only services: no keys in their environment
   monitor:
     <<: *common
+    image: ${CROSSCHAIN_MONITOR_IMAGE:-${CROSSCHAIN_OPS_IMAGE:-thesauros/crosschain-ops:local}}
+    pull_policy: ${CROSSCHAIN_MONITOR_PULL_POLICY:-missing}
     environment:
       RPC_REQUESTS_PER_SECOND: "${MONITOR_RPC_REQUESTS_PER_SECOND:-5}"
       RPC_COMPUTE_UNITS_PER_SECOND: "${MONITOR_RPC_COMPUTE_UNITS_PER_SECOND:-12}"
