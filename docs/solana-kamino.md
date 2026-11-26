@@ -45,7 +45,17 @@ tests with the intended ID. Put program upgrade authority and native governance
 under the reviewed timelocked multisig PDA. EOAs in the local VM tests are test
 identities, not a production governance recommendation.
 
-1. Prepare a native manifest matching the `SolanaManifest` interface. Include
+1. From the repository root, derive the agent and idle PDAs and the eight
+   `CctpSolanaAdapter` constructor arguments for the reviewed program ID and
+   public 32-byte seed. This command reads the Base deployment manifest and
+   works before the Solana program or the Base adapter is deployed.
+
+   ```sh
+   npm --prefix ops run solana -- adapter "$SOLANA_PROGRAM_ID" "$SOLANA_AGENT_SEED_HEX"
+   ```
+
+   Use the verified deployments to prepare a native manifest matching the
+   `SolanaManifest` interface. Include
    `family`, `network`, reviewed program ID, bytes32 seed, derived agent/idle PDAs,
    Base hub agent and new native adapter addresses, checkpoint freshness limit,
    `programDataSha256`, and explicit `{ protocol: 'kamino-lending', reserve, market }` definitions.
@@ -70,7 +80,14 @@ identities, not a production governance recommendation.
    table address.
 4. From `ops/`, `npm run solana -- plan public-config.json` prints the EVM native
    adapter's constructor parameters and unsigned Base Timelock calldata for
-   adapter, peer, route and accountant registration. Deploy/verify the adapter,
+   adapter, peer, route and accountant registration. The planner reads the
+   current Base state at one block. For a new spoke it adds Solana to the
+   existing accountant chain set before registering the native agent.
+   `setChains` replaces the entire list. If membership changes during the
+   Timelock delay, discard the stale batch and review a fresh plan. After a
+   partial execution, regenerate the plan to see the remaining actions. An
+   existing route with different endpoints or limits, or a disabled route,
+   requires a separate governance decision. Deploy/verify the adapter,
    native agent, strategies and first checkpoint before activating the hub chain
    set. The native adapter's endpoints are immutable: a different endpoint needs
    a new adapter/route and a reviewed migration.

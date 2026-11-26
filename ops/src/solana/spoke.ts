@@ -9,6 +9,7 @@ import type { NativeSpoke } from '../native';
 import type { ChainRef, InFlight, Position, TransferIndex } from '../snapshot';
 import { log } from '../util';
 import {
+  agentAccounts,
   aliasOf,
   checkpointPda,
   decodeAgent,
@@ -66,10 +67,7 @@ function sameCheckpoint(a: NativeCheckpoint, b: NativeCheckpoint): boolean {
 
 export function validateManifest(m: SolanaManifest): void {
   if (m.family !== 'solana' || m.network !== SOLANA.network) throw new Error('wrong Solana family/network');
-  const program = new PublicKey(m.program),
-    seed = seedBytes(m.seed);
-  const agent = PublicKey.findProgramAddressSync([Buffer.from('agent'), seed], program)[0];
-  const idle = PublicKey.findProgramAddressSync([Buffer.from('idle'), agent.toBuffer()], program)[0];
+  const { agent, idle } = agentAccounts(new PublicKey(m.program), m.seed);
   if (m.agent !== agent.toBase58() || m.idle !== idle.toBase58()) throw new Error('manifest PDA mismatch');
   if (
     !/^0x[0-9a-fA-F]{40}$/.test(m.hubAgent) ||

@@ -149,3 +149,9 @@ export function seedBytes(seed: string): Buffer {
   if (b.length !== 32) throw new Error('agent seed must be bytes32');
   return b;
 }
+
+export function agentAccounts(program: PublicKey, seed: string) {
+  const agent = PublicKey.findProgramAddressSync([Buffer.from('agent'), seedBytes(seed)], program)[0];
+  const idle = PublicKey.findProgramAddressSync([Buffer.from('idle'), agent.toBuffer()], program)[0];
+  return { agent, idle };
+}

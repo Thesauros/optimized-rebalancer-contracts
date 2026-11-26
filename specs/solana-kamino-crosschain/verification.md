@@ -163,3 +163,43 @@ not been performed. Before production activation, run that authorized rehearsal,
 including full unwind, observer/relayer/monitor operation, RPC/history capacity,
 supported SBPF architecture and explicit rent budget. This work delivers the
 implementation and verification package; it does not activate production.
+
+## Mainnet reads and local Circle rehearsal on 2026-11-26
+
+On Solana mainnet-beta at finalized slot `474090024`, the source build ID
+had no program account. The USDC reserve in the native registry belonged to
+Kamino Lending, matched the registered Main Market and used the six-decimal
+USDC mint. Both configured Circle programs were executable. On Base at block
+`62466196`, the accountant tracked `8453` and `42161`. The Base-to-Solana
+route had a zero adapter and was disabled.
+
+The locked SBPF v2 agent from commit `83a847dd2c5a838d70f540701a314734cd06f68e`
+was tested in Agave 4.3.2 with fresh mainnet dumps of both Circle programs.
+The downloaded archive SHA-256 matched the digest of artifact `15098550387`
+from the [native build](https://github.com/Thesauros/optimized-rebalancer-contracts/actions/runs/45779647368).
+
+| Local validator input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Agent ELF with the source build ID | 388904 | `3ad0d733b58bf9a0f174fb1361900d79ea98c9406e8ad8dd40970e01a0acaf44` |
+| Circle TokenMessengerMinterV2 dump | 716232 | `ccdac46adb68c570556bd15f7caddc52dd16fb96e0bbc8f5a46129555adbeeb2` |
+| Circle MessageTransmitterV2 dump | 493512 | `abbe67181ec4edcad11f4a0773d8bf658b2e599d6f1365ebfee1ab0f85fe9bb4` |
+
+`npm run test:solana-cctp` exited 0 with these three results:
+
+1. Finalized PDA reads, transfer indexing, historical balances, write-down,
+   block hash and SQLite restart recovery passed.
+2. The Circle programs processed the native PDA burn and authenticated receipt.
+   Receiving during pause, replay and forgery rejection, balance conservation
+   and governance write-down passed.
+3. SBF and SPL tests covered initialization authority, deposit, full redemption,
+   principal conservation, executor permissions, rollback, pause and unwind.
+   The lending instructions ran against the Kamino CPI test double.
+
+The validator used local balances and a local attester. The final deployment
+identity requires a new build, and a live Kamino round trip remains outstanding.
+
+On a separate fork of Base block `62467800`, the release planner produced
+five actions for a locally deployed adapter and a fixture native agent.
+All five were queued and executed through the existing Base Timelock after
+advancing the fork clock. The accountant then tracked `8453`, `42161` and
+`9223372036854775813`. Running the planner again returned zero actions.

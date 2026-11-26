@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { Contract, Interface, parseUnits, zeroPadValue } from 'ethers';
+import { Contract, parseUnits } from 'ethers';
 import { AccountMeta, Connection, PublicKey } from '@solana/web3.js';
 import { Reserve } from '@kamino-finance/klend-sdk/dist/@codegen/klend/accounts/Reserve';
 import { SOLANA } from '../../../deploy/crosschain/native-registry';
@@ -8,10 +8,12 @@ import { CHAIN_AGENT } from '../abi';
 import { hubOf, loadChains, signerFor } from '../config';
 import { sendWithGasMargin } from '../util';
 import { TransferIndex } from '../snapshot';
+import { planSolanaAdapter } from './adapter';
 import { aliasOf } from './codec';
 import { allocateData, executeInstruction } from './instructions';
 import { collateralForAssets, readKaminoRates, strategyAdapter } from './kamino';
 import { bridgeFromSolana, receiveOnSolana } from './operations';
+import { planHubActivation } from './plan';
 import { SolanaSpoke } from './spoke';
 import { sendNative, solanaSigner, nativeWriteGate } from './transactions';
 
@@ -33,6 +35,11 @@ async function main() {
       );
     return;
   }
+  if (command === 'adapter') {
+    if (!first || !second) throw new Error('adapter <program-id> <seed-hex>');
+    console.log(JSON.stringify(planSolanaAdapter(first, second), null, 2));
+    return;
+  }
   const spoke = SolanaSpoke.fromEnvironment();
   if (command === 'prepare') {
     if (!first) throw new Error('prepare <public-role-and-limit-config.json>');
@@ -43,58 +50,9 @@ async function main() {
   if (command === 'plan') {
     if (!first) throw new Error('plan <public-role-and-limit-config.json>');
     const limits = JSON.parse(fs.readFileSync(first, 'utf8'));
-    const hub = hubOf(loadChains()),
-      agent = new Contract(spoke.manifest.hubAgent, CHAIN_AGENT, hub.provider);
-    const chainIds: bigint[] = await new Contract(
-      hub.manifest.contracts.TickAccountant,
-      ['function chainIds() view returns (uint64[])'],
-      hub.provider,
-    ).chainIds();
+    const hub = hubOf(loadChains());
     const alias = aliasOf(spoke.agent);
-    const adminInterface = new Interface([
-      'function setAdapter(address,bool)',
-      'function setPeer(uint64,address,bool)',
-      'function addRoute(bytes32,address,uint64,address,uint16,uint128,uint128,uint128)',
-      'function setAgent(uint64,address,bool)',
-      'function setChains(uint64[])',
-    ]);
-    const wanted = [...new Set([...chainIds, SOLANA.accountingId])].sort((a, b) => (a < b ? -1 : 1));
-    const actions = [
-      {
-        label: 'ChainAgent.setAdapter',
-        target: spoke.manifest.hubAgent,
-        data: adminInterface.encodeFunctionData('setAdapter', [spoke.manifest.hubAdapter, true]),
-      },
-      {
-        label: 'ChainAgent.setPeer',
-        target: spoke.manifest.hubAgent,
-        data: adminInterface.encodeFunctionData('setPeer', [SOLANA.accountingId, alias, true]),
-      },
-      {
-        label: 'ChainAgent.addRoute',
-        target: spoke.manifest.hubAgent,
-        data: adminInterface.encodeFunctionData('addRoute', [
-          routeId(hub.chainId, SOLANA.accountingId),
-          spoke.manifest.hubAdapter,
-          SOLANA.accountingId,
-          alias,
-          limits.maxFeeBps,
-          BigInt(limits.maxPerTransfer),
-          BigInt(limits.capacity),
-          BigInt(limits.refillPerSecond),
-        ]),
-      },
-      {
-        label: 'TickAccountant.setAgent',
-        target: hub.manifest.contracts.TickAccountant,
-        data: adminInterface.encodeFunctionData('setAgent', [SOLANA.accountingId, alias, true]),
-      },
-      {
-        label: 'TickAccountant.setChains',
-        target: hub.manifest.contracts.TickAccountant,
-        data: adminInterface.encodeFunctionData('setChains', [wanted]),
-      },
-    ].map((a) => ({ ...a, value: '0' }));
+    const governance = await planHubActivation(hub, spoke.manifest, alias, limits);
     console.log(
       JSON.stringify(
         {
@@ -103,27 +61,8 @@ async function main() {
           accountingId: SOLANA.accountingId.toString(),
           nativeAgent: spoke.agent.toBase58(),
           alias,
-          constructor: {
-            asset: hub.entry.usdc,
-            agent: spoke.manifest.hubAgent,
-            tokenMessenger: hub.entry.cctp.tokenMessenger,
-            messageTransmitter: hub.entry.cctp.messageTransmitter,
-            remoteAgent: zeroPadValue(`0x${spoke.agent.toBuffer().toString('hex')}`, 32),
-            remoteTokenAccount: `0x${spoke.idle.toBuffer().toString('hex')}`,
-            remoteMint: `0x${new PublicKey(SOLANA.asset.mint).toBuffer().toString('hex')}`,
-            remoteTokenMessenger: `0x${new PublicKey(SOLANA.cctp.tokenMessenger).toBuffer().toString('hex')}`,
-          },
-          governance: {
-            agent: spoke.manifest.hubAgent,
-            adapter: spoke.manifest.hubAdapter,
-            peer: alias,
-            routeId: routeId(hub.chainId, SOLANA.accountingId),
-            chains: [...new Set([...chainIds, SOLANA.accountingId])].sort((a, b) => (a < b ? -1 : 1)).map(String),
-            prerequisite:
-              'Deploy/verify CctpSolanaAdapter first; activate only after native checkpoint, lookup table and relayer readiness. These are unsigned Timelock actions.',
-            actions,
-            alreadyPeer: await agent.isPeer(SOLANA.accountingId, alias),
-          },
+          constructor: planSolanaAdapter(spoke.manifest.program, spoke.manifest.seed, spoke.manifest.hubAgent).constructorArgs,
+          governance,
         },
         null,
         2,
@@ -194,7 +133,7 @@ async function main() {
   }
   if (!['observe', 'allocate', 'withdraw', 'redeem-all'].includes(command))
     throw new Error(
-      'commands: rates | status | prepare <public-config.json> | plan <public-config.json> | observe | allocate <index> <USDC> | withdraw <index> <USDC> | redeem-all <index> | bridge-in <USDC> [minimumUSDC] | bridge <USDC> [minimumUSDC] | receive <attestation.json>; writes simulate unless --yes',
+      'commands: rates | adapter <program-id> <seed-hex> | status | prepare <public-config.json> | plan <public-config.json> | observe | allocate <index> <USDC> | withdraw <index> <USDC> | redeem-all <index> | bridge-in <USDC> [minimumUSDC] | bridge <USDC> [minimumUSDC] | receive <attestation.json>; writes simulate unless --yes',
     );
   await nativeWriteGate(async () => {
     const fresh = await spoke.state(),

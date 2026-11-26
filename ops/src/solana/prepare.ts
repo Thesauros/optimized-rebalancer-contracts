@@ -28,26 +28,34 @@ export interface NativePreparation {
   maxFeeBps: number;
   strategyCaps: Record<string, string>;
 }
+function parseMicroUnits(value: string, field: string): bigint {
+  if (typeof value !== 'string' || !/^\d+$/.test(value))
+    throw new Error(`${field} must be a decimal string in USDC micro-units`);
+  const amount = BigInt(value);
+  if (amount > 0xffffffffffffffffn) throw new Error(`${field} exceeds the native u64 limit`);
+  return amount;
+}
+
+export type NativeRouteLimits = Pick<NativePreparation, 'maxFeeBps' | 'maxPerTransfer' | 'capacity' | 'refillPerSecond'>;
+
+export function nativeRouteLimits(config: NativeRouteLimits) {
+  const max = parseMicroUnits(config.maxPerTransfer, 'maxPerTransfer');
+  const cap = parseMicroUnits(config.capacity, 'capacity');
+  const refill = parseMicroUnits(config.refillPerSecond, 'refillPerSecond');
+  if (max === 0n || cap < max || !Number.isInteger(config.maxFeeBps) || config.maxFeeBps < 0 || config.maxFeeBps >= 10000)
+    throw new Error('invalid reviewed native route limits');
+  return { max, cap, refill, feeBps: config.maxFeeBps };
+}
+
 export async function prepareNative(spoke: SolanaSpoke, config: NativePreparation) {
   const governance = new PublicKey(config.governance),
     executor = new PublicKey(config.executor),
     guardian = new PublicKey(config.guardian);
-  const max = BigInt(config.maxPerTransfer),
-    cap = BigInt(config.capacity),
-    refill = BigInt(config.refillPerSecond);
-  if (
-    max <= 0n ||
-    cap < max ||
-    refill < 0n ||
-    !Number.isInteger(config.maxFeeBps) ||
-    config.maxFeeBps < 0 ||
-    config.maxFeeBps >= 10000
-  )
-    throw new Error('invalid reviewed native route limits');
+  const { max, cap, refill, feeBps } = nativeRouteLimits(config);
   const domain = Buffer.alloc(4);
   domain.writeUInt32LE(NETWORKS.base.cctp.domain);
   const fee = Buffer.alloc(2);
-  fee.writeUInt16LE(config.maxFeeBps);
+  fee.writeUInt16LE(feeBps);
   const route = Buffer.concat([
     u64(NETWORKS.base.chainId),
     domain,
@@ -122,7 +130,7 @@ export async function prepareNative(spoke: SolanaSpoke, config: NativePreparatio
       t.switchboardConfiguration.twapAggregator,
       t.scopeConfiguration.priceFeed,
     ].map(optional);
-    const strategyCap = BigInt(config.strategyCaps[s.reserve] ?? '0');
+    const strategyCap = parseMicroUnits(config.strategyCaps[s.reserve] ?? '0', 'strategy cap');
     if (strategyCap <= 0n) throw new Error(`missing reviewed cap for ${s.reserve}`);
     strategies.push({
       protocol: 1,
