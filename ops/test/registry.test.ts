@@ -85,10 +85,6 @@ test('Base expansion appends Fluid and V2 while retaining the five original venu
 });
 
 test('Ethereum expands with Aave, Fluid and Morpho V2', () => {
-  // Arbitrum is deliberately not asserted here. Its Fluid and Morpho V2 entries are
-  // owned by `feat/arbitrum-crosschain-upgrade`; see the note in the arbitrum registry
-  // entry. The depth measurement relevant to that branch's V2 choice is in
-  // changes/crosschain-provider-parity/research.md.
   const mainnet = NETWORKS.mainnet;
   assert.equal(mainnet.strategy.morphoV2Vault, chainConfigs[1].morphoVaults.find((v) => v.version === 2)!.vaultAddress);
   assert.equal(mainnet.strategy.capsBps.GauntletPrimeV2Morpho, 2_000);
@@ -154,4 +150,26 @@ test('chain ids and CCTP domains are unique', () => {
   const nets = Object.values(NETWORKS);
   assert.equal(new Set(nets.map((n) => n.chainId)).size, nets.length, 'chain ids');
   assert.equal(new Set(nets.map((n) => n.cctp.domain)).size, nets.length, 'CCTP domains');
+});
+
+test('Arbitrum expansion preserves legacy venues and uses distinct native-USDC sources', () => {
+  const arb = NETWORKS.arbitrum;
+  const manifest = JSON.parse(readFileSync(path.join(deployments, 'arbitrum/crosschain.json'), 'utf8'));
+  const original = strategyProviders(arb, manifest.contracts);
+  assert.equal(original.length, 5, 'committed manifest must not invent deployments');
+  const adapters = { ...manifest.contracts,
+    FluidProvider: '0x00000000000000000000000000000000000000f1',
+    GauntletPrimeV2MorphoProvider: '0x00000000000000000000000000000000000000a2',
+  };
+  const expanded = strategyProviders(arb, adapters);
+  assert.deepEqual(expanded.slice(0, 5), original);
+  assert.deepEqual(expanded.map(p => p.label), ['AaveV3', 'CompoundV3', 'GauntletCoreMorpho',
+    'SteakhouseHighYieldMorpho', 'SteakhousePrimeMorpho', 'Fluid', 'GauntletPrimeV2Morpho']);
+  assert.equal(arb.usdc, '0xaf88d065e77c8cC2239327C5EDb3A432268e5831');
+  assert.equal(arb.strategy.fluidFToken, '0x1A996cb54bb95462040408C06122D45D6Cdb6096');
+  assert.equal(arb.strategy.morphoV2Vault, '0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78');
+  assert.notEqual(arb.strategy.fluidFToken, NETWORKS.base.strategy.fluidFToken);
+  assert.notEqual(arb.strategy.morphoV2Vault, NETWORKS.base.strategy.morphoV2Vault);
+  assert.equal(arb.strategy.capsBps.Fluid, 3000);
+  assert.equal(arb.strategy.capsBps.GauntletPrimeV2Morpho, 2000);
 });

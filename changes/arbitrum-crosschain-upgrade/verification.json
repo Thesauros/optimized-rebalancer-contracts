@@ -1,0 +1,46 @@
+{
+  "hardhatCompile": {
+    "passed": true,
+    "solidityFiles": 88,
+    "compiler": "0.8.33+commit.64118f21",
+    "evmVersion": "paris",
+    "optimizerRuns": 200
+  },
+  "solidityRegression": {
+    "passed": 204,
+    "failed": 0,
+    "skipped": 0,
+    "suites": 14,
+    "evmVersion": "paris",
+    "logSha256": "10a9c251f7dd5d6afae1e6922f7a59ebe294bd4f54baeb47b4b055abf5e870fe"
+  },
+  "deploymentPreparationTests": {
+    "passed": 46,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "bc9569946a533b5d6920f72fc8eaca5fdda327e9efee2d37ef9f347889c83cbc"
+  },
+  "opsTests": {
+    "passed": 104,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "5d7f99f7a58d59006c5922538c65d9507b1d9698d1e1cfe0df5a2acc2618e939"
+  },
+  "typescript": {
+    "preparationAndDeploymentTests": "PASS",
+    "ops": "PASS"
+  },
+  "storage": {
+    "legacyFieldsPreserved": 12,
+    "appendedSlots": [
+      10,
+      11
+    ],
+    "exactLegacyRuntimeRebuilt": true
+  },
+  "constructorPreparation": {
+    "status": "DRAFT_NOT_SIGNABLE",
+    "block": 526525928,
+    "productionWrites": false
+  }
+}

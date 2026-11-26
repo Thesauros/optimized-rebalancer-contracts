@@ -57,6 +57,7 @@ export async function checkDeployment(
   manifests: Record<string, ManifestLike>,
   ids: Identities,
   networks: Record<string, NetworkEntry> = NETWORKS,
+  purpose: 'verify' | 'monitor' = 'verify',
 ): Promise<CheckResult[]> {
   const entry: NetworkEntry = networks[key];
   const c = m.contracts;
@@ -154,6 +155,12 @@ export async function checkDeployment(
   check(eq(await strategy.getEntryProvider(), expected[0]), 'strategy entry provider');
   const labelled: Record<string, string> = Object.fromEntries(listed.map((p) => [p.label, p.address]));
   for (const label of providerLabels(entry)) {
+    // A candidate can be absent only before activation. The exact on-chain list above
+    // still detects an unexpected registration or substitution during this window.
+    if (!labelled[label] && purpose === 'monitor' && entry.strategy.pendingProviderActivations?.includes(label)) {
+      check(true, `pending provider registration ${label}`, 'awaiting governance registration');
+      continue;
+    }
     check(!!labelled[label], `strategy provider manifest ${label}`, labelled[label] ?? 'not deployed; provider activation is pending');
   }
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
@@ -175,7 +182,7 @@ export async function checkDeployment(
   // different curator that resolves to a V1 MetaMorpho. The check above only proves the
   // provider points where the registry says, so a registry that named a decoy would pass it.
   // curator() and asset() are what actually identify the vault.
-  if (entry.strategy.morphoV2Vault) {
+  if (entry.strategy.morphoV2Vault && labelled.GauntletPrimeV2Morpho) {
     const v2 = new Contract(entry.strategy.morphoV2Vault, MORPHO_V2_VAULT, provider);
     const curator: string = await v2.curator();
     check(eq(curator, GAUNTLET_CURATOR), 'morpho v2 curator', eq(curator, GAUNTLET_CURATOR) ? curator : `${curator}, expected Gauntlet ${GAUNTLET_CURATOR}`);

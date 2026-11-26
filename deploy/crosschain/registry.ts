@@ -55,6 +55,8 @@ export interface NetworkEntry {
     fluidFToken?: string;
     /** Additional Morpho Vault V2 source; deployed separately from the V1 providers. */
     morphoV2Vault?: string;
+    /** Candidate adapters awaiting governance registration on an existing strategy. */
+    pendingProviderActivations?: string[];
     /**
      * Per-provider cap in bps of strategy assets; label -> bps; 0 or missing = uncapped.
      * The entry provider (first reused provider) must stay uncapped: every deposit
@@ -166,18 +168,19 @@ const ALL_NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484' },
       ],
       comet: '0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf',
-      // Fluid and Morpho Vault V2 on Arbitrum are owned by the
-      // `feat/arbitrum-crosschain-upgrade` branch, which carries the exact-bytecode
-      // candidate build, the historical HWM reconstruction and the scoped unsigned
-      // preparation CLI this entry would otherwise have to duplicate. Deliberately
-      // not set here. The depth measurement that bears on its V2 choice is recorded
-      // in changes/crosschain-provider-parity/research.md.
+      // Official Fluid deployment and Morpho V2 discovery; see docs/arbitrum-crosschain-upgrade.md.
+      fluidFToken: '0x1A996cb54bb95462040408C06122D45D6Cdb6096',
+      morphoV2Vault: '0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78',
+      pendingProviderActivations: ['Fluid', 'GauntletPrimeV2Morpho'],
       capsBps: {
         AaveV3: 0,
         CompoundV3: 5_000,
         GauntletCoreMorpho: 4_000,
         SteakhouseHighYieldMorpho: 3_000,
         SteakhousePrimeMorpho: 4_000,
+        // Proposed ceilings matching Base; unsigned release inputs must explicitly confirm both.
+        Fluid: 3_000,
+        GauntletPrimeV2Morpho: 2_000,
       },
     },
     routes: { '8453': DEFAULT_ROUTE },

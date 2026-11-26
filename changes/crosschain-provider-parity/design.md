@@ -278,4 +278,3 @@ texts, keeps the ceilings the code already understood, confirms that throttling,
 head lag and unrelated errors still never shrink a range, and drives `scanMany`
 with two providers to prove that one chain hitting its cap leaves the other
 scanning in wide ranges.
-

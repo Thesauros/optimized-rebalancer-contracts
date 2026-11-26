@@ -1,0 +1,71 @@
+{
+  "chainId": 42161,
+  "network": "Arbitrum One",
+  "deployedOnUtc": "2026-11-25",
+  "sourceCommit": "499ec1b637c527ec8a19f50b1617890d2a1e247f",
+  "deployer": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+  "contracts": [
+    {
+      "name": "Rebalancer",
+      "address": "0x859b6FBbE685d6823a56125BD58A224b1925c7D4",
+      "transactionHash": "0xc9ae78ecaa256a84cc56843dcad5df81d083a45fb3eb4980bd4f9e603768ee9f",
+      "nonce": 662,
+      "blockNumber": 527452049,
+      "blockHash": "0x3db8f2d2118ab2cbfba9ba64368b2b9c9a433532867161f869dd0bb5f9c2c7be",
+      "receiptStatus": 1,
+      "initCodeHash": "0x0351f0dac96a68aa7f271dc7bcc25567f60acb302f231260b436a7f4a87ad747",
+      "runtimeCodeHash": "0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b",
+      "gasUsed": "5032847",
+      "effectiveGasPriceWei": "20096000",
+      "feeWei": "101140093312000"
+    },
+    {
+      "name": "FluidProvider",
+      "address": "0xa4885485bEDfFc131f6b67DC87B13a3e89C58852",
+      "transactionHash": "0x6e576ab23a44df9c39856f4bc26ae147bb1659996f60e009bc4ce5dccc9806e8",
+      "nonce": 663,
+      "blockNumber": 527452061,
+      "blockHash": "0x72ad29b4f157c99a7ad3c4bcb3b369c3d96f50c7f8d2c97a42c388232f66419f",
+      "receiptStatus": 1,
+      "initCodeHash": "0x17861965707051a31d4d4f3ff81cee7878d001beda826a69476970a31d2686ea",
+      "runtimeCodeHash": "0xb55df3954f38e547b6af0a24f5ce548d4587b32558e4478dbc509bb992f648bb",
+      "source": "0x1A996cb54bb95462040408C06122D45D6Cdb6096",
+      "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "gasUsed": "648647",
+      "effectiveGasPriceWei": "20414000",
+      "feeWei": "13241479858000"
+    },
+    {
+      "name": "MorphoV2Provider",
+      "address": "0xce43d620849c2673FfB2D7c526B3cBE67bd77248",
+      "transactionHash": "0x8aec97a895d9cb20a34dd7610a39ef85e1e3b7a6f7cf0c64da6e543315f06767",
+      "nonce": 664,
+      "blockNumber": 527452073,
+      "blockHash": "0xddd97972c6f14ddf7ac130b341ba61cddbc2ea996fe901576ef721d53651cf2b",
+      "receiptStatus": 1,
+      "initCodeHash": "0x9a03599aa0b938f4f7f107c23ac225033ce93a8f0baa26baf1a1e9f7f33bc8d4",
+      "runtimeCodeHash": "0xf103314d8d86b2a02a9ade7c2b6930c05c333d3d58d8e467563ad5ddbac86924",
+      "source": "0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78",
+      "asset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "gasUsed": "1862940",
+      "effectiveGasPriceWei": "20340000",
+      "feeWei": "37892199600000"
+    }
+  ],
+  "totalFeeWei": "152273772770000",
+  "postDeploymentSnapshot": {
+    "blockNumber": 527452292,
+    "blockHash": "0x515f503d88a33bc74a5672bc3156886e955f11a7415d45ea5dd58999047435f3",
+    "strategy": "0xD211BfFAB29e60c17a2B406B3FAf3d0E29282B71",
+    "strategyImplementation": "0x84163d2d9CFfe0e53078C3Cd02ee3db1975117d5",
+    "providers": [
+      "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+      "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+      "0xeB98d46937C537efF376361536D58d78c57c40d7",
+      "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+      "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484"
+    ],
+    "entryProvider": "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+    "chainAgentImplementation": "0x96528a41D3e5a2AfE29Bbf61ae8704eDCB01b67C"
+  }
+}
