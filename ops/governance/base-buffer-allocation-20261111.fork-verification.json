@@ -1,0 +1,59 @@
+{
+  "client": "Anvil loopback-only",
+  "forkBlock": 55800441,
+  "before": {
+    "blockNumber": 55800441,
+    "blockHash": "0x9124c97e8ed24a12d522b0327348a49a90ff591fbdeefe5f7052ab105b07522a",
+    "timestamp": 1794350463,
+    "cash": "5000000",
+    "pending": "0",
+    "liabilities": "0",
+    "reserved": "0",
+    "escrow": "0",
+    "freeCash": "5000000",
+    "buffer": "1102620",
+    "headroom": "3897380",
+    "idle": "0",
+    "shares": "3998497",
+    "strategyValue": "4019702",
+    "entryProvider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "bidNav": "11026204",
+    "acceptedTickId": "570",
+    "healthy": true
+  },
+  "after": {
+    "blockNumber": 55800443,
+    "blockHash": "0x0f15addc27ca9977d9db284983a6f6e711938f7338f82b0240e6aaff18b00c51",
+    "timestamp": 1794350477,
+    "cash": "1102700",
+    "pending": "0",
+    "liabilities": "0",
+    "reserved": "0",
+    "escrow": "0",
+    "freeCash": "1102700",
+    "buffer": "1102620",
+    "headroom": "80",
+    "idle": "0",
+    "shares": "7875237",
+    "strategyValue": "7917002",
+    "entryProvider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "bidNav": "11026204",
+    "acceptedTickId": "570",
+    "healthy": true
+  },
+  "amount": "3897300",
+  "transactions": [
+    {
+      "step": "push",
+      "transactionHash": "0x86ab4b6499823448302ddea81242f1f6b25a0e00527a471f6addeda43c8b53cd",
+      "gasUsed": "189418"
+    },
+    {
+      "step": "allocate",
+      "transactionHash": "0x3d0df29168666d3c21094a72c63b26d5d199927850000f388993640d7448b769",
+      "gasUsed": "387417"
+    }
+  ],
+  "snapshotReverted": true,
+  "liveWrites": false
+}

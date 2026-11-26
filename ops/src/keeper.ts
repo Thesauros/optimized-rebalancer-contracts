@@ -16,6 +16,7 @@ import { CHAIN_AGENT, EPOCH_VAULT, STRATEGY } from './abi';
 import { envNumber, hubOf, loadChains, signerFor } from './config';
 import { drainCursor } from './keeper-cursor';
 import { RequestCursor } from './keeper-requests';
+import { strategyShareValue } from './strategy-value';
 import { log, loop, sendWithGasMargin, serveStatus } from './util';
 
 const SERVICE = 'keeper';
@@ -91,7 +92,11 @@ async function main() {
     let idle = BigInt(await agent.idle());
     if (idle < shortfall) {
       const strategy = new Contract(await agent.strategy(), STRATEGY, hub.provider);
-      const available = BigInt(await strategy.convertToAssets(await agent.strategyShares()));
+      const sv = await strategyShareValue(strategy, BigInt(await agent.strategyShares()), await hub.provider.getBlockNumber());
+      // a strategy that refuses exits while a provider view fails would revert the
+      // deallocation: return the agent's idle and leave the claims below running
+      if (sv.blocked) log(SERVICE, 'hub strategy provider view failing: deallocation would revert, recalling agent idle only', { failing: sv.readable?.failing });
+      const available = sv.blocked ? 0n : sv.value;
       const pull = shortfall - idle < available ? shortfall - idle : available;
       if (pull > 0n) {
         const tx = await sendWithGasMargin(agent, 'deallocate', [pull]);

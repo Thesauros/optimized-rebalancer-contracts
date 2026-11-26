@@ -57,7 +57,7 @@ function rpcErrorText(e: unknown): string {
  * reset connections, DNS hiccups and request timeouts. Deliberately does not match a contract
  * revert or a bad argument, because those are deterministic and retrying only wastes the budget.
  */
-function isTransient(e: unknown): boolean {
+export function isTransient(e: unknown): boolean {
   const text = rpcErrorText(e);
   return RPC_HEAD_LAG.test(text) || /socket disconnected|socket hang up|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|other side closed|connection is closed|timeout|timed out|bad gateway|not valid json|rate limit exceeded|409 conflict|error code: 1001|502|503|504|429/i.test(text);
 }
@@ -109,10 +109,37 @@ export interface ScannedEvent {
  * Blocks per eth_getLogs request, minus one (ranges are inclusive). Starts at
  * LOG_RANGE and shrinks to whatever the provider says its limit is: Moralis caps
  * at 100 blocks, public endpoints at a few thousand, paid ones at 10k or more.
+ *
+ * Held per provider instance rather than as one module global. A range cap is a
+ * property of an endpoint, so a shared step let one chain's cap shrink scanning
+ * for every other chain in the same process: Monad's public RPC caps
+ * eth_getLogs at about 101 blocks, which would have dragged Base, Arbitrum and
+ * Ethereum down with it and multiplied their request counts against the shared
+ * read and compute pacers.
  */
-let logStep = Number(process.env.LOG_RANGE ?? 9_000);
+const DEFAULT_LOG_RANGE = Number(process.env.LOG_RANGE ?? 9_000);
+const logStepByProvider = new WeakMap<object, number>();
+let unkeyedLogStep = DEFAULT_LOG_RANGE;
 
-function providerRangeLimit(e: unknown): number | undefined {
+/** The step a provider currently scans with. Exported for tests. */
+export function logStepFor(provider: unknown): number {
+  return provider && typeof provider === 'object'
+    ? logStepByProvider.get(provider) ?? DEFAULT_LOG_RANGE
+    : unkeyedLogStep;
+}
+
+function setLogStep(provider: unknown, step: number): void {
+  if (provider && typeof provider === 'object') logStepByProvider.set(provider, step);
+  else unkeyedLogStep = step;
+}
+
+/**
+ * How far `scanMany` should shrink its block range after a rejection, or
+ * `undefined` when the rejection says nothing about range size. `0` means
+ * "halve the span": the provider complained but did not state a ceiling.
+ * Exported for tests.
+ */
+export function providerRangeLimit(e: unknown): number | undefined {
   const text = String((e as any)?.info?.responseBody ?? (e as any)?.error?.message ?? (e as any)?.message ?? e);
   // A backend behind the head returned by another RPC replica is not a size
   // limit. Shrinking here can permanently reduce every service to one-block
@@ -121,9 +148,23 @@ function providerRangeLimit(e: unknown): number | undefined {
   // Rate/quota/transport failures must never shrink block ranges: doing so
   // turns throttling into a permanent one-block scan and multiplies RPC load.
   if (/429|rate limit|too many requests|retry limit|quota|compute units/i.test(text)) return undefined;
-  if (!/block range|range[^.]*blocks|too many (?:logs|results)|(?:query|response)[^.]* (?:size|results)|10000 results/i.test(text)) return undefined;
-  const m = text.match(/(?:block range|range)[^0-9]{0,40}(\d{2,7})/i);
-  const n = m ? Number(m[1]) : undefined;
+
+  // A ceiling on how many log entries may come back says nothing about how many
+  // blocks fit, so halve rather than adopt the number in the message. Plasma's
+  // "query exceeds max results 20000, retry with the range 38404248-38414248"
+  // carries a block number that is not the limit; reading it as one produced a
+  // step larger than the span, which happened to halve anyway.
+  const resultsCap = /too many (?:logs|results)|(?:query|response)[^.]* (?:size|results)|exceeds max results|10000 results/i.test(text);
+  const rangeCap = /block range|range[^.]*blocks|limited to (?:a )?[\d,]+\s*-?\s*(?:block\s*)?range/i.test(text);
+  if (!resultsCap && !rangeCap) return undefined;
+  if (resultsCap) return 0;
+
+  // Plasma puts the ceiling before the word and may separate thousands
+  // ("limited to a 10,000 range"); Moralis and friends put it after.
+  const leading = text.match(/limited to (?:a )?([\d,]{2,12})/i);
+  const trailing = text.match(/(?:block range|range)[^0-9]{0,40}(\d{2,7})/i);
+  const raw = leading?.[1] ?? trailing?.[1];
+  const n = raw ? Number(raw.replace(/,/g, '')) : undefined;
   return n && n > 1 ? n - 1 : 0;
 }
 
@@ -138,10 +179,13 @@ export async function scanMany(contract: Contract, eventNames: string[], fromBlo
   const provider = contract.runner?.provider ?? (contract.runner as unknown as Provider);
   const out: ScannedEvent[] = [];
   const concurrency = Math.max(1, Number(process.env.LOG_CONCURRENCY ?? 1) || 1);
+  // This endpoint's learned ceiling. Re-read per call so a shrink discovered
+  // here persists for later scans of the same chain without touching others.
+  let step = logStepFor(provider);
   for (let start = fromBlock; start <= toBlock; ) {
     const ranges: { from: number; to: number }[] = [];
-    for (let cursor = start; cursor <= toBlock && ranges.length < concurrency; cursor += logStep + 1) {
-      ranges.push({ from: cursor, to: Math.min(toBlock, cursor + logStep) });
+    for (let cursor = start; cursor <= toBlock && ranges.length < concurrency; cursor += step + 1) {
+      ranges.push({ from: cursor, to: Math.min(toBlock, cursor + step) });
     }
 
     const results = await Promise.allSettled(
@@ -157,7 +201,8 @@ export async function scanMany(contract: Contract, eventNames: string[], fromBlo
       if (limit === undefined || span === 0) throw error;
       // Discard successful siblings and retry the batch at the smaller range.
       // Re-reading an eth_getLogs range is harmless and keeps output ordered.
-      logStep = limit > 0 && limit < span ? limit : Math.floor(span / 2);
+      step = limit > 0 && limit < span ? limit : Math.floor(span / 2);
+      setLogStep(provider, step);
       continue;
     }
 

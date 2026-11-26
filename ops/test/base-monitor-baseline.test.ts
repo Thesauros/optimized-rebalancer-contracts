@@ -3,11 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Interface, Provider, ZeroAddress, keccak256, zeroPadValue } from 'ethers';
 import { NETWORKS, strategyProviders } from '../../deploy/crosschain/registry';
-import { ACCESS, ADAPTER, CHAIN_AGENT, EPOCH_VAULT, OWNABLE, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../src/abi';
+import { ACCESS, ADAPTER, CHAIN_AGENT, EPOCH_VAULT, MORPHO_V2_VAULT, OWNABLE, PROVIDER, PROVIDER_MANAGER, STRATEGY, TICK_ACCOUNTANT, TIMELOCK } from '../src/abi';
 import { checkDeployment, ManifestLike } from '../src/checks/deployment';
 
-const sourceAbi = 'function getSource(address asset, address vault, address user) view returns (address)';
-const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...OWNABLE, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK, sourceAbi]);
+const abi = new Interface([...ACCESS, ...ADAPTER, ...CHAIN_AGENT, ...EPOCH_VAULT, ...MORPHO_V2_VAULT, ...OWNABLE, ...PROVIDER, ...PROVIDER_MANAGER, ...STRATEGY, ...TICK_ACCOUNTANT, ...TIMELOCK]);
 const load = (key: string) => JSON.parse(readFileSync(`${__dirname}/../../deployments/${key}/crosschain.json`, 'utf8'));
 const pinned = load('base');
 const lower = (value: string) => value.toLowerCase();
@@ -46,6 +45,9 @@ function fixture(key = 'base') {
           const r = entry.routes[peer.chainId.toString()];
           result = [[c.CctpV2Adapter, peer.chainId, pm.ChainAgent, r.maxFeeBps, true, r.maxPerTransfer, r.capacity, r.refillPerSecond, 0, 0]]; break;
         }
+        case 'curator': result = ['0x9E33faAE38ff641094fa68c65c2cE600b3410585']; break;
+        case 'asset': result = [entry.usdc]; break;
+        case 'getYieldToken': result = [entry.strategy.comet]; break;
         case 'getProviders': result = [state.providers]; break;
         case 'getEntryProvider': result = [entry.strategy.reusedProviders[0].address]; break;
         case 'getProviderCap': result = [state.caps.get(lower(parsed.args[0])) ?? 0n]; break;
@@ -67,7 +69,7 @@ function fixture(key = 'base') {
       return abi.encodeFunctionResult(parsed.fragment, result);
     },
   } as unknown as Provider;
-  return { m, manifests, state, run: () => checkDeployment(provider, key, m, manifests, { safe: m.deployer, executor: m.deployer, guardian: m.deployer, navUpdater: m.deployer }) };
+  return { m, manifests, state, run: () => checkDeployment(provider, key, m, manifests, { safe: m.deployer, executor: m.deployer, guardian: m.deployer, navUpdater: m.deployer }, { base: NETWORKS.base, arbitrum: NETWORKS.arbitrum }, 'monitor') };
 }
 const passed = (results: Awaited<ReturnType<typeof checkDeployment>>, label: string) => {
   const check = results.find((r) => r.label === label); assert.ok(check, `missing check: ${label}`); return check.ok;
@@ -83,8 +85,8 @@ test('Base pins the proven implementation, immutable sources, caps and original 
   assert.equal(NETWORKS.base.strategy.fluidFToken, '0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169');
   assert.equal(NETWORKS.base.strategy.morphoV2Vault, '0x050cE30b927Da55177A4914EC73480238BAD56f0');
   assert.equal(NETWORKS.base.strategy.capsBps.Fluid, 3000); assert.equal(NETWORKS.base.strategy.capsBps.GauntletPrimeV2Morpho, 2000);
-  assert.deepEqual(Object.keys(NETWORKS), ['base', 'arbitrum']);
-  assert.equal(pinned.txs.FluidProvider, undefined, 'unknown provider creation transactions are not invented');
+  assert.equal(pinned.txs.FluidProvider, '0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a');
+  assert.equal(pinned.txs.GauntletPrimeV2MorphoProvider, '0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457');
 });
 
 test('Base provider order appends Fluid and Morpho V2; all original checks and Arbitrum remain healthy', async () => {

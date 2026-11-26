@@ -1,0 +1,26 @@
+{
+  "operationalCommit": "15f1dab998eb12a1ed273c045ae7c52c5b13af3c",
+  "companionCommit": "31380600e6e33655600f071ac8cb8cd568291392",
+  "targetCommit": "62d8a6ffe4c20c7b8545b13ac34d67be6c6e01e7",
+  "syntheticMergeTree": "7d7a79d568a44fcee33eef7eaad4fd74f4d97870",
+  "mergeConflicts": false,
+  "productBranchesModified": false,
+  "productionWrites": false,
+  "testStatus": 0,
+  "tests": [
+    "# tests 73",
+    "# pass 66",
+    "# fail 0",
+    "# cancelled 0",
+    "# skipped 7",
+    "# todo 0",
+    "# duration_ms 10015.844375"
+  ],
+  "typecheckStatus": 0,
+  "typecheckOutput": "",
+  "toolchain": {
+    "ethers": "6.16.0",
+    "typescript": "5.9.3",
+    "nodeTypes": "22.19.11"
+  }
+}

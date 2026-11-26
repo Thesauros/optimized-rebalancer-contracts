@@ -26,7 +26,7 @@ export const timelockAbi = new Interface([
 // A closed read allowlist also blocks accidental wallet/broadcast RPC calls.
 export class ReadOnlyProvider extends JsonRpcProvider {
   override async send(method: string, params: Array<any> | Record<string, any>): Promise<any> {
-    if (!['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call'].includes(method)) {
+    if (!['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_getStorageAt', 'eth_call'].includes(method)) {
       throw new Error(`RPC method prohibited in unsigned preparation: ${method}`);
     }
     return super.send(method, params);
@@ -119,6 +119,11 @@ async function observe(provider: ReadOnlyProvider): Promise<Observation> {
   if (manifest.chainId !== '8453' || manifest.profile !== 'stand' ||
       manifest.contracts.EpochVault !== VAULT || manifest.contracts.Timelock !== TIMELOCK ||
       manifest.deployer !== OWNER) throw new Error('deployment identity changed');
+  const implementation = await provider.send('eth_getStorageAt', [VAULT,
+    '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc', block.number]);
+  if (`0x${implementation.slice(-40)}`.toLowerCase() !== manifest.contracts.EpochVaultImplementation.toLowerCase()) {
+    throw new Error('active vault implementation differs from manifest');
+  }
   const identities = ['Timelock', 'EpochVault', 'EpochVaultImplementation', 'EpochVaultLogic'];
   await Promise.all(identities.map(async name => {
     const code = await provider.send('eth_getCode', [manifest.contracts[name], block.number]);

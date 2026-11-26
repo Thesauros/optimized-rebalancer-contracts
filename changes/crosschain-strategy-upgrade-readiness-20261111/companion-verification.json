@@ -1,0 +1,16 @@
+{
+  "companionCommit": "31380600e6e33655600f071ac8cb8cd568291392",
+  "status": 0,
+  "summary": [
+    "# tests 8",
+    "# pass 8",
+    "# fail 0",
+    "# cancelled 0",
+    "# skipped 0",
+    "# todo 0",
+    "# duration_ms 590.436916"
+  ],
+  "scope": "source-identical existing companion tests, including NAV positions and RPC/revert classification",
+  "originalWorktreeModified": false,
+  "productionWrites": false
+}

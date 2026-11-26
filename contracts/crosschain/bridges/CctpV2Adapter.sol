@@ -59,8 +59,12 @@ contract CctpV2Adapter is IBridgeAdapter {
     error InvalidMessage();
     error ReceiveFailed();
     error NativeFeeNotAccepted();
+    /// @param holder the chain the domain is already mapped to
+    error DomainAlreadyMapped(uint64 holder, uint32 domain);
 
     event RemoteSet(uint64 indexed chainId, uint32 domain, address remoteAdapter);
+    /// @param stale the domain this chain was previously reachable under, now unmapped
+    event RemoteDomainCleared(uint64 indexed chainId, uint32 stale);
     event GovernanceTransferred(address indexed previous, address indexed next);
     event Sent(bytes32 indexed transferId, uint32 indexed destinationDomain, address dstAgent, uint256 amount, uint256 maxFee);
 
@@ -119,11 +123,25 @@ contract CctpV2Adapter is IBridgeAdapter {
 
     /// @notice Registers the CCTP domain and peer adapter for a chain. Governance
     ///         (Timelock) only; a changed peer should come with a new route id.
+    /// @dev `finalize` resolves a source chain solely through `chainIdOfDomain`, so two
+    ///      chains claiming one domain would misattribute every burn from that domain to
+    ///      whichever chain was registered last. Re-registering a chain under a new domain
+    ///      clears the old mapping: leaving it behind would keep resolving the stale domain
+    ///      to this chain, which only fails late on the `r.domain != sourceDomain` check.
     function setRemote(uint64 chainId, uint32 domain, address remoteAdapter) external {
         if (msg.sender != governance) revert Unauthorized();
         if (chainId == 0 || chainId == block.chainid || remoteAdapter == address(0)) {
             revert InvalidConfig();
         }
+        uint64 holder = chainIdOfDomain[domain];
+        if (holder != 0 && holder != chainId) revert DomainAlreadyMapped(holder, domain);
+
+        Remote memory previous = remotes[chainId];
+        if (previous.set && previous.domain != domain && chainIdOfDomain[previous.domain] == chainId) {
+            delete chainIdOfDomain[previous.domain];
+            emit RemoteDomainCleared(chainId, previous.domain);
+        }
+
         remotes[chainId] = Remote(domain, remoteAdapter, true);
         chainIdOfDomain[domain] = chainId;
         emit RemoteSet(chainId, domain, remoteAdapter);

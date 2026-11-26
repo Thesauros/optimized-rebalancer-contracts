@@ -1,0 +1,44 @@
+[
+  {
+    "network": "base",
+    "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "productionWrites": false,
+    "limitation": "Point-in-time gas estimate times quoted gas price; additional rollup/data fees and future prices are not attested.",
+    "observedBlock": 56125694,
+    "observedAtUtc": "2026-11-11T16:45:14.000Z",
+    "signerBalanceWei": "3448915862998",
+    "signerBalanceEth": "0.000003448915862998",
+    "gasPriceWei": "6000000",
+    "knownStandaloneImplementation": {
+      "address": "0xd4aC8Bcec0790ADDa563dB1B35c072B485fE2708",
+      "runtimeHash": "0xc88383885f0e303fbe2849d454ac98a0e7c89788b6f06709275ac06b3cfc5e70",
+      "matchesTarget": false
+    },
+    "implementationCreationGas": "4831099",
+    "locallyMeasuredUpgradeGas": "425073",
+    "quotedExecutionCostWei": "31537032000000",
+    "quotedExecutionCostEth": "0.000031537032",
+    "balanceCoversQuotedExecutionOnly": false
+  },
+  {
+    "network": "arbitrum",
+    "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "productionWrites": false,
+    "limitation": "Point-in-time gas estimate times quoted gas price; additional rollup/data fees and future prices are not attested.",
+    "observedBlock": 523332331,
+    "observedAtUtc": "2026-11-11T16:45:13.000Z",
+    "signerBalanceWei": "890740657626000",
+    "signerBalanceEth": "0.000890740657626",
+    "gasPriceWei": "20000000",
+    "knownStandaloneImplementation": {
+      "address": "0xEd3296117dAAa46FE4Cf94036bb42EE86100F8c7",
+      "runtimeHash": "0xc88383885f0e303fbe2849d454ac98a0e7c89788b6f06709275ac06b3cfc5e70",
+      "matchesTarget": false
+    },
+    "implementationCreationGas": "4954139",
+    "locallyMeasuredUpgradeGas": "424063",
+    "quotedExecutionCostWei": "107564040000000",
+    "quotedExecutionCostEth": "0.00010756404",
+    "balanceCoversQuotedExecutionOnly": true
+  }
+]

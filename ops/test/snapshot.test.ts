@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AbiCoder, keccak256, zeroPadValue, toBeHex } from 'ethers';
-import { Snapshot, TransferIndex, openTransferIndex, consistentCut, hashSnapshot, sortPositions, totals } from '../src/snapshot';
+import { Snapshot, TransferIndex, chainBindings, fingerprintOf, openTransferIndex, consistentCut, hashSnapshot, sortPositions, totals } from '../src/snapshot';
 import { transferIdOf, sourceDomainOf } from '../src/cctp';
 
 const b32 = (n: number) => zeroPadValue(toBeHex(n), 32);
@@ -119,6 +119,86 @@ test('transfer index persists across restarts and rejects state from another dep
   const c = new TransferIndex(file, 'fp-other');
   await c.load();
   assert.equal(c.sent.size, 0, 'state written by a different deployment is discarded');
+});
+
+function fakeChain(key: string, chainId: bigint, agent: string, startBlock: number, head: number, scans: Map<string, number>): any {
+  return {
+    key,
+    chainId,
+    manifest: { startBlock, contracts: { ChainAgent: agent } },
+    provider: {
+      getBlockNumber: async () => head,
+      getLogs: async ({ fromBlock }: { fromBlock: number }) => {
+        if (!scans.has(key)) scans.set(key, fromBlock);
+        return [];
+      },
+    },
+  };
+}
+
+function writeIndexFile(file: string, fingerprint: string, scanned: Record<string, number>) {
+  writeFileSync(
+    file,
+    JSON.stringify({
+      fingerprint,
+      sent: { '0x01': { transferId: '0x01', chainKey: 'base', block: 120_000, txHash: '0xaa', amount: '5', dstChainId: '42161', minReceive: '4' } },
+      received: { '0x01': { transferId: '0x01', chainKey: 'arbitrum', block: 250_000, txHash: '0xbb', amount: '4' } },
+      scanned,
+    }),
+  );
+}
+
+test('adding a network keeps the saved scan progress of the chains already covered', async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-add-')), 'index.json');
+  const scans = new Map<string, number>();
+  const base = fakeChain('base', 8453n, addr(1), 100, 200_000, scans);
+  const arbitrum = fakeChain('arbitrum', 42161n, addr(2), 100, 300_000, scans);
+  const mainnet = fakeChain('mainnet', 1n, addr(3), 150_000, 160_000, scans);
+  // what the services saved while the registry had two networks
+  writeIndexFile(file, fingerprintOf(Object.values(chainBindings([base, arbitrum]))), { base: 200_000, arbitrum: 300_000 });
+
+  const index = await openTransferIndex([base, arbitrum, mainnet], file);
+  assert.equal(index.sent.get('0x01')?.amount, 5n, 'events of the covered chains are kept');
+  await index.sync([base, arbitrum, mainnet]);
+  assert.equal(scans.get('base'), 200_000 - 5_000 + 1, 'base resumes from its mark (minus the reorg rewind), not from its start block');
+  assert.equal(scans.get('arbitrum'), 300_000 - 5_000 + 1);
+  assert.equal(scans.get('mainnet'), 150_000, 'the new network scans from its own start block');
+
+  const saved = JSON.parse(readFileSync(file, 'utf8'));
+  assert.equal(saved.fingerprint, fingerprintOf(Object.values(chainBindings([base, arbitrum, mainnet]))), 'saved under the full fingerprint');
+  assert.equal(saved.scanned.mainnet, 160_000);
+});
+
+test('the reorg rewind never scans below the start block', async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-rewind-')), 'index.json');
+  const scans = new Map<string, number>();
+  const base = fakeChain('base', 8453n, addr(1), 100_000, 101_000, scans);
+  const arbitrum = fakeChain('arbitrum', 42161n, addr(2), 100, 300_000, scans);
+  writeIndexFile(file, fingerprintOf(Object.values(chainBindings([base, arbitrum]))), { base: 100_070, arbitrum: 300_000 });
+
+  const index = await openTransferIndex([base, arbitrum], file);
+  await index.sync([base, arbitrum]);
+  assert.equal(scans.get('base'), 100_000, 'a mark within the rewind of deployment resumes at the start block');
+  assert.equal(scans.get('arbitrum'), 300_000 - 5_000 + 1, 'an older mark still rewinds');
+});
+
+test('adding a network does not open the index to state from another deployment', async () => {
+  const scans = new Map<string, number>();
+  const base = fakeChain('base', 8453n, addr(1), 100, 200_000, scans);
+  const arbitrum = fakeChain('arbitrum', 42161n, addr(2), 100, 300_000, scans);
+  const mainnet = fakeChain('mainnet', 1n, addr(3), 150_000, 160_000, scans);
+
+  // same chain keys, another arbitrum agent (a fork or the stand)
+  const other = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-other-')), 'index.json');
+  const foreign = fakeChain('arbitrum', 42161n, addr(9), 100, 300_000, scans);
+  writeIndexFile(other, fingerprintOf(Object.values(chainBindings([base, foreign]))), { base: 200_000, arbitrum: 300_000 });
+  assert.equal((await openTransferIndex([base, arbitrum, mainnet], other)).sent.size, 0, 'a different agent on a covered chain is rejected');
+
+  // the file covers a chain this deployment does not have
+  const extra = path.join(mkdtempSync(path.join(tmpdir(), 'transfer-extra-')), 'index.json');
+  const optimism = fakeChain('optimism', 10n, addr(4), 100, 1_000, scans);
+  writeIndexFile(extra, fingerprintOf(Object.values(chainBindings([base, arbitrum, optimism]))), { base: 200_000, arbitrum: 300_000, optimism: 1_000 });
+  assert.equal((await openTransferIndex([base, arbitrum, mainnet], extra)).sent.size, 0, 'a chain outside the registry is rejected');
 });
 
 test('CCTP helpers read our hookData and the source domain from a V2 message', () => {

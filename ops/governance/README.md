@@ -1,47 +1,75 @@
-# Current preparation: 10% buffer, 2026-10-29
+# Base buffer review
 
-The new **unsigned, not queued or executed** proposal removes only the fixed
-5 USDC floor and retains the on-chain 10% ratio. See
-[review and signing instructions](base-buffer-10pct-20261029.md) and
-[public transaction requests](base-buffer-10pct-20261029.json).
+The 2026-11-09 review concerns only the fixed 5 USDC minimum. The proposed change
+preserves the current 10% ratio and every other live limit. Preparation is
+read-only; JSON files contain unsigned requests, not executed transactions.
 
-The historical 5% operation below is still marked queued but **expired on
-2026-10-19 at 22:04:01 UTC** (verified on Base block 53252084). Do not revive its
-timer or use its signer-enabled CLI for the new proposal. Its original JSON,
-runtime files, timer and operator configuration have not been changed.
+Use `ops/src/prepare-buffer-10pct.ts prepare FILE` for a fresh proposal or
+`check FILE` to re-read its status and simulate the currently permitted action.
+Both commands reject signing/broadcast methods and do not load keys. Check the
+actual limits and queue/execution deadlines again before signing externally.
 
-# Historical stand buffer change, 2026-10-04
+Do not use `buffer-governance.ts` for this proposal: that separate legacy tool
+targets a 5% ratio. Do not assume the old October unsigned plan was queued.
 
-Owner-approved target: fixed buffer 0 USDC, proportional buffer 5% of accepted NAV.
-This targets approximately 95% utilization when there are no pending withdrawals.
-The other six EpochVault limits are preserved exactly. Contract bytecode and deployment
-addresses are unchanged; production profile parameters are unchanged.
+## Current submitted operation
 
-The registry contains the target values. The existing Base deployment retains its previous
-5 USDC / 10% limits **until Timelock execution confirms**.
+User approved the fixed-floor removal on 2026-11-09. The active plan is
+`base-buffer-10pct-20261109-24h.json`, operation
+`0x1488e32fa0a98607ac9c45fdde681a6dd0ef543eb9ef528f6cf410c577e92e02`.
+Queue transaction:
+`0x4aa147f95d5b36cbe40ccbd978c99a74c3db4ecf826d162457b6617af851fef4`.
+Execute no earlier than 2026-11-10 18:33:38 UTC (20:33:38 Asia/Jerusalem).
 
-Public plan: `base-buffer-5pct.json` (no credentials).
-Queue transaction: `0x2928a74a9e03032cfde5159cf56f66751cf746099b669d432decda9f3f217b94`.
-Timelock ETA: **2026-10-05 22:04:01 UTC**.
-Server timer `xc-buffer-5pct.timer`: **2026-10-05 22:05:00 UTC**, persistent across reboot.
+The original November 9 operation ending `6841` was queued with an unnecessary
+six-hour review margin, then cancelled when the user corrected the timing.
+Cancellation: `0x12a70fef6db588a246417a35263217b95ef39e8688d928cf25d35b94319962fd`.
+Keep that plan and its receipts as history; do not resubmit or execute it.
 
-The timer invokes `ops/scripts/execute-buffer-governance.sh` with the immutable image
-`sha256:26ac621dfb8146898a6a630c37c41bbf4c9e62ef157cc356f80a7f952765b0dd`.
-Do not prune this image before the operation completes.
-It stops operators while using the shared signer and restarts them afterwards, even on
-failure. Keys remain in `ops/.env.keys`; Docker supplies them as environment variables.
+Before executing the active plan, run the read-only `check FILE`, verify the
+operation is queued and executable, governance/code identities still match,
+and all current limits still equal the approved before tuple. Send only its
+exact unsigned execute request from the existing authorized owner. No new
+approval is needed for this same confirmed change; drift requires review.
+After execution verify only minimumBuffer changed to zero, minBufferRatio is
+still 10%, and the operation is no longer queued. Queueing alone does not apply
+the new limit or allocate capital. No automatic execution job was installed.
 
-The script verifies the queued calldata and unchanged starting limits, simulates execution,
-executes it, verifies the new limits, and then simulates/sends push and Base allocation.
-Allocation requires a fresh accepted tick, healthy providers, no queued/owed withdrawals,
-and at most 100 USDC per operation. It never retries a failed transaction automatically.
-If these checks fail after governance executes, the new buffer stays active and capital
-stays liquid until the cause is resolved. The allocator remains in propose mode.
+## Execution confirmed — 2026-11-11 Asia/Jerusalem
 
-Runtime receipts and completion state: `/data/buffer-5pct-plan.json` in `ops_ops-data`.
-Inspect with `journalctl -u xc-buffer-5pct.service` and the governance CLI `status`.
-The checked-in JSON is the immutable record of the original queue operation; the runtime
-file gains execution, push and allocation transaction hashes as they are sent.
+The user requested execution ("исполняй буфер"). The exact approved operation
+was executed in Base transaction
+`0x57e04f978215f0c1f770ead7312f72b78e35acc69cc93f73ccb32126c9649d76`,
+block 55791865. Receipt status is 1. Primary and independent RPC checks confirm
+minimumBuffer is 0, minBufferRatio remains 10%, the other seven tuple fields
+are unchanged, and the executed operation is no longer queued. The cancelled
+original operation remains unqueued; proxy implementation/code are unchanged.
 
-Validation: ops tests, target-call simulation from the Timelock address, queue simulation,
-and preflight (passed with zero warnings). The contract enforces the 24 hour delay.
+At verification block 55792151: cash 5 USDC, pending deposits/liabilities/reserved
+all zero, accepted bid NAV 11.026204 USDC, required reserve 1.102620 USDC, and
+allocation headroom 3.897380 USDC. A read-only pushToAgent simulation for that
+headroom passed. No actual USDC allocation or service rollout was submitted.
+
+Evidence: `base-buffer-10pct-20261109-24h.execute-receipt.json` and
+`base-buffer-10pct-20261109-24h.execution-verification.json`. Do not execute or
+requeue this operation again. See
+`changes/base-buffer-remove-fixed-floor/execution-confirmation.md` for the
+scoped verification record.
+
+## One-time capital placement confirmed — 2026-11-11 Asia/Jerusalem
+
+The user then instructed "размести". A fresh deployed-bytecode fork rehearsal
+passed before 3.897300 USDC was pushed to the existing Base ChainAgent and
+allocated into its existing Strategy. Push transaction:
+`0x8fe56f545ee364bc6e171e21d331b60c152e00174ec1559517eb017d56b7b26f`.
+Allocation transaction:
+`0x00689e1152d2ef52c4376a37d4fd0fb35a3b47442e8e2771ec624d732f6f39cc`.
+Both succeeded and were independently verified. Vault cash is 1.102700 USDC,
+required reserve 1.102620 USDC, agent idle zero, and capital earning yield
+9.923528 USDC across Base/Arbitrum. Observed utilization is 89.9992%.
+
+Evidence: `base-buffer-allocation-20261111.{plan,fork-verification,verification}.json`,
+`base-buffer-allocation-20261111.{push,allocate}-receipt.json` and product
+`changes/base-buffer-remove-fixed-floor/allocation-confirmation.md`. These are
+completed historical transactions, not pending actions. No automatic allocation
+job or other policy/implementation change was made.

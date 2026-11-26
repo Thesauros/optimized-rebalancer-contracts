@@ -6,11 +6,13 @@
  * for the new chain and re-running phase 2 on the chains that route to it.
  *
  * Every address below was read from this repository's deployment records or
- * checked on-chain on 2026-09-28:
+ * checked on-chain on 2026-09-28 (Ethereum on 2026-11-04):
  *  - USDC and CCTP V2 addresses and domains: test/forking/CctpV2Adapter.t.sol
- *    asserts `localDomain()` on the live deployments (Base 6, Arbitrum 3).
+ *    asserts `localDomain()` on the live deployments (Base 6, Arbitrum 3,
+ *    Ethereum 0).
  *  - Aave/Morpho provider contracts: deployments/<network>/*.json (stateless,
- *    immutable configuration, reused as-is).
+ *    immutable configuration, reused as-is). ops/test/registry.test.ts checks
+ *    every reused address against its deployment record.
  *  - Comet addresses: ProviderManager.getYieldToken on each chain.
  */
 
@@ -28,6 +30,8 @@ export interface RouteLimits {
 }
 
 export interface NetworkEntry {
+  /** This registry is EVM-only; native spokes use native-registry.ts. */
+  family: 'evm';
   /** hardhat network name in network-config.ts */
   hardhatName: string;
   chainId: bigint;
@@ -47,10 +51,12 @@ export interface NetworkEntry {
     reusedProviders: { label: string; address: string }[];
     /** Compound V3 Comet for USDC; a fresh ProviderManager + provider are deployed for it. */
     comet?: string;
-    /** Immutable Fluid fToken source for a separately deployed provider. */
+    /** Fluid fToken for USDC; a fresh FluidProvider is deployed for it. */
     fluidFToken?: string;
-    /** Immutable Morpho V2 vault source for a separately deployed provider. */
+    /** Additional Morpho Vault V2 source; deployed separately from the V1 providers. */
     morphoV2Vault?: string;
+    /** Candidate adapters awaiting governance registration on an existing strategy. */
+    pendingProviderActivations?: string[];
     /**
      * Per-provider cap in bps of strategy assets; label -> bps; 0 or missing = uncapped.
      * The entry provider (first reused provider) must stay uncapped: every deposit
@@ -100,8 +106,9 @@ const ROUTE_BY_PROFILE: Record<Profile, RouteLimits> = {
 };
 const DEFAULT_ROUTE: RouteLimits = ROUTE_BY_PROFILE[PROFILE];
 
-export const NETWORKS: Record<string, NetworkEntry> = {
+const ALL_NETWORKS: Record<string, NetworkEntry> = {
   base: {
+    family: 'evm',
     hardhatName: 'base',
     chainId: 8453n,
     role: 'hub',
@@ -122,6 +129,7 @@ export const NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1' },
       ],
       comet: '0xb125E6687d4313864e53df431d5425969c15Eb2F',
+      // Official Fluid Base deployment: fluid-contracts-public/deployments/base/fToken_fUSDC.json.
       fluidFToken: '0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169',
       morphoV2Vault: '0x050cE30b927Da55177A4914EC73480238BAD56f0',
       capsBps: {
@@ -130,14 +138,16 @@ export const NETWORKS: Record<string, NetworkEntry> = {
         GauntletCoreMorpho: 4_000,
         SteakhouseHighYieldMorpho: 3_000,
         SteakhousePrimeMorpho: 4_000,
+        // Release ceilings, not target allocations; activation requires governance review.
         Fluid: 3_000,
         GauntletPrimeV2Morpho: 2_000,
       },
     },
-    routes: { '42161': DEFAULT_ROUTE },
+    routes: { '1': DEFAULT_ROUTE, '42161': DEFAULT_ROUTE, '143': DEFAULT_ROUTE },
     confirmations: 10,
   },
   arbitrum: {
+    family: 'evm',
     hardhatName: 'arbitrum',
     chainId: 42161n,
     role: 'spoke',
@@ -158,18 +168,162 @@ export const NETWORKS: Record<string, NetworkEntry> = {
         { label: 'SteakhousePrimeMorpho', address: '0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484' },
       ],
       comet: '0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf',
+      // Official Fluid deployment and Morpho V2 discovery; see docs/arbitrum-crosschain-upgrade.md.
+      fluidFToken: '0x1A996cb54bb95462040408C06122D45D6Cdb6096',
+      morphoV2Vault: '0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78',
+      pendingProviderActivations: ['Fluid', 'GauntletPrimeV2Morpho'],
       capsBps: {
         AaveV3: 0,
         CompoundV3: 5_000,
         GauntletCoreMorpho: 4_000,
         SteakhouseHighYieldMorpho: 3_000,
         SteakhousePrimeMorpho: 4_000,
+        // Proposed ceilings matching Base; unsigned release inputs must explicitly confirm both.
+        Fluid: 3_000,
+        GauntletPrimeV2Morpho: 2_000,
       },
     },
     routes: { '8453': DEFAULT_ROUTE },
     confirmations: 20,
   },
+  mainnet: {
+    family: 'evm',
+    hardhatName: 'mainnet',
+    chainId: 1n,
+    role: 'spoke',
+    usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    cctp: {
+      tokenMessenger: CCTP_V2_TOKEN_MESSENGER,
+      messageTransmitter: CCTP_V2_MESSAGE_TRANSMITTER,
+      domain: 0,
+      minFinalityThreshold: 2000,
+    },
+    strategy: {
+      name: 'Thesauros Cross-Chain Strategy (Ethereum)',
+      symbol: 'tcsUSDC-eth',
+      // Compound and Morpho (TS-419), Fluid (TS-420), Aave (provider parity). The
+      // Morpho providers are the ones the Ethereum vault already runs: MetaMorpho
+      // V1.0, the version GauntletCore uses on Base, with the same MorphoProvider
+      // code. Steakhouse is the entry provider as the largest of the three.
+      reusedProviders: [
+        { label: 'SteakhouseMorpho', address: '0x4C7e55689aCcC42562E113e04c3BDe1B2eb76622' },
+        { label: 'GauntletPrimeMorpho', address: '0xBC64abbCa87289746f2B01C8ab02A78c9fC92B89' },
+        { label: 'SmokehouseMorpho', address: '0x2fe36048F394A0732E8F28C43DbF351F0253C6E5' },
+        // The standalone Ethereum vault already runs this provider. AaveV3Provider
+        // holds no vault binding - its only immutable is the PoolAddressesProvider
+        // (0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e) and every method takes the
+        // vault as an argument - so the cross-chain Strategy reuses it as-is, the
+        // way Base and Arbitrum do. Listed last so Steakhouse stays the entry
+        // provider. Verified on mainnet 2026-11-22: reserve ACTIVE, not frozen,
+        // aToken 0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c.
+        { label: 'AaveV3', address: '0x107DA8Bd8a6DBaB9823E316e10abCDaC4d4D6941' },
+      ],
+      comet: '0xc3d688B66703497DAA19211EEdff47f25384cdc3',
+      // fUSDC: an immutable fToken (no proxy) over the Fluid Liquidity layer
+      fluidFToken: '0x9Fb7b4477576Fe5B32be4C1843aFB1e55F251B33',
+      // Gauntlet USDC Prime (gtusdcp) on Morpho Vault V2 - the Ethereum counterpart
+      // of the vault the Base spoke already runs, listed as GauntletPrimeV2 in
+      // utils/constants.ts. Verified on mainnet 2026-11-22: runtime 21808 bytes,
+      // identical to Base's 0x050cE30b...; asset is this spoke's USDC; both
+      // MorphoV2Provider constructor gates pass (accrueInterestView, adaptersLength
+      // = 1); same Gauntlet curator 0x9E33faAE38ff641094fa68c65c2cE600b3410585 as
+      // Base; totalAssets 103,247,937 USDC.
+      morphoV2Vault: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
+      capsBps: {
+        SteakhouseMorpho: 0,
+        CompoundV3: 5_000,
+        GauntletPrimeMorpho: 4_000,
+        SmokehouseMorpho: 3_000,
+        Fluid: 3_000,
+        // 0 = uncapped, matching how AaveV3 is capped on Base and Arbitrum, where
+        // it is the entry provider. Here it is not, so this is the one cap on this
+        // spoke that is a risk decision rather than a structural requirement.
+        AaveV3: 0,
+        GauntletPrimeV2Morpho: 2_000,
+      },
+    },
+    routes: { '8453': DEFAULT_ROUTE },
+    // 12 blocks x 12 s = 2.4 min behind the head, for ordinary short reorgs.
+    // Bridged funds do not depend on it: CCTP attests a burn only after
+    // Ethereum finality (64 blocks).
+    confirmations: 12,
+  },
+  monad: {
+    family: 'evm',
+    hardhatName: 'monad',
+    chainId: 143n,
+    role: 'spoke',
+    usdc: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+    // CCTP V2 is live here at the same addresses every other EVM chain uses:
+    // MessageTransmitter.localDomain() returns 15 and both contracts carry the
+    // same runtime codehash as on Base, Arbitrum and Ethereum.
+    cctp: {
+      tokenMessenger: CCTP_V2_TOKEN_MESSENGER,
+      messageTransmitter: CCTP_V2_MESSAGE_TRANSMITTER,
+      domain: 15,
+      minFinalityThreshold: 2000,
+    },
+    strategy: {
+      name: 'Thesauros Cross-Chain Strategy (Monad)',
+      symbol: 'tcsUSDC-mon',
+      // The standalone Monad vault already runs this provider, and it is the only
+      // venue on the chain this registry can name. AaveV3Provider has one
+      // immutable, the PoolAddressesProvider 0x34793Fb9935F7bB5E5aE920fb963F39063E7A615,
+      // and no storage of its own, so the cross-chain Strategy reuses it under
+      // delegatecall and holds its own position: getSource ignores its arguments
+      // and returns the Pool 0x69a5F9AD4f96ebf0a0C792dD42a01cC5C0102fef, so the
+      // pin recorded at registration cannot drift. Verified on-chain 2026-11-22:
+      // USDC reserve ACTIVE and not frozen, aToken
+      // 0x35a73BAcb179d3740395A3ceCc87FF2e581d6042, 86,352,043 USDC supplied.
+      reusedProviders: [
+        { label: 'AaveV3', address: '0xAeEcf7F780e88B155df330434Ef29b2B077024e0' },
+      ],
+      // No comet, no fluidFToken, no morphoV2Vault. chainConfigs[143] lists empty
+      // cometPairs and morphoVaults, and Fluid publishes no Monad deployment, so
+      // Aave is the whole strategy and therefore the entry provider.
+      capsBps: {
+        AaveV3: 0,
+      },
+    },
+    routes: { '8453': DEFAULT_ROUTE },
+    // 20 blocks at the measured 0.307 s Monad block time is about 6 s behind the
+    // head, the same wall-clock depth Arbitrum's 20 blocks give at 0.284 s. Monad
+    // reorg behaviour is not yet observed, so this is the closest analogue rather
+    // than a measured value; bridged funds do not depend on it, since CCTP
+    // attestation is what gates a transfer.
+    confirmations: 20,
+  },
 };
+
+/**
+ * Rehearsal only: REHEARSAL_NETWORKS=base,arbitrum narrows the registry to those
+ * keys, so ops/rehearsal/run.sh can hand over the existing chains first and then
+ * add a network the way production does (phase 5 through the Timelock).
+ *
+ * A narrowed registry is not harmless. `05-governance-plan.ts` derives the hub
+ * accountant's chain set from NETWORKS, so a plan built from a narrowed registry
+ * queues a `setChains` that drops every chain left out, and
+ * `TickAccountant._setChains` has no guard against removing one: the accountant
+ * would stop tracking a chain that still holds capital and NAV would book none of
+ * it. Phase 5 refuses to plan such a removal; `fullNetworks()` below is what it
+ * compares against.
+ */
+function selectNetworks(only?: string): Record<string, NetworkEntry> {
+  if (!only) return ALL_NETWORKS;
+  const keys = only.split(',').map((k) => k.trim()).filter(Boolean);
+  for (const k of keys) if (!ALL_NETWORKS[k]) throw new Error(`REHEARSAL_NETWORKS: unknown network ${k}`);
+  return Object.fromEntries(keys.map((k) => [k, ALL_NETWORKS[k]]));
+}
+
+export const NETWORKS: Record<string, NetworkEntry> = selectNetworks(process.env.REHEARSAL_NETWORKS);
+
+/**
+ * The registry as written, ignoring REHEARSAL_NETWORKS. A function rather than an
+ * exported constant so that reading the unnarrowed set stays a deliberate act.
+ */
+export function fullNetworks(): Record<string, NetworkEntry> {
+  return ALL_NETWORKS;
+}
 
 /**
  * Derived protocol bounds. Three of the configured values are not independent;
@@ -245,11 +399,21 @@ const COMMON_ACCOUNTANT = {
    * Per-chain concentration cap as a 1e18 fraction of gross bid assets; 0 disables
    * it. Gross rather than NAV, because NAV nets off pending deposits and
    * liabilities, which would inflate every chain's apparent share during a large
-   * deposit or redemption epoch. Left off at launch deliberately: with two chains
-   * all capital starts on the hub, so any cap below 100% is breached on day one and
-   * the flag would be permanent noise. Set it through the Timelock once a target
-   * allocation exists or a third chain is added (`05-governance-plan.ts`). It blocks
-   * sends INTO a chain that is over, never sends out of it and never settlement.
+   * deposit or redemption epoch. It blocks sends INTO a chain that is over, never
+   * sends out of it and never settlement.
+   *
+   * Decision, restated because TS-419 met the condition an earlier version of this
+   * comment set for enabling it: the cap stays DISABLED with three chains
+   * (docs/crosschain-deployment.md §6a, "Left out on purpose"). There is still no
+   * target allocation to size a cap against - capital is moved by hand through the
+   * operator CLI - so any value would either be breached on day one (all capital
+   * starts on the hub) or would be an arbitrary ceiling on a decision nobody has
+   * taken. Accepted consequence: no on-chain ceiling limits how much of the vault
+   * can sit on one chain, and the per-provider caps on Ethereum already sum to 120%
+   * of strategy assets (Compound 50% + GauntletPrime 40% + Smokehouse 30%, entry
+   * uncapped), 150% once TS-420 adds Fluid. Enabling it stays a separate Timelock
+   * decision (`setMaxChainExposure` through `05-governance-plan.ts`) and needs a
+   * written target allocation first.
    */
   maxChainExposure: 0n,
 };
@@ -330,7 +494,12 @@ export function hubEntry(): [string, NetworkEntry] {
   return hubs[0];
 }
 
-/** Provider order used by the deployed strategies; fresh addresses come from the manifest. */
+/**
+ * The strategy's providers in the order phase 1 initializes them: the entry
+ * provider, the fresh Compound provider, the other reused providers, then the
+ * fresh Fluid and Morpho V2 providers. Fresh providers are read from the chain's manifest; one
+ * not deployed (yet) is absent.
+ */
 export function strategyProviders(entry: NetworkEntry, contracts: Record<string, string>): { label: string; address: string }[] {
   const [first, ...rest] = entry.strategy.reusedProviders;
   const fresh = (label: string, key: string) => (contracts[key] ? [{ label, address: contracts[key] }] : []);
@@ -341,6 +510,15 @@ export function strategyProviders(entry: NetworkEntry, contracts: Record<string,
     ...(entry.strategy.fluidFToken ? fresh('Fluid', 'FluidProvider') : []),
     ...(entry.strategy.morphoV2Vault ? fresh('GauntletPrimeV2Morpho', 'GauntletPrimeV2MorphoProvider') : []),
   ];
+}
+
+/** The labels a cap may name: the reused providers and the fresh ones the entry asks for. */
+export function providerLabels(entry: NetworkEntry): string[] {
+  const labels = entry.strategy.reusedProviders.map((p) => p.label);
+  if (entry.strategy.comet) labels.push('CompoundV3');
+  if (entry.strategy.fluidFToken) labels.push('Fluid');
+  if (entry.strategy.morphoV2Vault) labels.push('GauntletPrimeV2Morpho');
+  return labels;
 }
 
 export function entryByChainId(chainId: bigint): [string, NetworkEntry] {

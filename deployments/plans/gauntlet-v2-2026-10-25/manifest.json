@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-10-25T13:37:27.467Z",
+  "sourceCommit": "7c2ec58fab54ee88cf21e061efe871d807a8bea9",
+  "contract": "MorphoV2Provider",
+  "workingTreeDirty": false,
+  "preparationScriptHash": "0x463ce6e4e0ed859a7d2eda19911d67389fa9d8558206ff8ceb7ac301f3cc9718",
+  "compiler": "0.8.33+commit.64118f21",
+  "optimizer": {
+    "enabled": true,
+    "runs": 200
+  },
+  "evmVersion": "paris",
+  "artifactCreationHash": "0xb68d89fccbe0acec778993ddc47d809cf5dbdc8b1ce452bebf54a99ae7be6ddf",
+  "standardInputHash": "0xc2d191c7236bed6071a80ee02914e0a2597b147029298e082014d908855d013e",
+  "mode": "READ_ONLY_NO_SIGNING_NO_BROADCAST",
+  "networks": [
+    "base",
+    "mainnet"
+  ],
+  "freshness": "Refresh before deployment; after deployment regenerate each network with --provider ACTUAL_ADDRESS before registration"
+}

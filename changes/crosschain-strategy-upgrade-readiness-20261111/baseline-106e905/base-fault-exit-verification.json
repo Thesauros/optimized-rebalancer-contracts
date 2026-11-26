@@ -1,0 +1,423 @@
+{
+  "network": "base",
+  "chainId": 8453,
+  "targetCommit": "106e9059f8fd5e433a2ddd62555a1ede427020a7",
+  "liveWrites": false,
+  "forkBlock": 56116125,
+  "forkBlockHash": "0xd7b4ad843bd4c38b99d031bdc41494d9e7bb02f1d7bebfaf9e1f5603f1e26946",
+  "liveState": {
+    "name": "Thesauros Cross-Chain Strategy (Base)",
+    "symbol": "tcsUSDC-base",
+    "decimals": "6",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "providers": [
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1"
+    ],
+    "entry": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "timelock": "0x540cAab5492014084502c1dB6F15644eedCa87ee",
+    "treasury": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "managementFee": "0",
+    "performanceFee": "0",
+    "minAssets": "1000000",
+    "totalSupply": "8875237",
+    "shares": "7875237",
+    "totalAssets": "8923043",
+    "lastAssets": "8922306",
+    "lastTimestamp": "1794350517",
+    "healthy": true,
+    "implementation": "0xfcE142db5FD78F64c97b04d9a587E2C53341b910",
+    "proxyAdmin": "0xDb00Ea4B591aA220bf97e16D4c965196EC223e0e",
+    "agentIdle": "0",
+    "accruedFeeShares": [
+      "0",
+      "0"
+    ],
+    "balances": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": "1000000",
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": "7875237",
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": "0"
+    },
+    "roles": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": {
+        "admin": false,
+        "executor": false
+      },
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": {
+        "admin": false,
+        "executor": false
+      },
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": {
+        "admin": true,
+        "executor": true
+      }
+    },
+    "caps": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "0",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "5000",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "4000",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "3000",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "4000"
+    },
+    "sources": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2"
+    },
+    "providerBalances": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "8923043",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "0",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "0",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "0",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "0"
+    },
+    "allowances": {
+      "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5": "115792089237316195423570985008687907853269984665640564039457584007913120742650",
+      "0xb125E6687d4313864e53df431d5425969c15Eb2F": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    },
+    "assetBalances": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": "0",
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": "0",
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": "15"
+    },
+    "prefixSlots": [
+      "0x000000000000000000000006833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "0x0000000000000000000000000000000000000000000000000000000000000005",
+      "0x000000000000000000000000ddaa9700c0da1020ae5dabc7aa0a0bb750dd317c",
+      "0x000000000000000000000000540caab5492014084502c1db6f15644eedca87ee",
+      "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x00000000000000000000000000000000000000000000000000000000008824c2",
+      "0x000000000000000000000000000000000000000000000000000000006af39db5",
+      "0x00000000000000000000000000000000000000000000000000000000000f4240",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x0000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  "localImplementation": "0xc0c15f0a8f568dd841326af115c1daef49d032b7",
+  "localMigrationHash": "0x2a6ebebaac11a79077d0b0cbba321c30dee546a39265aca8d604322beed6ef50",
+  "localMigrationGasUsed": "425073",
+  "historicalHwmAttested": false,
+  "localTestHwm": "1005387447708382323",
+  "minimumCurrentPpsAtObservation": "1005386447708382323",
+  "legacyUnsettledFeeSharesWaivedAtMigration": [
+    "0",
+    "0"
+  ],
+  "preserved": {
+    "exactFields": [
+      "name",
+      "symbol",
+      "decimals",
+      "asset",
+      "providers",
+      "entry",
+      "timelock",
+      "treasury",
+      "managementFee",
+      "performanceFee",
+      "minAssets",
+      "totalSupply",
+      "shares",
+      "proxyAdmin",
+      "agentIdle",
+      "balances",
+      "roles",
+      "caps",
+      "sources",
+      "assetBalances"
+    ],
+    "allowanceDestinationsPreserved": true,
+    "allowanceRefreshes": [
+      {
+        "source": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+        "before": "115792089237316195423570985008687907853269984665640564039457584007913120742650",
+        "after": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "spentAllowanceReapproved": "8897285"
+      }
+    ]
+  },
+  "before": {
+    "name": "Thesauros Cross-Chain Strategy (Base)",
+    "symbol": "tcsUSDC-base",
+    "decimals": "6",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "providers": [
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1"
+    ],
+    "entry": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "timelock": "0x540cAab5492014084502c1dB6F15644eedCa87ee",
+    "treasury": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "managementFee": "0",
+    "performanceFee": "0",
+    "minAssets": "1000000",
+    "totalSupply": "8875237",
+    "shares": "7875237",
+    "totalAssets": "8923043",
+    "lastAssets": "8922306",
+    "lastTimestamp": "1794350517",
+    "healthy": true,
+    "implementation": "0xfcE142db5FD78F64c97b04d9a587E2C53341b910",
+    "proxyAdmin": "0xDb00Ea4B591aA220bf97e16D4c965196EC223e0e",
+    "agentIdle": "0",
+    "accruedFeeShares": [
+      "0",
+      "0"
+    ],
+    "balances": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": "1000000",
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": "7875237",
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": "0"
+    },
+    "roles": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": {
+        "admin": false,
+        "executor": false
+      },
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": {
+        "admin": false,
+        "executor": false
+      },
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": {
+        "admin": true,
+        "executor": true
+      }
+    },
+    "caps": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "0",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "5000",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "4000",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "3000",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "4000"
+    },
+    "sources": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2"
+    },
+    "providerBalances": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "8923043",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "0",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "0",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "0",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "0"
+    },
+    "allowances": {
+      "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5": "115792089237316195423570985008687907853269984665640564039457584007913120742650",
+      "0xb125E6687d4313864e53df431d5425969c15Eb2F": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    },
+    "assetBalances": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": "0",
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": "0",
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": "15"
+    },
+    "prefixSlots": [
+      "0x000000000000000000000006833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "0x0000000000000000000000000000000000000000000000000000000000000005",
+      "0x000000000000000000000000ddaa9700c0da1020ae5dabc7aa0a0bb750dd317c",
+      "0x000000000000000000000000540caab5492014084502c1db6f15644eedca87ee",
+      "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x00000000000000000000000000000000000000000000000000000000008824c2",
+      "0x000000000000000000000000000000000000000000000000000000006af39db5",
+      "0x00000000000000000000000000000000000000000000000000000000000f4240",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x0000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  "after": {
+    "name": "Thesauros Cross-Chain Strategy (Base)",
+    "symbol": "tcsUSDC-base",
+    "decimals": "6",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "providers": [
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1"
+    ],
+    "entry": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "timelock": "0x540cAab5492014084502c1dB6F15644eedCa87ee",
+    "treasury": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "managementFee": "0",
+    "performanceFee": "0",
+    "minAssets": "1000000",
+    "totalSupply": "8875237",
+    "shares": "7875237",
+    "totalAssets": "8923043",
+    "lastAssets": "8923043",
+    "lastTimestamp": "1794413628",
+    "healthy": true,
+    "implementation": "0xC0c15f0A8F568Dd841326aF115c1DaeF49d032b7",
+    "proxyAdmin": "0xDb00Ea4B591aA220bf97e16D4c965196EC223e0e",
+    "agentIdle": "0",
+    "accruedFeeShares": [
+      "0",
+      "0"
+    ],
+    "balances": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": "1000000",
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": "7875237",
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": "0"
+    },
+    "roles": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": {
+        "admin": false,
+        "executor": false
+      },
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": {
+        "admin": false,
+        "executor": false
+      },
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": {
+        "admin": true,
+        "executor": true
+      }
+    },
+    "caps": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "0",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "5000",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "4000",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "3000",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "4000"
+    },
+    "sources": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2"
+    },
+    "providerBalances": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": "8923043",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": "0",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": "0",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": "0",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": "0"
+    },
+    "allowances": {
+      "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xb125E6687d4313864e53df431d5425969c15Eb2F": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    },
+    "assetBalances": {
+      "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33": "0",
+      "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83": "0",
+      "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D": "15"
+    },
+    "prefixSlots": [
+      "0x000000000000000000000006833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "0x0000000000000000000000000000000000000000000000000000000000000005",
+      "0x000000000000000000000000ddaa9700c0da1020ae5dabc7aa0a0bb750dd317c",
+      "0x000000000000000000000000540caab5492014084502c1db6f15644eedca87ee",
+      "0x000000000000000000000000afa9ed53c33bbd8de300481ce150db3d35738f9d",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x00000000000000000000000000000000000000000000000000000000008827a3",
+      "0x000000000000000000000000000000000000000000000000000000006af4943c",
+      "0x00000000000000000000000000000000000000000000000000000000000f4240",
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "0x0000000000000000000000000000000000000000000000000df3da8e924b7473",
+      "0x0000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  "bareUpgradeFails": {
+    "reverted": true,
+    "error": "ProviderUnavailable"
+  },
+  "unauthorizedInitializerFails": {
+    "reverted": true,
+    "error": "Unauthorized"
+  },
+  "lowHwmFails": {
+    "reverted": true,
+    "error": "InvalidInput"
+  },
+  "repeatedInitializerFails": {
+    "reverted": true,
+    "error": "InvalidInitialization"
+  },
+  "sourcePinsMatch": true,
+  "ops": {
+    "companionCommit": "31380600e6e33655600f071ac8cb8cd568291392",
+    "healthyValueMatchesContract": true,
+    "faults": [
+      {
+        "kind": "empty-provider",
+        "provider": "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+        "currentMainOpsConvertFirstFails": {
+          "reverted": true,
+          "error": "ProviderUnavailable"
+        },
+        "companionContinues": true,
+        "readableShareValue": "7917656",
+        "readableTotal": "8923043",
+        "failing": [
+          "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a"
+        ],
+        "settlementStillBlocked": true,
+        "deallocationRevert": {
+          "reverted": true,
+          "error": "ProviderUnavailable"
+        },
+        "depositRevert": {
+          "reverted": true,
+          "error": "ProviderUnavailable"
+        }
+      },
+      {
+        "kind": "funded-provider",
+        "provider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+        "currentMainOpsConvertFirstFails": {
+          "reverted": true,
+          "error": "ProviderUnavailable"
+        },
+        "companionContinues": true,
+        "readableShareValue": "0",
+        "readableTotal": "0",
+        "failing": [
+          "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c"
+        ],
+        "settlementStillBlocked": true,
+        "deallocationRevert": {
+          "reverted": true,
+          "error": "ProviderUnavailable"
+        },
+        "depositRevert": {
+          "reverted": true,
+          "error": "ProviderUnavailable"
+        }
+      }
+    ],
+    "productionServiceCompatibilityAttested": false
+  },
+  "legacyEmptyProviderExit": {
+    "provider": "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+    "exitSimulationPassed": true,
+    "liveWrites": false
+  },
+  "scope": "provider-failure financial-operation extension",
+  "snapshotReverted": true,
+  "localNodeStopped": true
+}

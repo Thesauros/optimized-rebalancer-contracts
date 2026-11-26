@@ -1,0 +1,25 @@
+{
+  "change": "base-crosschain-upgrade",
+  "chainId": 8453,
+  "forkBlock": 55863000,
+  "test": "BaseStrategyPayoutForkTest.testSevenProviderHubPushAndRealHolderPayoutWithModeledRemoteNav",
+  "testsPassed": 1,
+  "testsFailed": 0,
+  "testsSkipped": 0,
+  "liveWrites": false,
+  "existingBaseProxyAndHubContracts": true,
+  "checks": [
+    "Atomic Strategy migration and actual 24-hour delayed registration of both new venues and caps",
+    "Fluid and Gauntlet Morpho V2 both funded with 10 USDC on the local fork",
+    "Stale post-governance Tick rejects a real holder instantRedeem with TickNotUsable",
+    "An authorized normal accountant commit accepts the controlled fresh snapshot without disabling freshness or risk checks",
+    "Actual ChainAgent recalls 2 USDC and returns it to EpochVault; EpochVault pushes 1 USDC back and ChainAgent allocates it",
+    "The expected net 1 USDC recall is reflected in physical vault USDC and Strategy holdings",
+    "A real existing EpochVault holder redeems 500000 shares; actual token receipt, share burn and cash decrease agree"
+  ],
+  "limitations": [
+    "The snapshot uses actual seven-provider Base values but explicitly modeled Arbitrum value and simulated local block references",
+    "This test proves Base financial plumbing, not a full production global-NAV reconstruction or remote service release attestation",
+    "Local HWM is a test input and cannot be used as historical governance attestation"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "blockNumber": 56141473,
+  "blockHash": "0xbb51e7666d5c09d164f40ba2bc27f8adf686cbeca90e8d15db4fe7f9eece6e97",
+  "blockTimeUtc": "2026-11-11T17:37:50.000Z",
+  "holder": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+  "shares": "500000",
+  "acceptedTickId": "586",
+  "referenceTimeUtc": "2026-11-11T14:15:32.000Z",
+  "committedAtUtc": "2026-11-11T14:15:41.000Z",
+  "committedAgeSeconds": "12129",
+  "instantMaxTickAgeSeconds": "7200",
+  "frozen": false,
+  "staleOrFrozen": true,
+  "simulation": {
+    "passed": false,
+    "error": "TickNotUsable"
+  },
+  "readOnly": true
+}

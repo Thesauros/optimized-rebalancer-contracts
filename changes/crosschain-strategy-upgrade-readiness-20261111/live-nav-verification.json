@@ -1,0 +1,22 @@
+{
+  "chainId": 8453,
+  "rpc": "Base PublicNode",
+  "productionWrites": false,
+  "observedBlock": 56149333,
+  "observedAtUtc": "2026-11-11T18:04:02.000Z",
+  "tickId": "586",
+  "referenceTimeUtc": "2026-11-11T14:15:32.000Z",
+  "committedAtUtc": "2026-11-11T14:15:41.000Z",
+  "committedAgeSeconds": "13701",
+  "transactionHash": "0xeb223cc0d6e5ca6c29941d9489842a5ba010b7bf16803a0c366e03d47715c60f",
+  "sender": "0xafa9ed53c33bbd8de300481ce150db3d35738f9d",
+  "gasUsed": "254403",
+  "lastExecutionFeeWei": "1526418000000",
+  "lastL1FeeWei": "6699943258",
+  "senderCurrentBalanceWei": "3448915862998",
+  "senderCurrentBalanceEth": "0.000003448915862998",
+  "currentGasPriceWei": "6000000",
+  "sameGasExecutionQuoteWei": "1526418000000",
+  "balanceCoversSameGasExecutionOnly": true,
+  "limitation": "A gas quote is not a new commit simulation. Remote process state, pending transactions, RPC failures and actual cause require server logs."
+}

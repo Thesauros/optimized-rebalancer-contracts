@@ -1,0 +1,48 @@
+[
+  {
+    "network": "base",
+    "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "targetCommit": "62d8a6ffe4c20c7b8545b13ac34d67be6c6e01e7",
+    "targetRuntimeHash": "0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b",
+    "productionWrites": false,
+    "limitation": "Point-in-time gas estimate times quoted gas price; additional rollup/data fees and future prices are not attested.",
+    "observedBlock": 56148723,
+    "observedAtUtc": "2026-11-11T18:02:00.000Z",
+    "signerBalanceWei": "3448915862998",
+    "signerBalanceEth": "0.000003448915862998",
+    "gasPriceWei": "6000000",
+    "knownStandaloneImplementation": {
+      "address": "0xd4aC8Bcec0790ADDa563dB1B35c072B485fE2708",
+      "runtimeHash": "0xc88383885f0e303fbe2849d454ac98a0e7c89788b6f06709275ac06b3cfc5e70",
+      "matchesTarget": false
+    },
+    "implementationCreationGas": "5004343",
+    "locallyMeasuredUpgradeGas": "425073",
+    "quotedExecutionCostWei": "32576496000000",
+    "quotedExecutionCostEth": "0.000032576496",
+    "balanceCoversQuotedExecutionOnly": false
+  },
+  {
+    "network": "arbitrum",
+    "owner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "targetCommit": "62d8a6ffe4c20c7b8545b13ac34d67be6c6e01e7",
+    "targetRuntimeHash": "0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b",
+    "productionWrites": false,
+    "limitation": "Point-in-time gas estimate times quoted gas price; additional rollup/data fees and future prices are not attested.",
+    "observedBlock": 523348521,
+    "observedAtUtc": "2026-11-11T18:01:59.000Z",
+    "signerBalanceWei": "890740657626000",
+    "signerBalanceEth": "0.000890740657626",
+    "gasPriceWei": "20030000",
+    "knownStandaloneImplementation": {
+      "address": "0xEd3296117dAAa46FE4Cf94036bb42EE86100F8c7",
+      "runtimeHash": "0xc88383885f0e303fbe2849d454ac98a0e7c89788b6f06709275ac06b3cfc5e70",
+      "matchesTarget": false
+    },
+    "implementationCreationGas": "5070817",
+    "locallyMeasuredUpgradeGas": "424063",
+    "quotedExecutionCostWei": "110062446400000",
+    "quotedExecutionCostEth": "0.0001100624464",
+    "balanceCoversQuotedExecutionOnly": true
+  }
+]

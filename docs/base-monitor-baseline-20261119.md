@@ -25,17 +25,24 @@ its original image, start time and process; the allocator is a separate service.
 The runtime source commit is `6db15ffa06324efd46cc9a81c3c32cb204d74425`; its
 derived image is
 `sha256:73ed7b1e74ad456770c99e368b2e3e504ca22f5cd9a3989e66f7eebab47ef3cd`.
-The following configuration commit pins this immutable image only in the
-`monitor` section of the original `ops/docker-compose.yml`, with
-`pull_policy: never`. The installed watchdog reads that same file, so its
-automatic recreation keeps the corrected monitor. Keep this pin in the
-installed Compose configuration as well as Git; an ad-hoc CLI override would
-be lost on automatic recovery.
+The stand watchdog runs Compose from the repository root. To keep this image
+during recreation on that stand, set the following interpolation values in
+the Compose project directory's `ops/.env` file or in the watchdog service environment.
+Use the same values for manual Compose commands targeting this monitor.
 
-Do not substitute a full build from current main: it also contains unrelated
-network, dependency and operator changes. Before building, tag the inspected
-original image as `thesauros/crosschain-ops:monitor-baseline-source-20261119`,
-and verify that the tag resolves to the exact image ID above. Pass the source
+```dotenv
+CROSSCHAIN_MONITOR_IMAGE=sha256:73ed7b1e74ad456770c99e368b2e3e504ca22f5cd9a3989e66f7eebab47ef3cd
+CROSSCHAIN_MONITOR_PULL_POLICY=never
+```
+
+On a fresh deployment the monitor uses the shared `CROSSCHAIN_OPS_IMAGE`.
+To reproduce the historical stand image, build `ops/Dockerfile.monitor-baseline`
+from a checkout of `6db15ffa06324efd46cc9a81c3c32cb204d74425`, using that checkout as
+the build context. Current monitor sources also depend on the newer registry,
+ABI and native spoke modules distributed together in the full ops image.
+Before the historical build, tag the inspected original image as
+`thesauros/crosschain-ops:monitor-baseline-source-20261119`, and verify
+that the tag resolves to the original image ID above. Pass the source
 commit as the `SOURCE_SHA` build argument. After activation, require
 `governance.base` to pass on `/status`, `/health` to return 200, and verify that
 the other services still run their original images.

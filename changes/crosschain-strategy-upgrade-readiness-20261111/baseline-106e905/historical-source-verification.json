@@ -1,0 +1,95 @@
+[
+  {
+    "network": "base",
+    "productionWrites": false,
+    "historicalHwmAttested": false,
+    "note": "Source comparison does not reconstruct an unrecorded all-time PPS maximum.",
+    "deploymentBlock": 51905747,
+    "providersAtDeployment": [
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b",
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c",
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1"
+    ],
+    "providerListMatchesCurrent": true,
+    "readLimitations": [],
+    "entryAtDeployment": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "entryMatchesCurrent": true,
+    "sources": {
+      "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c": {
+        "atDeployment": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+        "current": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+        "matches": true
+      },
+      "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a": {
+        "atDeployment": "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+        "current": "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+        "matches": true
+      },
+      "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b": {
+        "atDeployment": "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12",
+        "current": "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12",
+        "matches": true
+      },
+      "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c": {
+        "atDeployment": "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F",
+        "current": "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F",
+        "matches": true
+      },
+      "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1": {
+        "atDeployment": "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2",
+        "current": "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2",
+        "matches": true
+      }
+    },
+    "deploymentSourcesAttested": true
+  },
+  {
+    "network": "arbitrum",
+    "productionWrites": false,
+    "historicalHwmAttested": false,
+    "note": "Source comparison does not reconstruct an unrecorded all-time PPS maximum.",
+    "deploymentBlock": 509725811,
+    "providersAtDeployment": [
+      "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+      "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+      "0xeB98d46937C537efF376361536D58d78c57c40d7",
+      "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99",
+      "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484"
+    ],
+    "providerListMatchesCurrent": true,
+    "readLimitations": [
+      {
+        "field": "0x9eE0a4d3d9f4172FEB7E518EBbd73AF9a5E16664",
+        "code": "CALL_EXCEPTION",
+        "nodeMessage": "historical state 1264664a896bc5fac39b9ea335dcb9f837242544282f11222832c729c14a271b is not available"
+      },
+      {
+        "field": "0xeB98d46937C537efF376361536D58d78c57c40d7",
+        "code": "CALL_EXCEPTION",
+        "nodeMessage": "historical state 1264664a896bc5fac39b9ea335dcb9f837242544282f11222832c729c14a271b is not available"
+      }
+    ],
+    "entryAtDeployment": "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5",
+    "entryMatchesCurrent": true,
+    "sources": {
+      "0xA34574Dae6284EDc7348C36A80242b92CFBd13A5": {
+        "atDeployment": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+        "current": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+        "matches": true
+      },
+      "0x6240402d3Cb33777D4E5E6B5791bC8518AEb8B99": {
+        "atDeployment": "0x5c0C306Aaa9F877de636f4d5822cA9F2E81563BA",
+        "current": "0x5c0C306Aaa9F877de636f4d5822cA9F2E81563BA",
+        "matches": true
+      },
+      "0x0D9FD60E25b0C3b2416D46F7dd311b0ED6743484": {
+        "atDeployment": "0x250CF7c82bAc7cB6cf899b6052979d4B5BA1f9ca",
+        "current": "0x250CF7c82bAc7cB6cf899b6052979d4B5BA1f9ca",
+        "matches": true
+      }
+    },
+    "deploymentSourcesAttested": false
+  }
+]

@@ -8,12 +8,13 @@ import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step
  * @title ProviderManager
  */
 contract ProviderManager is Ownable2Step, IProviderManager {
+    error SourceAlreadyConfigured();
+    error InvalidSource();
     // identifier => asset address => yield token address
     mapping(string => mapping(address => address)) private _assetToYieldToken;
 
     // identifier => asset1 address => asset2 address => market address
-    mapping(string => mapping(address => mapping(address => address)))
-        private _assetsToMarket;
+    mapping(string => mapping(address => mapping(address => address))) private _assetsToMarket;
 
     mapping(string => bool) private _identifierRegistered;
 
@@ -28,11 +29,10 @@ contract ProviderManager is Ownable2Step, IProviderManager {
     /**
      * @inheritdoc IProviderManager
      */
-    function setYieldToken(
-        string memory identifier,
-        address asset,
-        address yieldToken
-    ) public override onlyOwner {
+    function setYieldToken(string memory identifier, address asset, address yieldToken) public override onlyOwner {
+        if (asset == address(0) || yieldToken.code.length == 0) revert InvalidSource();
+        address current = _assetToYieldToken[identifier][asset];
+        if (current != address(0) && current != yieldToken) revert SourceAlreadyConfigured();
         if (!_identifierRegistered[identifier]) {
             _identifierRegistered[identifier] = true;
             _providerIdentifiers.push(identifier);
@@ -44,12 +44,16 @@ contract ProviderManager is Ownable2Step, IProviderManager {
     /**
      * @inheritdoc IProviderManager
      */
-    function setMarket(
-        string memory identifier,
-        address assetOne,
-        address assetTwo,
-        address market
-    ) public override onlyOwner {
+    function setMarket(string memory identifier, address assetOne, address assetTwo, address market)
+        public
+        override
+        onlyOwner
+    {
+        if (assetOne == address(0) || assetTwo == address(0) || market.code.length == 0) {
+            revert InvalidSource();
+        }
+        address current = _assetsToMarket[identifier][assetOne][assetTwo];
+        if (current != address(0) && current != market) revert SourceAlreadyConfigured();
         if (!_identifierRegistered[identifier]) {
             _identifierRegistered[identifier] = true;
             _providerIdentifiers.push(identifier);
@@ -61,21 +65,19 @@ contract ProviderManager is Ownable2Step, IProviderManager {
     /**
      * @inheritdoc IProviderManager
      */
-    function getYieldToken(
-        string memory identifier,
-        address asset
-    ) external view override returns (address) {
+    function getYieldToken(string memory identifier, address asset) external view override returns (address) {
         return _assetToYieldToken[identifier][asset];
     }
 
     /**
      * @inheritdoc IProviderManager
      */
-    function getMarket(
-        string memory identifier,
-        address assetOne,
-        address assetTwo
-    ) external view override returns (address) {
+    function getMarket(string memory identifier, address assetOne, address assetTwo)
+        external
+        view
+        override
+        returns (address)
+    {
         return _assetsToMarket[identifier][assetOne][assetTwo];
     }
 

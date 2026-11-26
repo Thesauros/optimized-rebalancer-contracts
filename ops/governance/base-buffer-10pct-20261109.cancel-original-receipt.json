@@ -1,0 +1,50 @@
+{
+  "mode": "cancel-original",
+  "operationId": "0xf70f7c259ff3d458977f4e45a8abc1c67097f146bcf179d314eef044ae6d6841",
+  "replacementOperationId": "0x1488e32fa0a98607ac9c45fdde681a6dd0ef543eb9ef528f6cf410c577e92e02",
+  "etaUtc": "2026-11-10T18:33:38.000Z",
+  "gasLimit": "84386",
+  "maximumL2GasCostWei": "928246000000",
+  "signerBalanceWei": "174816272580610",
+  "current": [
+    "1000000",
+    "500000000",
+    "5000000",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "after": [
+    "1000000",
+    "500000000",
+    "0",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "nonce": 2633,
+  "transactionHash": "0x12a70fef6db588a246417a35263217b95ef39e8688d928cf25d35b94319962fd",
+  "submittedAt": "2026-11-09T18:29:58.589Z",
+  "status": "confirmed",
+  "confirmedAt": "2026-11-09T18:30:04.451Z",
+  "blockNumber": 55293122,
+  "blockHash": "0x9bbb781a5531e07ff7b6fe6f781a1c028f3e1a2ce24c1ab371891b623f9be0cb",
+  "gasUsed": "37316",
+  "gasPrice": "6000000",
+  "queued": false,
+  "limitsAfterTransaction": [
+    "1000000",
+    "500000000",
+    "5000000",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "confirmations": 28
+}

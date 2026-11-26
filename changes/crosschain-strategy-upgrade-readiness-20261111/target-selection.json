@@ -1,0 +1,8 @@
+{
+  "originalTarget": "106e9059f8fd5e433a2ddd62555a1ede427020a7",
+  "targetCommit": "62d8a6ffe4c20c7b8545b13ac34d67be6c6e01e7",
+  "reason": "Remote main advanced during verification; earlier results archived, refreshed target checked separately.",
+  "branchesModified": false,
+  "productionWrites": false,
+  "additionalNonProxyChange": "CctpV2Adapter source changed; existing deployed adapters cannot be updated by proxy implementation replacement."
+}

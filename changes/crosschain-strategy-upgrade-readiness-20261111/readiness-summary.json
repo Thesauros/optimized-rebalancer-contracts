@@ -1,0 +1,55 @@
+{
+  "change": "crosschain-strategy-upgrade-readiness-20261111",
+  "targetCommit": "62d8a6ffe4c20c7b8545b13ac34d67be6c6e01e7",
+  "targetRuntimeHash": "0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b",
+  "targetRuntimeBytes": 22612,
+  "storageCompatible": true,
+  "exactLegacyRuntimeRebuilt": true,
+  "proxiesAttested": 6,
+  "deploymentSourcesMatched": 10,
+  "evmTestsPassed": 188,
+  "companionTestsPassed": 8,
+  "mergedOpsTestsPassed": 66,
+  "existingMergedOpsTestsSkipped": 7,
+  "mergedOpsTypecheckPassed": true,
+  "node22Runtime": {
+    "version": "v22.23.4",
+    "testsPassed": 65,
+    "testsSkipped": 8,
+    "typecheckPassed": true,
+    "offlineConfigPassed": true,
+    "runtimeDependencyLockMatchesCandidate": true
+  },
+  "localMigrationForksPassed": [
+    {
+      "network": "base",
+      "block": 56141473
+    },
+    {
+      "network": "arbitrum",
+      "block": 523337433
+    }
+  ],
+  "freshStatePayout": {
+    "block": 56094167,
+    "assetsUsdc": "0.499971",
+    "reserveDoesNotBlockPayout": true
+  },
+  "latestNavObservation": {
+    "atUtc": "2026-11-11T18:04:02.000Z",
+    "tickId": "586",
+    "committedAtUtc": "2026-11-11T14:15:41.000Z"
+  },
+  "productionSignable": false,
+  "productionImplementationAddresses": {
+    "base": null,
+    "arbitrum": null
+  },
+  "historicalHwmAttestations": {
+    "base": null,
+    "arbitrum": null
+  },
+  "productionServiceReleaseAttested": false,
+  "releaseVerdict": "NO-GO: current NAV availability, remote release attestation, migration inputs and Base deployment funding remain open",
+  "productionWrites": false
+}

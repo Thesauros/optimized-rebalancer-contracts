@@ -1,0 +1,33 @@
+{
+  "targetCommit": "106e9059f8fd5e433a2ddd62555a1ede427020a7",
+  "status": 0,
+  "compiler": "/Users/ivanborisov/Library/Caches/hardhat-nodejs/compilers-v2/macosx-amd64/solc-macosx-amd64-v0.8.33+commit.64118f21",
+  "scope": "all non-fork repository EVM tests; no RPC/env/key loading",
+  "summary": [
+    "Compiler run successful with warnings:",
+    "Ran 22 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/tick/ChainAgent.t.sol:ChainAgentTest",
+    "Suite result: ok. 22 passed; 0 failed; 0 skipped; finished in 25.50ms (6.81ms CPU time)",
+    "Ran 15 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/unit/SecurityRemediation.t.sol:SecurityRemediationTest",
+    "Suite result: ok. 15 passed; 0 failed; 0 skipped; finished in 25.06ms (10.90ms CPU time)",
+    "Ran 1 test for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/tick/SnapshotVector.t.sol:SnapshotVectorTest",
+    "Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 270.54µs (67.50µs CPU time)",
+    "Ran 23 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/tick/EpochVault.t.sol:EpochVaultTest",
+    "Suite result: ok. 23 passed; 0 failed; 0 skipped; finished in 60.83ms (42.05ms CPU time)",
+    "Ran 8 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/tick/AdversarialScenarios.t.sol:AdversarialScenariosTest",
+    "Suite result: ok. 8 passed; 0 failed; 0 skipped; finished in 64.27ms (15.38ms CPU time)",
+    "Ran 25 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/unit/MorphoV2Provider.t.sol:MorphoV2ProviderTest",
+    "Suite result: ok. 25 passed; 0 failed; 0 skipped; finished in 69.00ms (69.89ms CPU time)",
+    "Ran 17 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/unit/PerformanceFeeCap.t.sol:PerformanceFeeCapTest",
+    "Suite result: ok. 17 passed; 0 failed; 0 skipped; finished in 95.16ms (89.88ms CPU time)",
+    "Ran 13 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/unit/RebalancerHardening.t.sol:RebalancerHardeningTest",
+    "Suite result: ok. 13 passed; 0 failed; 0 skipped; finished in 154.70ms (5.54ms CPU time)",
+    "Ran 16 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/unit/EntryProviderExecutor.t.sol:EntryProviderExecutorTest",
+    "Suite result: ok. 16 passed; 0 failed; 0 skipped; finished in 207.25ms (51.77ms CPU time)",
+    "Ran 35 tests for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/tick/TickAccountant.t.sol:TickAccountantTest",
+    "Suite result: ok. 35 passed; 0 failed; 0 skipped; finished in 179.86ms (185.88ms CPU time)",
+    "Ran 1 test for /Users/ivanborisov/Desktop/thesauros.io/orc-crosschain-prod-20261109/test/tick/CrossChainInvariants.t.sol:CrossChainInvariantsTest",
+    "Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 3.60s (3.58s CPU time)",
+    "Ran 11 test suites in 3.62s (4.48s CPU time): 176 tests passed, 0 failed, 0 skipped (176 total tests)"
+  ],
+  "productionWrites": false
+}

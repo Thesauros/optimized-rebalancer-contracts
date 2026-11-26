@@ -56,7 +56,9 @@
     "EpochVault": "0x00627c66e205f0adcf18923f960245f7ad6bd76f5d250a888b57e51b00af7e17",
     "ChainAgentImplementation": "0xa7b6e0c9ebe80a9d4e9384ec6d53f7f0ba68dc7c18e4aabe43076d37015873a9",
     "ChainAgent": "0x9ceb77956cb42e200bd18ab62992cd987618fce37dd0a77c937ac324c143c069",
-    "CctpV2Adapter": "0x9f7a3cd68861203ab3c865fbdc523a4cc4d75d1afaefdc2b1970e93fa0b5e873"
+    "CctpV2Adapter": "0x9f7a3cd68861203ab3c865fbdc523a4cc4d75d1afaefdc2b1970e93fa0b5e873",
+    "FluidProvider": "0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a",
+    "GauntletPrimeV2MorphoProvider": "0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457"
   },
   "deploymentHistory": [
     {
@@ -107,7 +109,10 @@
         "blockHash": "0xb41b9dda7216a6bcff352631f29e020ca68af39b1d8e6ff9e9c90e3fa24ee649",
         "timestamp": "2026-11-19T13:45:32Z"
       },
-      "providerCreationTransactions": "Not yet reconstructed; no deployment transaction hashes are asserted for the two added providers."
+      "providerCreationTransactions": {
+        "FluidProvider": "0xdd951cfbd296db61fcba6130b665f3ce681b11feeaca13ec0926751804b1c89a",
+        "GauntletPrimeV2MorphoProvider": "0xe095680a9363bbeb0db474ad2f76b7ab4525484df5b8d0a2d324a1f5a21de457"
+      }
     }
   ]
 }

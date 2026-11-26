@@ -1,0 +1,109 @@
+{
+  "mode": "execute",
+  "operationId": "0x1488e32fa0a98607ac9c45fdde681a6dd0ef543eb9ef528f6cf410c577e92e02",
+  "etaUtc": "2026-11-10T18:33:38.000Z",
+  "before": [
+    "1000000",
+    "500000000",
+    "5000000",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "after": [
+    "1000000",
+    "500000000",
+    "0",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "primary": {
+    "blockNumber": 55791842,
+    "blockHash": "0xeca46e6c53c3d189cbf1dfa26e1dba34e6abf389763998118a43ee2f5f28461f",
+    "timestamp": 1794348744,
+    "blockTimeUtc": "2026-11-10T22:12:24.000Z",
+    "limits": [
+      "1000000",
+      "500000000",
+      "5000000",
+      "100000000000000000",
+      "25000000",
+      "50000000",
+      "2500000000000000",
+      "7200"
+    ],
+    "queued": true,
+    "cancelledQueued": false,
+    "implementation": "0x8e5d91af547d78bc9a1036b41e255d129013539d"
+  },
+  "independentRpc": {
+    "blockNumber": 55791841,
+    "blockHash": "0x487802a0100d40c06cc55f3a549f09974aaee75e403bdf4d3861f6b6047423c1",
+    "timestamp": 1794348743,
+    "blockTimeUtc": "2026-11-10T22:12:23.000Z",
+    "limits": [
+      "1000000",
+      "500000000",
+      "5000000",
+      "100000000000000000",
+      "25000000",
+      "50000000",
+      "2500000000000000",
+      "7200"
+    ],
+    "queued": true,
+    "cancelledQueued": false,
+    "implementation": "0x8e5d91af547d78bc9a1036b41e255d129013539d"
+  },
+  "nonce": 2746,
+  "gasEstimate": "78015",
+  "gasLimit": "156030",
+  "maxFeePerGas": "11001336",
+  "maximumL2GasCostWei": "1716538456080",
+  "signerBalanceWei": "68944154740347",
+  "transactionHash": "0x57e04f978215f0c1f770ead7312f72b78e35acc69cc93f73ccb32126c9649d76",
+  "status": "confirmed",
+  "submittedAt": "2026-11-10T22:12:27.065Z",
+  "confirmedAt": "2026-11-10T22:12:29.602Z",
+  "blockNumber": 55791865,
+  "blockHash": "0x69c2008aae0e7762b9ad9e9cb868201f599baca4b7eb726f108879299eee9813",
+  "gasUsed": "72786",
+  "gasPrice": "6000000",
+  "confirmations": 12,
+  "limitsAfterTransaction": [
+    "1000000",
+    "500000000",
+    "0",
+    "100000000000000000",
+    "25000000",
+    "50000000",
+    "2500000000000000",
+    "7200"
+  ],
+  "queued": false,
+  "cancelledQueued": false,
+  "post": {
+    "blockNumber": 55791870,
+    "blockHash": "0x710e36f641892a6ae518c4c4a53b579e07437e1432e94a6623549d29cb6f95f4",
+    "timestamp": 1794348749,
+    "blockTimeUtc": "2026-11-10T22:12:29.000Z",
+    "limits": [
+      "1000000",
+      "500000000",
+      "0",
+      "100000000000000000",
+      "25000000",
+      "50000000",
+      "2500000000000000",
+      "7200"
+    ],
+    "queued": false,
+    "cancelledQueued": false,
+    "implementation": "0x8e5d91af547d78bc9a1036b41e255d129013539d"
+  }
+}

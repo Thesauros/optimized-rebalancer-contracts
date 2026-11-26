@@ -1,4 +1,4 @@
-import { ethers } from 'hardhat';
+import { ethers } from 'ethers';
 
 export const MAINNET_CHAIN_ID = 1n;
 export const BASE_CHAIN_ID = 8453n;
@@ -26,7 +26,7 @@ export interface ChainConfig {
   vaultSymbol: string;
   aavePoolAddressesProvider: string;
   cometPairs: { asset: string; cToken: string }[];
-  morphoVaults: { strategy: string; vaultAddress: string }[];
+  morphoVaults: { strategy: string; vaultAddress: string; version?: 1 | 2 }[];
 }
 
 export const chainConfigs: Record<number, ChainConfig> = {
@@ -50,6 +50,11 @@ export const chainConfigs: Record<number, ChainConfig> = {
       {
         strategy: 'GauntletPrime',
         vaultAddress: '0xdd0f28e19C1780eb6396170735D45153D261490d',
+      },
+      {
+        strategy: 'GauntletPrimeV2',
+        vaultAddress: '0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0',
+        version: 2,
       },
       {
         strategy: 'Smokehouse',
@@ -81,6 +86,11 @@ export const chainConfigs: Record<number, ChainConfig> = {
       {
         strategy: 'GauntletCore',
         vaultAddress: '0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12',
+      },
+      {
+        strategy: 'GauntletPrimeV2',
+        vaultAddress: '0x050cE30b927Da55177A4914EC73480238BAD56f0',
+        version: 2,
       },
     ],
   },

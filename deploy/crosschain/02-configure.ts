@@ -11,7 +11,7 @@
  * then prints what it would do and exits (see --plan in the runbook).
  */
 import { ethers } from 'hardhat';
-import { NETWORKS, identities, routeId } from './registry';
+import { NETWORKS, identities, routeId, strategyProviders } from './registry';
 import {
   EXECUTOR_ROLE,
   GUARDIAN_ROLE,
@@ -88,8 +88,7 @@ async function main() {
   }
 
   // strategy provider caps
-  const labelled: Record<string, string> = Object.fromEntries(entry.strategy.reusedProviders.map((p) => [p.label, p.address]));
-  if (c.CompoundV3Provider) labelled.CompoundV3 = c.CompoundV3Provider;
+  const labelled: Record<string, string> = Object.fromEntries(strategyProviders(entry, c).map((p) => [p.label, p.address]));
   for (const [label, bps] of Object.entries(entry.strategy.capsBps)) {
     const provider = labelled[label];
     if (!provider) throw new Error(`cap for unknown provider label ${label}`);

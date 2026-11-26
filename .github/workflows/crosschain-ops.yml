@@ -1,0 +1,35 @@
+name: Cross-chain ops image
+
+on:
+  pull_request:
+    paths: ['ops/**', 'deploy/crosschain/**', 'deployments/**/crosschain.json', '.dockerignore', '.github/workflows/crosschain-ops.yml']
+  push:
+    paths: ['ops/**', 'deploy/crosschain/**', 'deployments/**/crosschain.json', '.dockerignore', '.github/workflows/crosschain-ops.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build from the clean checkout
+        run: docker build --pull -f ops/Dockerfile -t crosschain-ops:ci .
+      - name: Validate the image offline
+        run: >-
+          docker run --rm --network none --entrypoint node
+          --mount type=bind,source="$GITHUB_WORKSPACE/ops/test/image-smoke.cjs",target=/checks/image-smoke.cjs,readonly
+          crosschain-ops:ci /checks/image-smoke.cjs
+      - name: Typecheck the packaged service sources
+        run: >-
+          docker run --rm --network none --entrypoint /app/node_modules/.bin/tsc
+          crosschain-ops:ci -p /app/ops/tsconfig.json
+      - name: Run ops regressions on the image's locked Node and dependencies
+        run: >-
+          docker run --rm --network none --entrypoint npm
+          --env NODE_PATH=/app/node_modules
+          --mount type=bind,source="$GITHUB_WORKSPACE",target=/source,readonly
+          --workdir /source/ops crosschain-ops:ci test

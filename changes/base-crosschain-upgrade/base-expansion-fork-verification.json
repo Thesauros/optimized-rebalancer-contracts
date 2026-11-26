@@ -1,0 +1,47 @@
+{
+  "change": "base-crosschain-upgrade",
+  "verifiedAtUtc": "2026-11-12",
+  "scope": "Actual deployed Base Strategy migration and seven-provider expansion on a local Foundry fork",
+  "command": "BASE_RPC_URL=https://mainnet.base.org forge test --match-contract BaseStrategyExpansionForkTest -vv",
+  "chainId": 8453,
+  "forkBlock": 55863000,
+  "forkBlockHash": "0x72f4513df1cdb3bb64a344dfd08961e1ac96133f21702a378b600dab5b36f4e7",
+  "compiler": "Solc 0.8.33",
+  "testsPassed": 6,
+  "testsFailed": 0,
+  "testsSkipped": 0,
+  "liveWrites": false,
+  "localTestHwmIsHistoricalAttestation": false,
+  "actualStrategy": "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33",
+  "legacyImplementation": "0xfcE142db5FD78F64c97b04d9a587E2C53341b910",
+  "legacyRuntimeHash": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+  "checks": [
+    "Atomic ProxyAdmin upgradeAndCall with test-only ceiling PPS initializes source pins and high-water mark",
+    "Legacy namespace words 0-5 and 8-9 preserved; accounting words 6-7 intentionally reset and checked through getters",
+    "Total supply, actual ChainAgent shares, seed shares, existing five positions and provider caps preserved",
+    "Actual 24-hour Timelock rejects early execution and registers both new providers plus explicit 3000/2000 bps caps",
+    "Seven distinct pinned sources retain original provider order and entry; existing executor used without role changes",
+    "Fluid and Gauntlet V2 each receive and return 10 USDC through real deployed markets; seven-source NAV and user redemption reconcile within 100 micro-USDC",
+    "Oversized allocations to each new venue revert atomically under its provider cap",
+    "Fluid Base supply APR matches the actual Liquidity exchange-price accrual",
+    "Actual ChainAgent allocates and deallocates 1 USDC and returns it to actual EpochVault accounting"
+  ],
+  "fluidSource": {
+    "officialDeploymentArtifact": "https://github.com/Instadapp/fluid-contracts-public/blob/main/deployments/base/fToken_fUSDC.json",
+    "officialApi": "https://api.fluid.instadapp.io/v2/lending/8453/tokens",
+    "address": "0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "runtimeHashAtForkBlock": "0x7bb1bad9cc6f098488c71a052e917f646cb335cf64c64d244e6d14ee57b7c743",
+    "liquidity": "0x52Aa899454998Be5b000Ad077a46Bbe360F4e497",
+    "liquidityRuntimeHashAtForkBlock": "0xb3a458c72a3a0b3aa773f2c3e21d0eadfb06dacdc4568f447d9019d1c1451c35",
+    "lendingFactory": "0x54B91A0D94cb471F37f949c60F7Fa7935b551D03",
+    "rewardsActiveAtForkBlock": false,
+    "minDepositAssetUnits": "2",
+    "runtimeProvenanceCaveat": "Official deployedBytecode is an unpatched immutable template. Its raw hash is not the live runtime hash; observed differences are zero placeholder regions. This report does not claim an exact compiled immutable-patched provenance match."
+  },
+  "limitations": [
+    "The local ceiling PPS is not a governance historical-HWM attestation",
+    "This suite proves Strategy and ChainAgent paths; fresh global Tick construction and EpochVault push/payout are verified separately",
+    "The test uses an actual historical Base state, not an attestation of live execution readiness or remote ops revision"
+  ]
+}

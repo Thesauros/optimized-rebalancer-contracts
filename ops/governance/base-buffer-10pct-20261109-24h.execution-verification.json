@@ -1,0 +1,64 @@
+{
+  "operationId": "0x1488e32fa0a98607ac9c45fdde681a6dd0ef543eb9ef528f6cf410c577e92e02",
+  "transactionHash": "0x57e04f978215f0c1f770ead7312f72b78e35acc69cc93f73ccb32126c9649d76",
+  "primary": {
+    "blockNumber": 55792151,
+    "blockHash": "0x7409a65583709894e45b04937006c26ab1feb5c40e484e84467d66c60df9326b",
+    "timestamp": 1794348805,
+    "blockTimeUtc": "2026-11-10T22:13:25.000Z",
+    "limits": [
+      "1000000",
+      "500000000",
+      "0",
+      "100000000000000000",
+      "25000000",
+      "50000000",
+      "2500000000000000",
+      "7200"
+    ],
+    "queued": false,
+    "cancelledQueued": false,
+    "implementation": "0x8e5d91af547d78bc9a1036b41e255d129013539d"
+  },
+  "independentRpc": {
+    "blockNumber": 55792150,
+    "blockHash": "0x58863517cfb7c53f9e4ca4927c7da66b3a695f604afff59677851410932c5727",
+    "timestamp": 1794348805,
+    "blockTimeUtc": "2026-11-10T22:13:25.000Z",
+    "limits": [
+      "1000000",
+      "500000000",
+      "0",
+      "100000000000000000",
+      "25000000",
+      "50000000",
+      "2500000000000000",
+      "7200"
+    ],
+    "queued": false,
+    "cancelledQueued": false,
+    "implementation": "0x8e5d91af547d78bc9a1036b41e255d129013539d"
+  },
+  "receiptStatus": 1,
+  "receiptBlockNumber": 55791865,
+  "receiptBlockHash": "0x69c2008aae0e7762b9ad9e9cb868201f599baca4b7eb726f108879299eee9813",
+  "gasUsed": "72786",
+  "confirmations": 298,
+  "liquidity": {
+    "blockNumber": 55792151,
+    "cashUsdc": "5.0",
+    "tokenBalanceUsdc": "5.0",
+    "pendingDepositsUsdc": "0.0",
+    "liabilitiesUsdc": "0.0",
+    "reservedUsdc": "0.0",
+    "freeCashUsdc": "5.0",
+    "bidNavUsdc": "11.026204",
+    "minimumBufferUsdc": "1.10262",
+    "availableForAllocationUsdc": "3.89738",
+    "acceptedTickId": "570",
+    "tickReferenceTimeUtc": "2026-11-10T21:58:35.000Z",
+    "frozen": false,
+    "allocationPaused": false,
+    "allocationSimulation": "passed, read-only eth_call; no capital movement"
+  }
+}

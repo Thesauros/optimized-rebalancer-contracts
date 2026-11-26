@@ -1,0 +1,197 @@
+{
+  "change": "base-crosschain-upgrade",
+  "status": "DRAFT_NOT_SIGNABLE",
+  "mode": "READ_ONLY_NO_SIGNING_NO_BROADCAST",
+  "sourceCommit": "32f7dcf62ae3b30775daa1ed8d8fc735c00169b4",
+  "preparationScriptHash": "0x47b3aadf4cd3fc002c192a9c8f1b7c0331142fd5c5b586378d7f730adcd675c1",
+  "snapshot": {
+    "chainId": 8453,
+    "block": 56476408,
+    "blockHash": "0xfa18b26877f45a393baf9e8d05de946a7a5aa46c26d1038a055d9d2f333dbcc2",
+    "timestamp": 1794485657,
+    "profile": "stand",
+    "proxy": "0x4cBb4042F79e150F99D3Da4d666e10fdB0711F33",
+    "implementation": "0xfcE142db5FD78F64c97b04d9a587E2C53341b910",
+    "implementationRuntimeHash": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+    "manifestImplementation": "0xfcE142db5FD78F64c97b04d9a587E2C53341b910",
+    "manifestRuntimeHash": "0x7afb3ac3455bd1a90c516a61e203e4db850eafc53c2213e294c4ea83ea46c5d3",
+    "proxyAdmin": "0xDb00Ea4B591aA220bf97e16D4c965196EC223e0e",
+    "proxyAdminOwner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "adminInterfaceVersion": "5.0.0",
+    "timelock": "0x540cAab5492014084502c1dB6F15644eedCa87ee",
+    "timelockOwner": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "delay": 86400,
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "treasury": "0xafA9ed53c33bbD8DE300481ce150dB3D35738F9D",
+    "managementFee": "0",
+    "performanceFee": "0",
+    "totalAssets": "8923985",
+    "totalSupply": "8875237",
+    "healthy": true,
+    "entryProvider": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+    "providers": [
+      {
+        "address": "0xDDAA9700c0Da1020AE5dabC7AA0A0bb750DD317c",
+        "source": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+        "identifier": "Aave_V3_Provider",
+        "assets": "8923985",
+        "capBps": 0,
+        "runtimeHash": "0x7f78eb5ddfca10de73a891fda55a11c3032fa8cbad6bbce3612e445ab0bd1374",
+        "sourceRuntimeHash": "0xffcb26fbebbe09d9b0d8baef76a1fa218989be6c279b7acf9865d8fb6e0718ce"
+      },
+      {
+        "address": "0xa408A565a34B72FD6091f24b7ad4A15dCd29038a",
+        "source": "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+        "identifier": "Compound_V3_Provider",
+        "assets": "0",
+        "capBps": 5000,
+        "runtimeHash": "0xc8780be6b32b4635a6bf1bb58d1c6230882c2033e5a2963c410da31461144ab8",
+        "sourceRuntimeHash": "0x64952234eab8f3aed74355c49119f627965640b1efeb6b28430b5a31b0d3b192"
+      },
+      {
+        "address": "0x51B8BdCdA5E41893737C9C3A08f528C97fCc1b8b",
+        "source": "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12",
+        "identifier": "Morpho_Provider",
+        "assets": "0",
+        "capBps": 4000,
+        "runtimeHash": "0x67c75460a61b6fd683db52df9956b1936f7c78a7f2d0ab2d567660fa331e0c19",
+        "sourceRuntimeHash": "0xa13b07c0ba4842046e6f4e03fae73dd76ea169b8122bffb3b0eea40dae10ff1e"
+      },
+      {
+        "address": "0x9c35b8a92Fc3a305712b9dD8a1C34310eA09C61c",
+        "source": "0xBEEFA7B88064FeEF0cEe02AAeBBd95D30df3878F",
+        "identifier": "Morpho_Provider",
+        "assets": "0",
+        "capBps": 3000,
+        "runtimeHash": "0x2ac274d42b5865be30146971ff8e92c375dd720cab52d3cb2c3e06fa7dca4d00",
+        "sourceRuntimeHash": "0x27403905f8fc2fdfa6e92f0082ddcd34b26fc5172ce70e42a8f12f96a1f31920"
+      },
+      {
+        "address": "0xDDf2C1f8EAf567c084dEE07658Ed3906029395b1",
+        "source": "0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2",
+        "identifier": "Morpho_Provider",
+        "assets": "0",
+        "capBps": 4000,
+        "runtimeHash": "0x6e01934697505b20156ab3e47eda1dbb913a4519d702afa4cf157b5c23bd4e60",
+        "sourceRuntimeHash": "0x243c4d88b9927bb557079e77d8bfda592b749f75c11a646f4b0285faaa41a83d"
+      }
+    ]
+  },
+  "preservedContracts": {
+    "EpochVault": {
+      "proxy": "0x33c4F5Efc49DCEa72bfA8Fe62e5Cb7B3226d7cB6",
+      "implementation": "0x8E5D91AF547D78Bc9A1036b41e255d129013539d",
+      "runtimeHash": "0x78b92497708e20558e4e4fc958d945e3a801702c627704f840e6a44ac5bf2b07"
+    },
+    "TickAccountant": {
+      "proxy": "0xB45819B6844708915c5d7936A847186A6a078b27",
+      "implementation": "0x94d45d301aa89d426F5CF9c6cf5F773DCFFC2c5B",
+      "runtimeHash": "0x01f451a78607a3f67b8dbccfbca02a73b9942e44d74cb3d7adbe9695bae01bb1"
+    },
+    "ChainAgent": {
+      "proxy": "0x3BAf244cAB9a35F75e5F606704Ad7A9D09C16B83",
+      "implementation": "0x6baa35EcB2d83c80654071362269206DdA2CdCB8",
+      "runtimeHash": "0xe55493176a611f9137ce67c128b581a60c6f868b0d9ef55c116ecad1e5d7b50f"
+    }
+  },
+  "candidates": [
+    {
+      "name": "Rebalancer",
+      "source": null,
+      "actualDeployedAddress": null,
+      "addressStatus": "UNDEPLOYED_NO_ADDRESS_PREDICTION",
+      "expectedRuntimeHash": "0x6a9f9388ac5290c7a04b2415178eed2c197d1f11079913870b167765a229026b",
+      "constructorArguments": [],
+      "creationCodeHash": "0x0351f0dac96a68aa7f271dc7bcc25567f60acb302f231260b436a7f4a87ad747",
+      "estimatedDeploymentGas": "5004343",
+      "sourceVerified": true,
+      "runtimeVerified": false
+    },
+    {
+      "name": "FluidProvider",
+      "source": "0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169",
+      "actualDeployedAddress": null,
+      "addressStatus": "UNDEPLOYED_NO_ADDRESS_PREDICTION",
+      "expectedRuntimeHash": "0x5414d072553e7d04a8399198d870c156ea20d70cc117616c92bd255fd8b9cf14",
+      "constructorArguments": [
+        "0xf42f5795D9ac7e9D757dB633D693cD548Cfd9169"
+      ],
+      "creationCodeHash": "0x97244ad648ee5843d43058758d00b84db34b17cebec3fbd8988e324efec37fac",
+      "estimatedDeploymentGas": "644329",
+      "sourceVerified": true,
+      "runtimeVerified": false
+    },
+    {
+      "name": "MorphoV2Provider",
+      "source": "0x050cE30b927Da55177A4914EC73480238BAD56f0",
+      "actualDeployedAddress": null,
+      "addressStatus": "UNDEPLOYED_NO_ADDRESS_PREDICTION",
+      "expectedRuntimeHash": "0x5e09a5d4f8bbb1e127df10d962d9dc8f335b8ab4cfec9476409b7b8bd93a5020",
+      "constructorArguments": [
+        "0x050cE30b927Da55177A4914EC73480238BAD56f0"
+      ],
+      "creationCodeHash": "0xf52d52c2183ccc20cd46843c99ce8719c822474133abf9017973366313ccaa55",
+      "estimatedDeploymentGas": "1895434",
+      "sourceVerified": true,
+      "runtimeVerified": false
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "Rebalancer",
+      "compiler": "0.8.33+commit.64118f21",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "standardInputHash": "0xa9bfcbc22c00958a57e9b9205263adc65549acbe8cc9727f0b239f67b2e543ae",
+      "creationHash": "0x0351f0dac96a68aa7f271dc7bcc25567f60acb302f231260b436a7f4a87ad747"
+    },
+    {
+      "name": "FluidProvider",
+      "compiler": "0.8.33+commit.64118f21",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "standardInputHash": "0xa9bfcbc22c00958a57e9b9205263adc65549acbe8cc9727f0b239f67b2e543ae",
+      "creationHash": "0x30afe8b917dbf7b6169a8c3fe3a053bb5293e20dfb359f11b2c13a10c3884f36"
+    },
+    {
+      "name": "MorphoV2Provider",
+      "compiler": "0.8.33+commit.64118f21",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "standardInputHash": "0xa9bfcbc22c00958a57e9b9205263adc65549acbe8cc9727f0b239f67b2e543ae",
+      "creationHash": "0x239d13cc8bb0751f95880bfe827f000dfa22170b6a5229f2f811035551038963"
+    }
+  ],
+  "minimumHwmAtSnapshot": "1005492585719119389",
+  "minimumHwmIsNotAnAttestation": true,
+  "atomicUpgrade": null,
+  "governance": [],
+  "blockers": [
+    "Governance-attested historical HWM is missing",
+    "Historical HWM provenance is not attested",
+    "Current provider source provenance is not attested",
+    "Historical HWM evidence reference is missing",
+    "Provider source evidence reference is missing",
+    "Governance acceptance of unsettled legacy fee waiver is missing",
+    "Rebalancer actual deployed address is missing; constructor plan only",
+    "Rebalancer runtime/source verification is incomplete",
+    "FluidProvider actual deployed address is missing; constructor plan only",
+    "FluidProvider runtime/source verification is incomplete",
+    "MorphoV2Provider actual deployed address is missing; constructor plan only",
+    "MorphoV2Provider runtime/source verification is incomplete",
+    "FluidProvider explicit reviewed cap is missing",
+    "MorphoV2Provider explicit reviewed cap is missing"
+  ],
+  "estimates": {
+    "atomicUpgradeGas": null,
+    "caveat": "Gas estimates are snapshot-specific and exclude Base L1 data fees; registration/execution requires the staged fork rehearsal"
+  },
+  "feeTreatment": "Unsettled legacy fees waived; assets and timestamp baseline reset during migration",
+  "freshness": "Refresh before signing; HWM must still cover ceiling PPS at execution. Snapshot, calldata and ETA are not permanent authorization."
+}

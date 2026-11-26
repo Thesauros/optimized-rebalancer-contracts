@@ -1,0 +1,13 @@
+[package]
+name = "thesauros-test-kamino"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "thesauros_test_kamino"
+crate-type = ["cdylib"]
+
+[dependencies]
+solana-program = "=2.3.0"
+spl-token = { version = "=7.0.0", features = ["no-entrypoint"] }

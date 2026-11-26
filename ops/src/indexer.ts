@@ -28,6 +28,7 @@ import { Contract, getAddress, isAddress } from 'ethers';
 import { CHAIN_AGENT, EPOCH_VAULT, ERC20, PROVIDER, STRATEGY, TICK_ACCOUNTANT } from './abi';
 import { Chain, envNumber, hubOf, loadChains } from './config';
 import type { NetworkEntry } from '../../deploy/crosschain/registry';
+import { strategyShareValue } from './strategy-value';
 import { log, loop, retryTransient, scanMany, semaphore } from './util';
 
 const SERVICE = 'indexer';
@@ -553,23 +554,28 @@ export class Indexer {
     const strategyAddr = c.manifest.contracts.Strategy;
     const agent = new Contract(agentAddr, CHAIN_AGENT, c.provider);
     const strategy = new Contract(strategyAddr, STRATEGY, c.provider);
-    const [idle, shares, addrs, total, healthy] = await Promise.all([
-      rpc(() => new Contract(c.entry.usdc, ERC20, c.provider).balanceOf(agentAddr) as Promise<bigint>),
-      rpc(() => agent.strategyShares() as Promise<bigint>),
-      rpc(() => strategy.getProviders() as Promise<string[]>),
-      rpc(() => strategy.totalAssets() as Promise<bigint>),
-      rpc(() => strategy.providersHealthy() as Promise<boolean>),
+    // one block for every read: a view that starts failing in between would
+    // otherwise make totalAssets() revert and fail the whole response
+    const blockTag = await rpc(() => c.provider.getBlockNumber());
+    const at = { blockTag };
+    const [idle, shares, addrs] = await Promise.all([
+      rpc(() => new Contract(c.entry.usdc, ERC20, c.provider).balanceOf(agentAddr, at) as Promise<bigint>),
+      rpc(() => agent.strategyShares(at) as Promise<bigint>),
+      rpc(() => strategy.getProviders(at) as Promise<string[]>),
     ]);
-    const value: bigint = shares > 0n ? await rpc(() => strategy.convertToAssets(shares) as Promise<bigint>) : 0n;
+    // While a provider view fails, the current Rebalancer reverts totalAssets() and
+    // convertToAssets(); report the readable lower bound instead.
+    const { healthy, value, readable } = await rpc(() => strategyShareValue(strategy, shares, blockTag));
+    const total: bigint = readable?.total ?? (await rpc(() => strategy.totalAssets(at) as Promise<bigint>));
     const providers = await Promise.all(
       addrs.map(async (p) => {
         const pc = new Contract(p, PROVIDER, c.provider);
         // A provider whose view reverts is reported as zero rather than failing the whole read;
         // `providersHealthy` is what tells a consumer that this happened.
         const [balance, name, cap] = await Promise.all([
-          rpc(() => pc.getDepositBalance(strategyAddr, strategyAddr) as Promise<bigint>).catch(() => 0n),
+          rpc(() => pc.getDepositBalance(strategyAddr, strategyAddr, at) as Promise<bigint>).catch(() => 0n),
           rpc(() => pc.getIdentifier() as Promise<string>).catch(() => p),
-          rpc(() => strategy.getProviderCap(p) as Promise<bigint>).catch(() => 0n),
+          rpc(() => strategy.getProviderCap(p, at) as Promise<bigint>).catch(() => 0n),
         ]);
         return {
           address: p,
