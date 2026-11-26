@@ -16,11 +16,15 @@ ChainAgent are outside this upgrade and remain unchanged.
 | Fluid fUSDC | `0x1A996cb54bb95462040408C06122D45D6Cdb6096` | 3000 bps / 30% |
 | Gauntlet USDC Prime Morpho V2 | `0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78` | 2000 bps / 20% |
 
+The three candidates were deployed on 25 November 2026. Use their recorded
+addresses for the implementation and provider inputs when preparing the
+governance bundle. [Candidate addresses and transaction receipts](../changes/arbitrum-crosschain-upgrade/candidate-deployments.json)
+
 Both sources use native Arbitrum USDC
 `0xaf88d065e77c8cC2239327C5EDb3A432268e5831`, with six asset decimals.
-These addresses are **sources, not our provider adapters**. Deploy a new
-`FluidProvider(fUSDC)` and a new `MorphoV2Provider(GauntletPrimeV2)` on Arbitrum;
-only their verified deployed addresses belong in `setProviders`. Do not reuse
+The table identifies the underlying sources. The deployed adapters are
+`FluidProvider(fUSDC)` and `MorphoV2Provider(GauntletPrimeV2)` on Arbitrum.
+Use their verified deployed addresses in `setProviders`. Do not reuse
 Base adapter addresses, insert underlying vaults directly, or replace the
 existing Gauntlet Core Morpho V1 position.
 
@@ -81,9 +85,8 @@ A complete plan remains unsigned and requires its concrete release review.
    order, sources, caps and Aave entry. Preserve the local ChainAgent implementation.
    Stop competing allocation/provider/governance changes during the reviewed
    transition; retain the existing two-chain configuration.
-3. Deploy and verify the three candidates. These deployments alone do not change
-   the Strategy proxy or any provider list. Regenerate the plan with their actual
-   addresses and approved migration inputs.
+3. Verify each recorded candidate at its deployed address. Regenerate the plan
+   with those addresses and the approved migration inputs.
 4. Execute one actual-ProxyAdmin `upgradeAndCall` containing
    `initializeSecurityAccounting(historicalHighWaterMark)`. A bare upgrade leaves
    new security accounting uninitialized and blocks valuation/settlement. Do not

@@ -59,13 +59,23 @@ attesting and signing. The detailed audit retains governance-attestation and
 fee-acceptance flags as false; the evidence itself does not sign or authorize a
 transaction.
 
-No public deployment, upgrade, provider registration, service restart or capital
-allocation has been performed by this preparation. Actual deployed candidate
-addresses remain absent from manifests and the committed draft. Current gas is
-insufficient for the complete package: approximately 0.00023625 ETH additional
-funding is needed with the measured fee assumptions and reserve; a 0.0003 ETH
-top-up to the actual owner on Arbitrum was requested. Refresh fees/balances
-before any submission.
+## Candidate deployments on 25 November 2026
+
+After the deployer received ETH, it deployed the three candidates on Arbitrum
+One from commit `499ec1b637c527ec8a19f50b1617890d2a1e247f`.
+
+| Contract | Address | Creation receipt |
+| --- | --- | --- |
+| Rebalancer | `0x859b6FBbE685d6823a56125BD58A224b1925c7D4` | [Block 527452049](https://arbiscan.io/tx/0xc9ae78ecaa256a84cc56843dcad5df81d083a45fb3eb4980bd4f9e603768ee9f) |
+| FluidProvider | `0xa4885485bEDfFc131f6b67DC87B13a3e89C58852` | [Block 527452061](https://arbiscan.io/tx/0x6e576ab23a44df9c39856f4bc26ae147bb1659996f60e009bc4ce5dccc9806e8) |
+| MorphoV2Provider (Gauntlet USDC Prime) | `0xce43d620849c2673FfB2D7c526B3cBE67bd77248` | [Block 527452073](https://arbiscan.io/tx/0x8aec97a895d9cb20a34dd7610a39ef85e1e3b7a6f7cf0c64da6e543315f06767) |
+
+The three transactions cost 0.00015227377277 ETH in total. The deployed code
+matched the reviewed runtime for each constructor. Both adapters returned their
+configured source, and both sources reported native Arbitrum USDC. At block
+527452292 the Strategy still used its original implementation and five providers.
+The release record includes the transaction hashes, bytecode hashes, fees
+and post-deployment snapshot. [Deployment evidence](candidate-deployments.json)
 
 The existing allocator still lacks Fluid/Morpho V2 market readers and registry
 support. Registering adapters alone does not enable allocation into these markets.
